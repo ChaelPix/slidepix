@@ -1,0 +1,71 @@
+{
+  "name": "slidepix",
+  "displayName": "SlidePix",
+  "description": "A Git-friendly visual presentation editor for VS Code and Cursor.",
+  "version": "0.1.0",
+  "publisher": "slidepix",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": ["Visualization", "Education", "Other"],
+  "keywords": ["slides", "presentation", "markdown", "latex", "research"],
+  "main": "./dist/extension.cjs",
+  "extensionKind": ["ui"],
+  "activationEvents": ["onCustomEditor:slidepix.deckEditor"],
+  "contributes": {
+    "customEditors": [{
+      "viewType": "slidepix.deckEditor",
+      "displayName": "SlidePix Editor",
+      "selector": [{ "filenamePattern": "*.slidepix.json" }],
+      "priority": "default"
+    }],
+    "jsonValidation": [{
+      "fileMatch": "*.slidepix.json",
+      "url": "./schema/slidepix.schema.json"
+    }],
+    "commands": [
+      { "command": "slidepix.createDeck", "title": "SlidePix: Create Deck", "icon": "$(new-file)" },
+      { "command": "slidepix.exportPdf", "title": "SlidePix: Export PDF", "icon": "$(file-pdf)" },
+      { "command": "slidepix.exportPng", "title": "SlidePix: Export PNG", "icon": "$(file-media)" },
+      { "command": "slidepix.present", "title": "SlidePix: Present", "icon": "$(play)" },
+      { "command": "slidepix.presenter", "title": "SlidePix: Presenter View", "icon": "$(multiple-windows)" },
+      { "command": "slidepix.installRenderer", "title": "SlidePix: Install Export Renderer" },
+      { "command": "slidepix.configureMcp", "title": "SlidePix: Configure MCP" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "slidepix.present", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@1" },
+        { "command": "slidepix.exportPdf", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@2" }
+      ]
+    },
+    "keybindings": [
+      { "command": "slidepix.present", "key": "ctrl+shift+f5", "mac": "cmd+shift+f5", "when": "activeCustomEditorId == slidepix.deckEditor" }
+    ]
+  },
+  "scripts": {
+    "generate-schema": "node ./scripts/generate-schema.mjs",
+    "build": "pnpm generate-schema && node ./scripts/vendor-playwright.mjs && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\"",
+    "dev": "pnpm build --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@slidepix/core": "workspace:*",
+    "playwright-core": "1.62.1",
+    "ws": "^8.18.3",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@slidepix/mcp": "workspace:*",
+    "@slidepix/webview": "workspace:*",
+    "@types/node": "^24.3.0",
+    "@types/vscode": "^1.99.0",
+    "@types/ws": "^8.18.1",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  },
+  "files": ["dist", "media", "schema", "vendor", "README.md", "CHANGELOG.md", "LICENSE", "package.json"]
+}

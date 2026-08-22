@@ -1,0 +1,23 @@
+{
+  "name": "@slidepix/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/server.cjs --banner:js='#!/usr/bin/env node'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@slidepix/core": "workspace:*",
+    "playwright-core": "1.62.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,13 @@
+.thumb-clip {
+  position: relative;
+}
+
+.text-content h1,
+.text-content h2,
+.text-content h3 {
+  margin: 0.25em 0;
+}
+
+.text-content h1 { font-size: 1.3em; }
+.text-content h2 { font-size: 1.15em; }
+.text-content h3 { font-size: 1em; }

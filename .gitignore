@@ -1,0 +1,9 @@
+node_modules/
+dist/
+packages/extension/media/
+packages/extension/vendor/
+*.vsix
+.DS_Store
+playwright-report/
+test-results/
+coverage/

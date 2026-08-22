@@ -1,0 +1,865 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "default": "Untitled deck",
+          "type": "string"
+        },
+        "author": {
+          "default": "",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "author",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "size": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "default": 1920,
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "default": 1080,
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "theme": {
+      "type": "object",
+      "properties": {
+        "background": {
+          "default": "#0f172a",
+          "type": "string",
+          "minLength": 1
+        },
+        "foreground": {
+          "default": "#f8fafc",
+          "type": "string",
+          "minLength": 1
+        },
+        "accent": {
+          "default": "#38bdf8",
+          "type": "string",
+          "minLength": 1
+        },
+        "fontFamily": {
+          "default": "Inter, sans-serif",
+          "type": "string"
+        }
+      },
+      "required": [
+        "background",
+        "foreground",
+        "accent",
+        "fontFamily"
+      ],
+      "additionalProperties": false
+    },
+    "pageNumbers": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "color": {
+          "default": "#94a3b8",
+          "type": "string",
+          "minLength": 1
+        },
+        "fontSize": {
+          "default": 24,
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "enabled",
+        "color",
+        "fontSize"
+      ],
+      "additionalProperties": false
+    },
+    "layouts": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "background": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "slides": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "default": "Untitled slide",
+            "type": "string"
+          },
+          "layout": {
+            "type": "string"
+          },
+          "background": {
+            "type": "string",
+            "minLength": 1
+          },
+          "notes": {
+            "default": "",
+            "type": "string"
+          },
+          "hidden": {
+            "default": false,
+            "type": "boolean"
+          },
+          "hidePageNumber": {
+            "default": false,
+            "type": "boolean"
+          },
+          "transition": {
+            "default": {
+              "type": "none",
+              "durationMs": 500,
+              "easing": "ease-in-out"
+            },
+            "type": "object",
+            "properties": {
+              "type": {
+                "default": "none",
+                "type": "string",
+                "enum": [
+                  "none",
+                  "fade",
+                  "slide-left",
+                  "slide-right",
+                  "slide-up",
+                  "slide-down",
+                  "morph"
+                ]
+              },
+              "durationMs": {
+                "default": 500,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "easing": {
+                "default": "ease-in-out",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "durationMs",
+              "easing"
+            ],
+            "additionalProperties": false
+          },
+          "timeline": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "targetElementId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "phase": {
+                  "default": "entrance",
+                  "type": "string",
+                  "enum": [
+                    "entrance",
+                    "exit"
+                  ]
+                },
+                "effect": {
+                  "default": "fade",
+                  "type": "string",
+                  "enum": [
+                    "appear",
+                    "fade",
+                    "fly"
+                  ]
+                },
+                "trigger": {
+                  "default": "onClick",
+                  "type": "string",
+                  "enum": [
+                    "onClick",
+                    "withPrevious",
+                    "afterPrevious"
+                  ]
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "right",
+                    "up",
+                    "down"
+                  ]
+                },
+                "delayMs": {
+                  "default": 0,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 60000
+                },
+                "durationMs": {
+                  "default": 500,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 60000
+                },
+                "easing": {
+                  "default": "ease-out",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "targetElementId",
+                "phase",
+                "effect",
+                "trigger",
+                "delayMs",
+                "durationMs",
+                "easing"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "elements": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "morphKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "rotation": {
+                      "default": 0,
+                      "type": "number"
+                    },
+                    "opacity": {
+                      "default": 1,
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "z": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "locked": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "hidden": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "const": "text"
+                    },
+                    "markdown": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "object",
+                      "properties": {
+                        "fontFamily": {
+                          "default": "Inter, sans-serif",
+                          "type": "string"
+                        },
+                        "fontSize": {
+                          "default": 48,
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "fontWeight": {
+                          "default": 400,
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "color": {
+                          "default": "#f8fafc",
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "textAlign": {
+                          "default": "left",
+                          "type": "string",
+                          "enum": [
+                            "left",
+                            "center",
+                            "right"
+                          ]
+                        },
+                        "verticalAlign": {
+                          "default": "top",
+                          "type": "string",
+                          "enum": [
+                            "top",
+                            "middle",
+                            "bottom"
+                          ]
+                        },
+                        "lineHeight": {
+                          "default": 1.2,
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "padding": {
+                          "default": 8,
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "fontFamily",
+                        "fontSize",
+                        "fontWeight",
+                        "color",
+                        "textAlign",
+                        "verticalAlign",
+                        "lineHeight",
+                        "padding"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "morphKey",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "rotation",
+                    "opacity",
+                    "z",
+                    "locked",
+                    "hidden",
+                    "type",
+                    "markdown",
+                    "style"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "morphKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "rotation": {
+                      "default": 0,
+                      "type": "number"
+                    },
+                    "opacity": {
+                      "default": 1,
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "z": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "locked": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "hidden": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "const": "image"
+                    },
+                    "src": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "crop": {
+                      "default": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 1,
+                        "height": 1
+                      },
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "default": 0,
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "y": {
+                          "default": 0,
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "width": {
+                          "default": 1,
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        },
+                        "height": {
+                          "default": 1,
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "width",
+                        "height"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "borderRadius": {
+                      "default": 0,
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "edgeFade": {
+                      "default": 0,
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "border": {
+                      "default": {
+                        "width": 0,
+                        "color": "transparent"
+                      },
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "default": 0,
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "color": {
+                          "default": "transparent",
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "width",
+                        "color"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "morphKey",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "rotation",
+                    "opacity",
+                    "z",
+                    "locked",
+                    "hidden",
+                    "type",
+                    "src",
+                    "crop",
+                    "borderRadius",
+                    "edgeFade",
+                    "border"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "morphKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "rotation": {
+                      "default": 0,
+                      "type": "number"
+                    },
+                    "opacity": {
+                      "default": 1,
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "z": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "locked": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "hidden": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "const": "video"
+                    },
+                    "src": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "poster": {
+                      "type": "string"
+                    },
+                    "borderRadius": {
+                      "default": 0,
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "playback": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "default": "manual",
+                          "type": "string",
+                          "enum": [
+                            "autoplay",
+                            "manual"
+                          ]
+                        },
+                        "muted": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "loop": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "controls": {
+                          "default": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "muted",
+                        "loop",
+                        "controls"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "morphKey",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "rotation",
+                    "opacity",
+                    "z",
+                    "locked",
+                    "hidden",
+                    "type",
+                    "src",
+                    "borderRadius",
+                    "playback"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "morphKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "rotation": {
+                      "default": 0,
+                      "type": "number"
+                    },
+                    "opacity": {
+                      "default": 1,
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "z": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "locked": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "hidden": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "const": "shape"
+                    },
+                    "shape": {
+                      "type": "string",
+                      "enum": [
+                        "rectangle",
+                        "ellipse",
+                        "triangle"
+                      ]
+                    },
+                    "fill": {
+                      "default": "#2563eb",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stroke": {
+                      "default": "transparent",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "strokeWidth": {
+                      "default": 0,
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "borderRadius": {
+                      "default": 0,
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "morphKey",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "rotation",
+                    "opacity",
+                    "z",
+                    "locked",
+                    "hidden",
+                    "type",
+                    "shape",
+                    "fill",
+                    "stroke",
+                    "strokeWidth",
+                    "borderRadius"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "notes",
+          "hidden",
+          "hidePageNumber",
+          "transition",
+          "timeline",
+          "elements"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "metadata",
+    "size",
+    "theme",
+    "pageNumbers",
+    "layouts",
+    "slides"
+  ],
+  "additionalProperties": false,
+  "title": "SlidePix deck",
+  "description": "A versioned SlidePix presentation deck."
+}
