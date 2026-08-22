@@ -8,6 +8,7 @@
     "dev": "pnpm --parallel --filter @slidepix/webview --filter @slidepix/extension dev",
     "test": "pnpm --filter @slidepix/core test && pnpm --filter @slidepix/mcp test",
     "typecheck": "pnpm -r typecheck",
-    "package": "pnpm build && pnpm --filter @slidepix/extension package"
+    "docs:check": "node ./scripts/check-docs.mjs",
+    "package": "pnpm build && pnpm --filter slidepix package"
   }
 }

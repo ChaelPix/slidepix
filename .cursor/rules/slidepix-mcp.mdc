@@ -1,0 +1,23 @@
+---
+description: Use when reviewing SlidePix decks with MCP or changing the read-only SlidePix MCP server
+globs: "packages/mcp/**/*,packages/core/src/render.ts,packages/core/src/assets.ts,examples/*.slidepix.json"
+alwaysApply: false
+---
+
+For deck review with the SlidePix MCP server:
+
+1. Call `list_slides` with an absolute deck path unless slide IDs are already
+   known.
+2. Call `inspect_slides` for exact element, transition, timeline, and notes
+   metadata.
+3. Call `render_slides` for visual feedback. Prefer a single image contact sheet
+   for several slides; specify row/column/grid only when it improves comparison.
+4. Cite slide IDs or 1-based indices in feedback so fixes are unambiguous.
+
+These tools are read-only. Never claim that an MCP call changed a deck. If a
+render fails because Chromium is missing, ask the user to run **SlidePix:
+Configure MCP** or **SlidePix: Install Export Renderer** in VS Code/Cursor.
+
+When changing MCP code, read @docs/modules/mcp.md and preserve the mutation and
+asset-containment boundaries in @architecture.md.
+

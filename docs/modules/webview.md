@@ -1,0 +1,53 @@
+# Webview module
+
+Package: `@slidepix/webview`
+
+Purpose: render and manipulate a deck inside the VS Code/Cursor custom-editor
+webview. The webview has no direct filesystem or Node access.
+
+## Files and responsibilities
+
+| File | Responsibility |
+| --- | --- |
+| `src/main.tsx` | React entry point and stylesheet loading. |
+| `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, and command dispatch. |
+| `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
+| `src/store.ts` | Zustand transient state, host-document synchronization, immutable mutation helper, selection, and zoom. |
+| `src/vscode.ts` | Typed adapter around `acquireVsCodeApi`, version stamping, host listener, and browser fallback used during local development. |
+| `src/styles.css` / `src/fixes.css` | Layout and editor appearance. Keep logical slide geometry in element data, not CSS-only state. |
+| `vite.config.ts` | Builds the webview into the extension's `media` directory. |
+
+## Important methods and flows
+
+- `App()` composes the entire editor. A feature should usually be extracted
+  from this file once it has independent state or tests; v0.1 remains compact.
+- `SlideView(props)` renders one slide at a logical size and applies a visual
+  scale. It sorts elements by `z`, resolves media through a supplied resolver,
+  and generates visible-order page numbers.
+- `useDeckStore.mutate(mutator)` clones the current deck, applies the mutation,
+  updates optimistic UI state, serializes through core, and posts one
+  `replaceDocument` message. Do not mutate the existing store deck directly.
+- `postMessage(message)` adds `PROTOCOL_VERSION`; `onHostMessage(handler)`
+  filters mismatched host messages.
+
+Media import sends base64 plus metadata to the host. The host chooses the safe,
+content-addressed filename and responds with the stored reference. Never build
+local filesystem paths in the webview.
+
+## Interaction invariants
+
+- Stored coordinates remain logical slide units regardless of zoom.
+- A locked item cannot be manipulated from the canvas.
+- Deleting an element also removes timeline steps that target it.
+- Selecting another slide clears element selection.
+- Clicking a transition gap changes the destination slide's incoming
+  transition.
+- All persistent changes go through `mutate`; selections, zoom, open tabs, and
+  modal state stay transient.
+
+## Verification
+
+Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
+changed flow in an Extension Development Host. Visual changes also require a
+render/export comparison because the core renderer is a second consumer.
+

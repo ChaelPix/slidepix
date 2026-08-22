@@ -1,0 +1,20 @@
+---
+description: Canonical architecture, ownership, invariants, and verification for any SlidePix repository change
+globs: "**/*"
+alwaysApply: true
+---
+
+Read @architecture.md before modifying SlidePix. Route the task using its
+**Fast routing** table, then read only the relevant @docs/modules/ document.
+
+- The JSON document is authoritative; normal editor writes must use
+  `WorkspaceEdit` through the versioned protocol.
+- Keep schema and headless rendering in `@slidepix/core`.
+- Preserve asset containment, webview CSP, loopback token authentication, and
+  read-only MCP behavior.
+- Do not edit generated `dist`, `media`, `vendor`, JSON Schema, or VSIX files.
+- Update architecture docs when public methods, ownership, scripts, commands,
+  persisted fields, or known gaps change.
+- Run @scripts/check-docs.mjs through `pnpm docs:check`, plus the validation
+  commands appropriate to the touched package.
+
