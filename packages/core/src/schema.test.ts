@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import { createDeck, duplicateSlide, parseDeckText, serializeDeck } from "./schema.js";
 import { renderDeckDocument, renderMarkdown } from "./render.js";
 import { resolveAssetPath, resolveMediaPath } from "./assets.js";
@@ -38,9 +39,12 @@ describe("deck schema", () => {
   });
 
   it("resolves linked media only inside explicitly allowed workspace roots", () => {
-    expect(resolveMediaPath("/workspace/decks/talk.slidepix.json", "../media/chart.png", "linked", ["/workspace"]))
-      .toBe("/workspace/media/chart.png");
-    expect(() => resolveMediaPath("/workspace/decks/talk.slidepix.json", "../../../secret", "linked", ["/workspace"]))
+    const workspace = path.resolve("/workspace");
+    const deckPath = path.join(workspace, "decks", "talk.slidepix.json");
+
+    expect(resolveMediaPath(deckPath, "../media/chart.png", "linked", [workspace]))
+      .toBe(path.join(workspace, "media", "chart.png"));
+    expect(() => resolveMediaPath(deckPath, "../../../secret", "linked", [workspace]))
       .toThrow(/workspace roots/);
   });
 
