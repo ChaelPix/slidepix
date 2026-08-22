@@ -104,7 +104,8 @@ Edit source files, then regenerate outputs with the documented commands.
 | `pnpm package` | Performs a full workspace build and creates the VSIX. |
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
 | `packages/extension/scripts/vendor-playwright.mjs` | Copies the installed `playwright-core` package into the extension bundle. |
-| `scripts/render-smoke.mjs [deck] [output]` | Uses installed Chromium to create a smoke-test PDF, contact sheet, and exact-size single-slide PNG from a built deck. |
+| `scripts/render-smoke.mjs [deck] [output]` | Uses installed Chromium to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
+| `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 
 See [docs/development.md](docs/development.md) for prerequisites, exact commands,

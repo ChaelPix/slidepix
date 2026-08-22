@@ -44,7 +44,8 @@ The screen is organized like a simple slide application:
 - **left:** slides, previews, duplicate/reorder/hide/delete buttons, and the
   transition control between slides;
 - **center:** the current slide; click an item to move, resize, or rotate it;
-- **top:** add text, images, videos, and shapes; save, export, or present;
+- **top:** add text, images, videos, shapes, and editable tables; save, export,
+  or present;
 - **right:** item properties, layer order, visibility/locking, and animations;
 - **bottom:** speaker notes and zoom.
 
@@ -58,6 +59,11 @@ The screen is organized like a simple slide application:
 - Copy and paste selected SlidePix elements between slides. Cross-slide copies
   preserve their morph identity; plain text and clipboard images still create
   new elements.
+- Pick a text font from the system-font selector in **Properties**; SlidePix
+  defaults to the operating system's UI font instead of requiring a CSS name.
+- Select an image to set border width/color, corner radius, and edge fade.
+  Double-click it to enter crop mode, then drag to pan and use the visible
+  zoom/reset/done controls.
 - Change a slide transition by clicking the labelled gap between two slide
   previews. The transition belongs to the destination slide.
 - Add entrance animations from the **animations** tab after selecting an item.
@@ -66,8 +72,10 @@ The screen is organized like a simple slide application:
 - Use **Export PDF** or **Export PNG**. On first use, approve the one-time
   Chromium renderer download. Later exports work offline.
 
-Save the deck normally with `Ctrl+S` or `Cmd+S`. VS Code/Cursor also provides
-undo, redo, autosave, backup, and recovery because the deck is a text document.
+Save the deck normally with `Ctrl+S` or `Cmd+S`. Undo with `Ctrl+Z`/`Cmd+Z` and
+redo with `Ctrl+Y` or `Cmd+Shift+Z`; matching toolbar buttons are also present.
+VS Code/Cursor owns that history, autosave, backup, and recovery because the
+deck is a text document.
 
 ## Move a presentation to another computer
 
@@ -115,6 +123,8 @@ Start with [architecture.md](architecture.md). It is the canonical map of
 modules, methods, scripts, runtime flows, invariants, tests, and known gaps.
 Repository-wide agent instructions live in [AGENTS.md](AGENTS.md).
 
-The canonical [visual-regression example](examples/research-talk.slidepix.json)
+The canonical [product-demo and visual-regression example](examples/slidepix-demo.slidepix.json)
 demonstrates Markdown, LaTeX, highlighted code, image borders/radius/crop/fade,
-video, shapes, animations, ordinary transitions, and a two-slide crop morph.
+video, shapes, animations, ordinary transitions, and a two-slide crop morph. Its
+embedded demo reel is assembled from exact-size slide PNG exports with FFmpeg;
+the reproducible asset flow is documented in [examples/README.md](examples/README.md).

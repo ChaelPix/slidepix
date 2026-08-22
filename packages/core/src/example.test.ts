@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { resolveMediaPath } from "./assets.js";
 import { parseDeckText } from "./schema.js";
 
-const examplePath = fileURLToPath(new URL("../../../examples/research-talk.slidepix.json", import.meta.url));
+const examplePath = fileURLToPath(new URL("../../../examples/slidepix-demo.slidepix.json", import.meta.url));
 
 describe("visual regression example", () => {
   it("stays valid, self-contained, and covers the primary authoring features", async () => {
@@ -22,7 +22,9 @@ describe("visual regression example", () => {
 
     expect(deck.slides).toHaveLength(6);
     expect(text.some((element) => element.markdown.includes("$$"))).toBe(true);
-    expect(text.some((element) => element.markdown.includes("```python"))).toBe(true);
+    expect(text.some((element) => element.markdown.includes("```typescript"))).toBe(true);
+    expect(deck.theme).toMatchObject({ background: "#ffffff", foreground: "#111827" });
+    expect(JSON.stringify(deck).toLowerCase()).not.toContain("research");
     expect(images.some((element) => element.border.width > 0 && element.borderRadius > 0)).toBe(true);
     expect(images.some((element) => element.edgeFade > 0 && element.crop.width < 1)).toBe(true);
     expect(videos).toHaveLength(1);

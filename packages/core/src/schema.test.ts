@@ -5,10 +5,19 @@ import { resolveAssetPath, resolveMediaPath } from "./assets.js";
 
 describe("deck schema", () => {
   it("round trips a new deck", () => {
-    const deck = createDeck("Research talk");
+    const deck = createDeck("Product demo");
     const parsed = parseDeckText(serializeDeck(deck));
     expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(parsed.deck.metadata.title).toBe("Research talk");
+    if (parsed.ok) expect(parsed.deck.metadata.title).toBe("Product demo");
+  });
+
+  it("creates a portable light deck by default", () => {
+    const deck = createDeck();
+    const title = deck.slides[0]!.elements[0];
+
+    expect(deck.theme).toMatchObject({ background: "#ffffff", foreground: "#111827" });
+    expect(deck.theme.fontFamily).toContain("system-ui");
+    expect(title).toMatchObject({ type: "text", style: { color: "#111827" } });
   });
 
   it("rejects malformed and future decks", () => {
@@ -48,6 +57,34 @@ describe("deck schema", () => {
 
     expect(parsed.ok).toBe(true);
     if (parsed.ok) expect(parsed.deck.slides[0]!.elements[0]).toMatchObject({ storage: "embedded" });
+  });
+
+  it("adds a disabled shadow to shapes from older decks", () => {
+    const deck = createDeck();
+    const raw = JSON.parse(serializeDeck(deck));
+    raw.slides[0].elements.push({
+      id: "legacy-shape", morphKey: "legacy-shape-morph", type: "shape", shape: "rectangle",
+      x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, z: 1, locked: false, hidden: false,
+      fill: "transparent", stroke: "transparent", strokeWidth: 0, borderRadius: 0
+    });
+    const parsed = parseDeckText(JSON.stringify(raw));
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ type: "shape", shadow: { enabled: false } });
+  });
+
+  it("normalizes a table with editable Markdown cells", () => {
+    const deck = createDeck();
+    const raw = JSON.parse(serializeDeck(deck));
+    raw.slides[0].elements.push({
+      id: "table-1", morphKey: "table-morph", type: "table",
+      x: 100, y: 100, width: 800, height: 400, rotation: 0, opacity: 1, z: 1, locked: false, hidden: false,
+      rows: 2, columns: 2, cells: [["**Name**", "Value"], ["Alpha", "$x^2$"]]
+    });
+    const parsed = parseDeckText(JSON.stringify(raw));
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ type: "table", rows: 2, columns: 2, headerRow: true, style: { borderWidth: 2 } });
   });
 
   it("renders LaTeX as portable MathML", () => {

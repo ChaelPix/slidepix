@@ -59,9 +59,9 @@ export function renderSlideMarkup(
     .join("");
   const background = slide.background ?? deck.layouts[slide.layout ?? ""]?.background ?? deck.theme.background;
   const pageNumber = deck.pageNumbers.enabled && !slide.hidePageNumber
-    ? `<div class="slidepix-page-number" style="color:${css(deck.pageNumbers.color)};font-size:${deck.pageNumbers.fontSize}px">${visibleIndex + 1}</div>`
+    ? `<div class="slidepix-page-number" style="${attr(`color:${css(deck.pageNumbers.color)};font-size:${deck.pageNumbers.fontSize}px`)}">${visibleIndex + 1}</div>`
     : "";
-  return `<section class="slidepix-slide" data-slide-id="${attr(slide.id)}" style="width:${deck.size.width}px;height:${deck.size.height}px;background:${css(background)}">${elements}${pageNumber}</section>`;
+  return `<section class="slidepix-slide" data-slide-id="${attr(slide.id)}" style="${attr(`width:${deck.size.width}px;height:${deck.size.height}px;background:${css(background)}`)}">${elements}${pageNumber}</section>`;
 }
 
 export function renderDeckDocument(
@@ -83,12 +83,12 @@ export function renderDeckDocument(
 
 function renderElement(element: SlideElement, resolveAsset: AssetResolver): string {
   const base = `left:${element.x}px;top:${element.y}px;width:${element.width}px;height:${element.height}px;transform:rotate(${element.rotation}deg);opacity:${element.opacity};z-index:${element.z}`;
-  const common = `class="slidepix-element slidepix-${element.type}" data-element-id="${attr(element.id)}" data-morph-key="${attr(element.morphKey)}" style="${base}"`;
+  const common = `class="slidepix-element slidepix-${element.type}" data-element-id="${attr(element.id)}" data-morph-key="${attr(element.morphKey)}" style="${attr(base)}"`;
   switch (element.type) {
     case "text": {
       const align = element.style.verticalAlign === "middle" ? "center" : element.style.verticalAlign === "bottom" ? "flex-end" : "flex-start";
       const style = `font-family:${css(element.style.fontFamily)};font-size:${element.style.fontSize}px;font-weight:${css(String(element.style.fontWeight))};color:${css(element.style.color)};text-align:${element.style.textAlign};line-height:${element.style.lineHeight};padding:${element.style.padding}px;justify-content:${align}`;
-      return `<div ${common}><div class="slidepix-text-content" style="${style}">${renderMarkdown(element.markdown)}</div></div>`;
+      return `<div ${common}><div class="slidepix-text-content" style="${attr(style)}">${renderMarkdown(element.markdown)}</div></div>`;
     }
     case "image":
       return `<div ${common}>${imageMarkup(element, resolveAsset)}</div>`;
@@ -98,12 +98,27 @@ function renderElement(element: SlideElement, resolveAsset: AssetResolver): stri
       const loop = element.playback.loop ? " loop" : "";
       const controls = element.playback.controls ? " controls" : "";
       const poster = element.poster ? ` poster="${attr(resolveAsset(element.poster, "embedded"))}"` : "";
-      return `<div ${common}><video src="${attr(resolveAsset(element.src, element.storage))}"${poster}${autoplay}${muted}${loop}${controls} playsinline style="border-radius:${element.borderRadius}px"></video></div>`;
+      return `<div ${common}><video src="${attr(resolveAsset(element.src, element.storage))}"${poster}${autoplay}${muted}${loop}${controls} playsinline style="${attr(`border-radius:${element.borderRadius}px`)}"></video></div>`;
     }
     case "shape": {
       const clip = element.shape === "triangle" ? "clip-path:polygon(50% 0,100% 100%,0 100%);" : "";
       const radius = element.shape === "ellipse" ? "50%" : `${element.borderRadius}px`;
-      return `<div ${common}><div class="slidepix-shape-content" style="${clip}background:${css(element.fill)};border:${element.strokeWidth}px solid ${css(element.stroke)};border-radius:${radius}"></div></div>`;
+      const shadow = element.shadow.enabled ? `filter:drop-shadow(${element.shadow.offsetX}px ${element.shadow.offsetY}px ${element.shadow.blur}px ${css(element.shadow.color)});` : "";
+      return `<div ${common}><div class="slidepix-shape-content" style="${attr(`${clip}${shadow}background:${css(element.fill)};border:${element.strokeWidth}px solid ${css(element.stroke)};border-radius:${radius}`)}"></div></div>`;
+    }
+    case "table": {
+      const vertical = element.style.verticalAlign === "middle" ? "center" : element.style.verticalAlign === "bottom" ? "flex-end" : "flex-start";
+      const rows = Array.from({ length: element.rows }, (_, row) => {
+        const tag = element.headerRow && row === 0 ? "th" : "td";
+        const fill = tag === "th" ? element.style.headerFill : element.style.cellFill;
+        const cells = Array.from({ length: element.columns }, (_, column) => {
+          const source = element.cells[row]?.[column] ?? "";
+          return `<${tag} style="${attr(`background:${css(fill)};border:${element.style.borderWidth}px solid ${css(element.style.borderColor)};padding:${element.style.padding}px;text-align:${element.style.textAlign}`)}"><div class="slidepix-table-cell" style="${attr(`justify-content:${vertical}`)}">${renderMarkdown(source)}</div></${tag}>`;
+        }).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+      const style = `font-family:${css(element.style.fontFamily)};font-size:${element.style.fontSize}px;font-weight:${css(String(element.style.fontWeight))};color:${css(element.style.color)}`;
+      return `<div ${common}><table class="slidepix-table-content" style="${attr(style)}"><tbody>${rows}</tbody></table></div>`;
     }
   }
 }
@@ -117,20 +132,21 @@ function imageMarkup(element: ImageElement, resolveAsset: AssetResolver): string
   const fade = element.edgeFade > 0
     ? `-webkit-mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%),linear-gradient(to bottom,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%),linear-gradient(to bottom,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);mask-composite:intersect;`
     : "";
-  return `<div class="slidepix-image-clip" style="border-radius:${element.borderRadius}px;border:${element.border.width}px solid ${css(element.border.color)};${fade}"><img src="${attr(resolveAsset(element.src, element.storage))}" alt="${attr(element.alt ?? "")}" style="width:${width}%;height:${height}%;left:${left}%;top:${top}%"></div>`;
+  return `<div class="slidepix-image-clip" style="${attr(`border-radius:${element.borderRadius}px;border:${element.border.width}px solid ${css(element.border.color)};${fade}`)}"><img src="${attr(resolveAsset(element.src, element.storage))}" alt="${attr(element.alt ?? "")}" style="${attr(`width:${width}%;height:${height}%;left:${left}%;top:${top}%`)}"></div>`;
 }
 
 function baseStyles(deck: Deck, mode: string, columns: number): string {
   const contact = mode === "contact";
   return `
 @import url("data:text/css,");
-*{box-sizing:border-box}html,body{margin:0;background:#020617;color:${css(deck.theme.foreground)};font-family:${css(deck.theme.fontFamily)}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:none;text-size-adjust:none}html,body{margin:0;background:#020617;color:${css(deck.theme.foreground)};font-family:${css(deck.theme.fontFamily)}}
 main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.size.width}px);gap:32px;padding:32px;width:max-content` : ""}}
 .slidepix-slide{position:relative;overflow:hidden;isolation:isolate;page-break-inside:avoid;break-inside:avoid}
 .slidepix-element{position:absolute;transform-origin:center center;overflow:visible}
 .slidepix-text-content{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
 .slidepix-text-content>*:first-child{margin-top:0}.slidepix-text-content>*:last-child{margin-bottom:0}
 .slidepix-text-content h1,.slidepix-text-content h2,.slidepix-text-content h3{line-height:1.08;margin:.25em 0}.slidepix-text-content h1{font-size:1.3em}.slidepix-text-content h2{font-size:1.15em}.slidepix-text-content h3{font-size:1em}
+.slidepix-table-content{width:100%;height:100%;border-collapse:collapse;table-layout:fixed}.slidepix-table-content tr{height:auto}.slidepix-table-content th,.slidepix-table-content td{overflow:hidden}.slidepix-table-cell{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}.slidepix-table-cell>*:first-child{margin-top:0}.slidepix-table-cell>*:last-child{margin-bottom:0}
 .slidepix-code{padding:.45em .6em;border-radius:.25em;background:#111827;color:#e2e8f0;white-space:pre-wrap;overflow:hidden}
 .slidepix-code .hljs-keyword,.slidepix-code .hljs-selector-tag,.slidepix-code .hljs-literal{color:#c084fc}.slidepix-code .hljs-string,.slidepix-code .hljs-attr{color:#a7f3d0}.slidepix-code .hljs-number,.slidepix-code .hljs-symbol{color:#fbbf24}.slidepix-code .hljs-title,.slidepix-code .hljs-function .hljs-title{color:#7dd3fc}.slidepix-code .hljs-built_in,.slidepix-code .hljs-type{color:#f9a8d4}.slidepix-code .hljs-comment,.slidepix-code .hljs-quote{color:#94a3b8;font-style:italic}.slidepix-code .hljs-meta{color:#fb923c}.slidepix-code .hljs-variable,.slidepix-code .hljs-params{color:#e2e8f0}
 .katex{font-size:1em}.katex-display{display:block;margin:.4em 0;text-align:center}.katex-html{display:none!important}.katex-mathml{display:inline-block}.katex-display .katex-mathml{display:block}.katex-mathml annotation{display:none}

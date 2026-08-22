@@ -13,6 +13,7 @@ import {
   type Transition
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
+import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, setCropZoom } from "./geometry";
 import { useDeckStore } from "./store";
 import { onHostMessage, postMessage } from "./vscode";
 
@@ -46,7 +47,21 @@ export default function App() {
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
-      if (!deck || !slide || !selected || editingTextId || ["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement).tagName)) return;
+      const textEntry = isTextEntryTarget(event.target);
+      const accelerator = (event.ctrlKey || event.metaKey) && !event.altKey;
+      const key = event.key.toLowerCase();
+      if (accelerator && !textEntry && (key === "z" || key === "y")) {
+        event.preventDefault();
+        const redo = key === "y" || (key === "z" && event.shiftKey);
+        postMessage({ type: "command", command: redo ? "redo" : "undo" });
+        return;
+      }
+      if (event.key === "Escape" && cropElementId) {
+        event.preventDefault();
+        setCropElementId(undefined);
+        return;
+      }
+      if (!deck || !slide || !selected || editingTextId || textEntry) return;
       const delta = event.shiftKey ? 10 : 1;
       if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         event.preventDefault();
@@ -65,7 +80,7 @@ export default function App() {
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [deck, slide, selected, editingTextId]);
+  }, [deck, slide, selected, editingTextId, cropElementId]);
 
   if (store.error) return <InvalidDeck message={store.error} />;
   if (!deck || !slide) return <div className="loading">Opening SlidePix…</div>;
@@ -109,7 +124,13 @@ export default function App() {
     style: { fontFamily: deck.theme.fontFamily, fontSize: 48, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
   }));
   const addShape = (shape: "rectangle" | "ellipse" | "triangle") => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
-    ...baseElement(slide.elements.length, "shape"), type: "shape", shape, fill: deck.theme.accent, stroke: "transparent", strokeWidth: 0, borderRadius: 0
+    ...baseElement(slide.elements.length, "shape"), type: "shape", shape, fill: deck.theme.accent, stroke: "transparent", strokeWidth: 0, borderRadius: 0,
+    shadow: { enabled: false, color: "#00000040", offsetX: 0, offsetY: 12, blur: 24 }
+  }));
+  const addTable = () => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
+    ...baseElement(slide.elements.length, "table"), type: "table", width: 960, height: 420, rows: 3, columns: 3, headerRow: true,
+    cells: [["Header 1", "Header 2", "Header 3"], ["", "", ""], ["", "", ""]],
+    style: { fontFamily: deck.theme.fontFamily, fontSize: 30, fontWeight: 400, color: deck.theme.foreground, headerFill: "#e0e7ff", cellFill: "#ffffff", borderColor: "#94a3b8", borderWidth: 2, textAlign: "left", verticalAlign: "middle", padding: 10 }
   }));
   const copyElement = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
     if (!selected || isTextEntryTarget(event.target)) return;
@@ -162,6 +183,7 @@ export default function App() {
         slide={slide}
         addText={addText}
         addShape={addShape}
+        addTable={addTable}
         chooseImage={() => requestMedia("image")}
         chooseVideo={() => requestMedia("video")}
         hasLinkedMedia={deck.slides.some((item) => item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
@@ -186,7 +208,7 @@ export default function App() {
                 resolveAsset={assetUrl}
                 onSelectElement={store.selectElement}
                 onEditText={setEditingTextId}
-                onEditImage={(id) => setCropElementId((current) => current === id ? undefined : id)}
+                onEditImage={setCropElementId}
               />
               {target && selected && !cropActive && (
                 <Moveable
@@ -218,7 +240,7 @@ export default function App() {
                   onRotateEnd={store.commit}
                 />
               )}
-              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} closeCrop={() => setCropElementId(undefined)} />}
+              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCropElementId(undefined)} />}
             </div>
           </div>
         </div>
@@ -232,22 +254,27 @@ export default function App() {
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} />}
         </section>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} preview={store.preview} commit={store.commit} selectElement={store.selectElement} editText={setEditingTextId} editImage={(id) => setCropElementId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
+      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} commit={store.commit} selectElement={store.selectElement} editText={setEditingTextId} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
       <div className="zoom-control" title="Ctrl/Cmd + mouse wheel also zooms the canvas"><button aria-label="Zoom out" onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><input aria-label="Canvas zoom" type="range" min="10" max="150" step="5" value={Math.round(store.zoom * 100)} onChange={(event) => store.setZoom(Number(event.target.value) / 100)} /><span>{Math.round(store.zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
       {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} mutate={store.mutate} close={() => setEditingTextId(undefined)} />}
     </div>
   );
 }
 
-function Toolbar({ slide, addText, addShape, chooseImage, chooseVideo, hasLinkedMedia }: {
-  slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; chooseImage(): void; chooseVideo(): void; hasLinkedMedia: boolean;
+function Toolbar({ slide, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia }: {
+  slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; addTable(): void; chooseImage(): void; chooseVideo(): void; hasLinkedMedia: boolean;
 }) {
   return <header className="toolbar">
     <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
+    <div className="ribbon-group history-actions"><div className="ribbon-actions">
+      <RibbonButton icon="discard" label="Undo" onClick={() => postMessage({ type: "command", command: "undo" })} />
+      <RibbonButton icon="redo" label="Redo" onClick={() => postMessage({ type: "command", command: "redo" })} />
+    </div></div>
     <div className="ribbon-group"><span className="ribbon-label">Insert</span><div className="ribbon-actions">
       <RibbonButton icon="symbol-string" label="Text" onClick={addText} />
       <RibbonButton icon="file-media" label="Image" onClick={chooseImage} />
       <RibbonButton icon="device-camera-video" label="Video" onClick={chooseVideo} />
+      <RibbonButton icon="table" label="Table" onClick={addTable} />
       <label className="ribbon-select"><span className="codicon codicon-symbol-structure" /><select aria-label="Add shape" defaultValue="" onChange={(event) => { if (event.target.value) addShape(event.target.value as "rectangle" | "ellipse" | "triangle"); event.target.value = ""; }}><option value="" disabled>Shape</option><option value="rectangle">Rectangle</option><option value="ellipse">Circle</option><option value="triangle">Triangle</option></select></label>
     </div></div>
     <span className="toolbar-spacer" />
@@ -304,7 +331,7 @@ function TransitionEditor({ transition, update, close }: { transition: Transitio
 
 type MediaElement = Extract<SlideElement, { type: "image" | "video" }>;
 
-function MediaControls({ element, cropActive, zoom, preview, commit, closeCrop }: { element: MediaElement; cropActive: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; closeCrop(): void }) {
+function MediaControls({ element, cropActive, zoom, preview, commit, finishCrop }: { element: MediaElement; cropActive: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; finishCrop(): void }) {
   const maxRadius = Math.max(1, Math.min(element.width, element.height) / 2);
   const radius = Math.min(maxRadius, element.borderRadius);
   const handleSize = 14 / zoom;
@@ -348,8 +375,19 @@ function MediaControls({ element, cropActive, zoom, preview, commit, closeCrop }
     }, commit);
   } : undefined;
 
-  return <div className={`media-controls ${cropActive ? "crop-active" : ""}`} style={overlayStyle} onDoubleClick={() => cropActive && closeCrop()}>
-    {cropActive && element.type === "image" && <div className="crop-surface" onPointerDown={panCrop}><span style={{ fontSize: 12 / zoom, top: 12 / zoom, padding: `${5 / zoom}px ${8 / zoom}px` }}>Drag to reposition · drag corner to zoom · double-click to finish</span><i className="crop-corner top-left" /><i className="crop-corner top-right" /><i className="crop-corner bottom-left" /><button className="crop-zoom-handle crop-corner bottom-right" aria-label="Adjust image crop zoom" onPointerDown={zoomCrop} /></div>}
+  const updateCrop = (crop: Extract<SlideElement, { type: "image" }>["crop"]) => { preview({ crop } as Partial<MediaElement>); commit(); };
+  return <div className={`media-controls ${cropActive ? "crop-active" : ""}`} style={overlayStyle}>
+    {cropActive && element.type === "image" && <div className="crop-surface" onPointerDown={panCrop}>
+      <div className="crop-toolbar" style={{ fontSize: 12 / zoom, top: 12 / zoom, gap: 5 / zoom, padding: `${5 / zoom}px ${7 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()}>
+        <span>Drag image to reposition</span>
+        <button title="Zoom out" onClick={() => updateCrop(scaleCrop(element.crop, 1.2))}>−</button>
+        <output>{cropZoomPercent(element.crop)}%</output>
+        <button title="Zoom in" onClick={() => updateCrop(scaleCrop(element.crop, 1 / 1.2))}>＋</button>
+        <button title="Reset crop" onClick={() => updateCrop({ x: 0, y: 0, width: 1, height: 1 })}>Reset</button>
+        <button className="crop-done" onClick={finishCrop}>Done</button>
+      </div>
+      <i className="crop-corner top-left" /><i className="crop-corner top-right" /><i className="crop-corner bottom-left" /><button className="crop-zoom-handle crop-corner bottom-right" aria-label="Adjust image crop zoom" title="Drag inward to zoom" onPointerDown={zoomCrop} />
+    </div>}
     {!cropActive && <>
       <button className="media-handle radius-handle" title="Drag to change corner radius" aria-label="Adjust corner radius" style={{ left: `${(radius / Math.max(1, element.width)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={radiusDrag} />
       {element.type === "image" && <button className="media-handle fade-handle" title="Drag inward to fade all edges" aria-label="Adjust edge fade" style={{ bottom: `${(element.edgeFade / Math.max(1, element.height)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={fadeDrag} />}
@@ -357,8 +395,8 @@ function MediaControls({ element, cropActive, zoom, preview, commit, closeCrop }
   </div>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, mutate, preview, commit, selectElement, editText, editImage, relinkMedia }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
+function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, commit, selectElement, editText, editImage, relinkMedia }: {
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
 }) {
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   return <aside className="inspector">
@@ -380,19 +418,51 @@ function Inspector({ tab, setTab, deck, slide, element, mutate, preview, commit,
             <button className="edit-text-button" onClick={() => editText(element.id)}>Edit Markdown · LaTeX · Code…</button>
             <ColorField label="Text color" value={element.style.color} onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.color = color; })} />
             <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontSize = fontSize; })} />
-            <label>Font family<input value={element.style.fontFamily} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontFamily = event.target.value; })} /></label>
+            <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontFamily = fontFamily; })} />
             <label>Alignment<select value={element.style.textAlign} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.textAlign = event.target.value as "left" | "center" | "right"; })}><option>left</option><option>center</option><option>right</option></select></label>
           </>}
-          {element.type === "shape" && <ColorField label="Fill" value={element.fill} onChange={(fill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} />}
+          {element.type === "shape" && <>
+            <ColorField label="Fill" value={element.fill} allowTransparent onChange={(fill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} />
+            <NumberField label="Border width" value={element.strokeWidth} onChange={(strokeWidth) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.strokeWidth = Math.max(0, strokeWidth); })} />
+            <ColorField label="Border color" value={element.stroke} allowTransparent onChange={(stroke) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.stroke = stroke; })} />
+            <CheckboxField label="Shadow" checked={element.shadow.enabled} onChange={(enabled) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.enabled = enabled; })} />
+            {element.shadow.enabled && <>
+              <ColorField label="Shadow color" value={element.shadow.color} allowTransparent onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.color = color; })} />
+              <div className="field-grid"><NumberField label="Shadow X" value={element.shadow.offsetX} onChange={(offsetX) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetX = offsetX; })} /><NumberField label="Shadow Y" value={element.shadow.offsetY} onChange={(offsetY) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetY = offsetY; })} /></div>
+              <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.blur = blur; })} onCommit={commit} />
+            </>}
+          </>}
+          {element.type === "table" && <>
+            <div className="table-size-actions">
+              <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows + 1, target.columns); })}>＋ Row</button>
+              <button disabled={element.rows <= 1} onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows - 1, target.columns); })}>− Row</button>
+              <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows, target.columns + 1); })}>＋ Column</button>
+              <button disabled={element.columns <= 1} onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows, target.columns - 1); })}>− Column</button>
+            </div>
+            <CheckboxField label="Header row" checked={element.headerRow} onChange={(headerRow) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.headerRow = headerRow; })} />
+            <div className="table-cell-editor" style={{ gridTemplateColumns: `repeat(${element.columns}, minmax(86px, 1fr))` }}>
+              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; })} />))}
+            </div>
+            <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontSize = Math.max(0, fontSize); })} />
+            <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontFamily = fontFamily; })} />
+            <ColorField label="Text color" value={element.style.color} onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.color = color; })} />
+            <ColorField label="Header fill" value={element.style.headerFill} allowTransparent onChange={(headerFill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.headerFill = headerFill; })} />
+            <ColorField label="Cell fill" value={element.style.cellFill} allowTransparent onChange={(cellFill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.cellFill = cellFill; })} />
+            <NumberField label="Border width" value={element.style.borderWidth} onChange={(borderWidth) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.borderWidth = Math.max(0, borderWidth); })} />
+            <ColorField label="Border color" value={element.style.borderColor} allowTransparent onChange={(borderColor) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.borderColor = borderColor; })} />
+          </>}
           {(element.type === "image" || element.type === "video") && <>
             <div className="media-source-card"><span className={`storage-badge ${element.storage}`}>{element.storage}</span><code title={element.src}>{element.src}</code><div><button onClick={() => relinkMedia(element.type, element.id)}>Choose linked file…</button>{element.storage === "linked" && <button onClick={() => postMessage({ type: "embedMedia", elementIds: [element.id] })}>Embed in .assets</button>}</div></div>
             <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} onCommit={commit} />
             <p className="panel-help">Drag the yellow point on the top edge to round corners.</p>
           </>}
           {element.type === "image" && <>
+            <RangeField label="Border width" value={element.border.width} min={0} max={40} onChange={(width) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.border.width = width; })} onCommit={commit} />
+            <ColorField label="Border color" value={element.border.color} allowTransparent onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.border.color = color; })} />
             <RangeField label="Edge fade" value={element.edgeFade} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(edgeFade) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} onCommit={commit} />
             <p className="panel-help">Drag the blue point upward from the bottom edge to fade all four sides.</p>
-            <button className="edit-text-button" onClick={() => editImage(element.id)}>Crop image (or double-click)</button>
+            <RangeField label="Crop zoom" value={cropZoomPercent(element.crop)} min={100} max={1000} onChange={(percent) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.crop = setCropZoom(target.crop, percent); })} onCommit={commit} suffix="%" />
+            <button className={`edit-text-button ${cropActive ? "active" : ""}`} onClick={() => editImage(element.id)}>{cropActive ? "Cropping on canvas…" : "Crop image (or double-click)"}</button>
             <label>Alt text<textarea value={element.alt ?? ""} onChange={(event) => update({ alt: event.target.value })} /></label>
           </>}
           {element.type === "video" && <>
@@ -432,9 +502,43 @@ function TextEditor({ deck, slideId, elementId, mutate, close }: { deck: Deck; s
   return <div className="modal-backdrop" onMouseDown={close}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={close}>Done</button></header><textarea autoFocus value={element.markdown} onChange={(event) => mutate((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; })} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks.</p></div></div>;
 }
 
+const SYSTEM_FONT_STACK = "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
+const FONT_CANDIDATES = [
+  { label: "System UI", value: SYSTEM_FONT_STACK },
+  { label: "Arial", value: "Arial, sans-serif" },
+  { label: "Aptos", value: "Aptos, sans-serif" },
+  { label: "Calibri", value: "Calibri, sans-serif" },
+  { label: "Helvetica Neue", value: "\"Helvetica Neue\", Helvetica, sans-serif" },
+  { label: "Verdana", value: "Verdana, sans-serif" },
+  { label: "Georgia", value: "Georgia, serif" },
+  { label: "Times New Roman", value: "\"Times New Roman\", serif" },
+  { label: "Courier New", value: "\"Courier New\", monospace" },
+  { label: "Menlo", value: "Menlo, monospace" },
+  { label: "Monaco", value: "Monaco, monospace" }
+] as const;
+
+function FontFamilyPicker({ value, onChange }: { value: string; onChange(value: string): void }) {
+  const queryLocalFonts = (window as Window & { queryLocalFonts?: () => Promise<Array<{ family: string }>> }).queryLocalFonts;
+  const [localFonts, setLocalFonts] = useState<Array<{ label: string; value: string }>>([]);
+  const available = [...FONT_CANDIDATES, ...localFonts].filter((font, index, fonts) => fonts.findIndex((item) => item.value === font.value) === index);
+  const custom = available.some((font) => font.value === value) ? [] : [{ label: `Current: ${value}`, value }];
+  const discover = async () => {
+    if (!queryLocalFonts) return;
+    try {
+      const found = await queryLocalFonts();
+      const families = [...new Set(found.map((font) => font.family.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      setLocalFonts(families.map((family) => ({ label: family, value: `"${family.replaceAll('"', "\\\"")}", sans-serif` })));
+    } catch { /* The host may deny local-font permission; the portable list remains available. */ }
+  };
+  return <label>Font family<div className="font-picker"><select value={value} onChange={(event) => onChange(event.target.value)}>{[...custom, ...available].map((font) => <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>{font.label}</option>)}</select>{queryLocalFonts && <button type="button" title="Load fonts installed on this computer" onClick={() => void discover()}>System fonts…</button>}</div></label>;
+}
+
 function NumberField({ label, value, step = 1, onChange }: { label: string; value: number; step?: number; onChange(value: number): void }) { return <label>{label}<input type="number" value={Number.isFinite(value) ? value : 0} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
-function RangeField({ label, value, min, max, onChange, onCommit }: { label: string; value: number; min: number; max: number; onChange(value: number): void; onCommit?(): void }) { return <label className="range-field"><span>{label}<output>{Math.round(value)} px</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onCommit} onPointerCancel={onCommit} onKeyUp={onCommit} onBlur={onCommit} /></label>; }
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange(value: string): void }) { return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
+function RangeField({ label, value, min, max, onChange, onCommit, suffix = " px" }: { label: string; value: number; min: number; max: number; onChange(value: number): void; onCommit?(): void; suffix?: string }) { return <label className="range-field"><span>{label}<output>{Math.round(value)}{suffix}</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onCommit} onPointerCancel={onCommit} onKeyUp={onCommit} onBlur={onCommit} /></label>; }
+function ColorField({ label, value, allowTransparent = false, onChange }: { label: string; value: string; allowTransparent?: boolean; onChange(value: string): void }) {
+  const transparent = value.trim().toLowerCase() === "transparent";
+  return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} disabled={transparent} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} />{allowTransparent && <button type="button" className={`transparent-toggle ${transparent ? "active" : ""}`} title={transparent ? "Use an opaque color" : "Make transparent"} aria-label={transparent ? `Disable transparent ${label}` : `Make ${label} transparent`} onClick={() => onChange(transparent ? "#000000" : "transparent")}>∅</button>}</span></label>;
+}
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
 function InvalidDeck({ message }: { message: string }) { return <div className="invalid"><h1>SlidePix could not open this deck</h1><pre>{message}</pre><p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p></div>; }
 
@@ -445,6 +549,8 @@ function animationFlowLabel(timeline: AnimationStep[], index: number): string { 
 function transitionLabel(type: Transition["type"]): string { return ({ none: "None", fade: "Fade", "slide-left": "From left", "slide-right": "From right", "slide-up": "From top", "slide-down": "From bottom", morph: "Morph" } as Record<Transition["type"], string>)[type]; }
 function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
+function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): string[][] { return Array.from({ length: table.rows }, (_, row) => Array.from({ length: table.columns }, (_, column) => table.cells[row]?.[column] ?? "")); }
+function resizeTable(table: Extract<SlideElement, { type: "table" }>, rows: number, columns: number): void { table.rows = clamp(Math.round(rows), 1, 50); table.columns = clamp(Math.round(columns), 1, 20); table.cells = normalizedTableCells(table); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
 function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string, linkedUri: string) => void, setInvalid: (message: string, uri: string, linkedUri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri, message.linkedUri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } }
@@ -478,12 +584,6 @@ function cloneElementForPaste(element: SlideElement, preserveMorphKey: boolean):
   const copy = structuredClone(element);
   return { ...copy, id: crypto.randomUUID(), morphKey: preserveMorphKey ? copy.morphKey : crypto.randomUUID(), name: `${elementLabel(copy)} copy`, x: copy.x + (preserveMorphKey ? 0 : 20), y: copy.y + (preserveMorphKey ? 0 : 20) } as SlideElement;
 }
-function localPointerDelta(deltaX: number, deltaY: number, rotation: number, zoom: number): { x: number; y: number } {
-  const radians = rotation * Math.PI / 180;
-  const x = deltaX / zoom;
-  const y = deltaY / zoom;
-  return { x: x * Math.cos(radians) + y * Math.sin(radians), y: -x * Math.sin(radians) + y * Math.cos(radians) };
-}
 function startPointerDrag(event: ReactPointerEvent<HTMLElement>, move: (deltaX: number, deltaY: number) => void, finish: () => void): void {
   event.preventDefault();
   event.stopPropagation();
@@ -506,4 +606,3 @@ function startPointerDrag(event: ReactPointerEvent<HTMLElement>, move: (deltaX: 
   window.addEventListener("pointerup", stop);
   window.addEventListener("pointercancel", stop);
 }
-function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }

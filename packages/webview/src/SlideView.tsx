@@ -99,7 +99,7 @@ function ElementView({
     >
       {element.type === "text" && (
         <div
-          className={`text-content valign-${element.style.verticalAlign}`}
+          className={`slidepix-text-content valign-${element.style.verticalAlign}`}
           style={{
             fontFamily: element.style.fontFamily,
             fontSize: element.style.fontSize,
@@ -131,9 +131,44 @@ function ElementView({
             background: element.fill,
             border: `${element.strokeWidth}px solid ${element.stroke}`,
             borderRadius: element.shape === "ellipse" ? "50%" : element.borderRadius,
-            clipPath: element.shape === "triangle" ? "polygon(50% 0, 100% 100%, 0 100%)" : undefined
+            clipPath: element.shape === "triangle" ? "polygon(50% 0, 100% 100%, 0 100%)" : undefined,
+            filter: element.shadow.enabled ? `drop-shadow(${element.shadow.offsetX}px ${element.shadow.offsetY}px ${element.shadow.blur}px ${element.shadow.color})` : undefined
           }}
         />
+      )}
+      {element.type === "table" && (
+        <table
+          className="slidepix-table-content"
+          style={{
+            fontFamily: element.style.fontFamily,
+            fontSize: element.style.fontSize,
+            fontWeight: element.style.fontWeight,
+            color: element.style.color
+          }}
+        >
+          <tbody>
+            {Array.from({ length: element.rows }, (_, row) => {
+              const Cell = element.headerRow && row === 0 ? "th" : "td";
+              return <tr key={row}>{Array.from({ length: element.columns }, (_, column) => (
+                <Cell
+                  key={column}
+                  style={{
+                    background: row === 0 && element.headerRow ? element.style.headerFill : element.style.cellFill,
+                    border: `${element.style.borderWidth}px solid ${element.style.borderColor}`,
+                    padding: element.style.padding,
+                    textAlign: element.style.textAlign
+                  }}
+                >
+                  <div
+                    className="slidepix-table-cell"
+                    style={{ justifyContent: element.style.verticalAlign === "middle" ? "center" : element.style.verticalAlign === "bottom" ? "flex-end" : "flex-start" }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(element.cells[row]?.[column] ?? "") }}
+                  />
+                </Cell>
+              ))}</tr>;
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   );

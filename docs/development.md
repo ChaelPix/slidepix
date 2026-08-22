@@ -48,7 +48,7 @@ extension bundle.
 | Documentation only | `pnpm docs:check` |
 | Schema/assets/protocol | `pnpm test`, `pnpm typecheck`, `pnpm build` |
 | Webview behavior | `pnpm typecheck`, `pnpm build`, manual Extension Development Host test |
-| Rendering/motion | previous checks plus `node scripts/render-smoke.mjs` and visual inspection |
+| Rendering/motion | previous checks plus `node scripts/render-smoke.mjs`; inspect the contact sheet, PDF, and `slides/` exact-size PNG frames |
 | Presentation/export | previous checks plus audience/presenter and PDF/PNG manual smoke tests |
 | MCP | `pnpm test`, `pnpm typecheck`, build, start bundled stdio server, and render one/many slides |
 | Release | all checks on the target OS, then `pnpm package` and install the produced VSIX |

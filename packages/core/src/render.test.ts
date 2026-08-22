@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderDeckDocument, renderMarkdown } from "./render.js";
-import { createDeck, duplicateSlide } from "./schema.js";
+import { createDeck, duplicateSlide, elementSchema } from "./schema.js";
 
 describe("shared document rendering", () => {
   it("renders a selected presenter frame with a viewport fitting runtime", () => {
@@ -71,5 +71,47 @@ describe("shared document rendering", () => {
     expect(calls).toContain("linked:media/chart.png");
     expect(html).toContain("linear-gradient(to bottom");
     expect(html).toContain("mask-composite:intersect");
+  });
+
+  it("keeps editor font sizes literal and disables browser text autoscaling", () => {
+    const deck = createDeck("Typography parity");
+    const text = deck.slides[0]!.elements[0];
+    if (text?.type !== "text") throw new Error("Expected title text");
+    text.style.fontSize = 73;
+
+    const html = renderDeckDocument(deck, undefined, { mode: "present" });
+
+    expect(html).toContain("font-size:73px");
+    expect(html).toContain("&quot;Segoe UI&quot;");
+    expect(html).toContain("-webkit-text-size-adjust:none;text-size-adjust:none");
+    expect(html).toContain('class="slidepix-text-content"');
+  });
+
+  it("renders transparent paints, shape shadows, and Markdown tables", () => {
+    const deck = createDeck("Drawing and tables");
+    deck.slides[0]!.elements.push(
+      elementSchema.parse({
+        id: "shape-1", morphKey: "shape-morph", type: "shape", shape: "rectangle",
+        x: 20, y: 20, width: 300, height: 200, z: 1,
+        fill: "transparent", stroke: "transparent", strokeWidth: 4,
+        shadow: { enabled: true, color: "#11223380", offsetX: 7, offsetY: 9, blur: 18 }
+      }),
+      elementSchema.parse({
+        id: "table-1", morphKey: "table-morph", type: "table",
+        x: 100, y: 300, width: 800, height: 400, z: 2,
+        rows: 2, columns: 2, cells: [["**Name**", "Value"], ["Alpha", "$x^2$"]],
+        style: { headerFill: "transparent", cellFill: "transparent", borderColor: "transparent" }
+      })
+    );
+
+    const html = renderDeckDocument(deck);
+
+    expect(html).toContain("background:transparent;border:4px solid transparent");
+    expect(html).toContain("drop-shadow(7px 9px 18px #11223380)");
+    expect(html).toContain('class="slidepix-table-content"');
+    expect(html.match(/<th /g)).toHaveLength(2);
+    expect(html.match(/<td /g)).toHaveLength(2);
+    expect(html).toContain("<strong>Name</strong>");
+    expect(html).toContain("<math");
   });
 });

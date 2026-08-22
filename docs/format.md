@@ -32,6 +32,8 @@ for backward compatibility.
 
 - Default slide size is 1920×1080 logical units; custom positive dimensions
   are valid.
+- New decks default to a white background, dark foreground, blue accent, and a
+  portable system UI font stack. Existing decks keep their persisted theme.
 - `(0, 0)` is the top-left corner. Positive X moves right; positive Y moves
   down.
 - IDs are stable non-empty strings. New objects currently use UUIDs.
@@ -65,10 +67,17 @@ A slide contains its title, optional layout/background, speaker notes, hidden
 state, page-number override, incoming transition, animation timeline, and
 ordered elements.
 
-Element types are `text`, `image`, `video`, and `shape`. Shared geometry fields
+Element types are `text`, `image`, `video`, `shape`, and `table`. Shared geometry fields
 are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior
 includes locking, hiding, optional name, and optional accessibility text.
 Image and video elements also carry `storage: "linked" | "embedded"`; the
 `src` string alone is never enough to decide its security boundary.
+
+Shape fills and strokes accept CSS colors including the literal `transparent`.
+A shape also stores a shadow object (`enabled`, color, X/Y offset, and blur);
+older shapes receive a disabled shadow through schema defaults. Tables store
+bounded row/column counts, a Markdown cell matrix, an optional header row, and
+typography/fill/border style. Renderers treat missing cells as empty, while the
+editor's row/column actions normalize the matrix before it is saved.
 
 See [Core module](modules/core.md) for parser and serializer method contracts.

@@ -2,12 +2,12 @@
   position: relative;
 }
 
-.text-content h1,
-.text-content h2,
-.text-content h3 {
+.slidepix-text-content h1,
+.slidepix-text-content h2,
+.slidepix-text-content h3 {
   margin: 0.25em 0;
 }
 
-.text-content h1 { font-size: 1.3em; }
-.text-content h2 { font-size: 1.15em; }
-.text-content h3 { font-size: 1em; }
+.slidepix-text-content h1 { font-size: 1.3em; }
+.slidepix-text-content h2 { font-size: 1.15em; }
+.slidepix-text-content h3 { font-size: 1em; }

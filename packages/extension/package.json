@@ -9,7 +9,7 @@
     "vscode": "^1.99.0"
   },
   "categories": ["Visualization", "Education", "Other"],
-  "keywords": ["slides", "presentation", "markdown", "latex", "research"],
+  "keywords": ["slides", "presentation", "markdown", "latex", "visual"],
   "main": "./dist/extension.cjs",
   "extensionKind": ["ui"],
   "activationEvents": ["onCustomEditor:slidepix.deckEditor"],

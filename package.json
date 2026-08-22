@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm --filter @slidepix/core build && pnpm --filter @slidepix/webview build && pnpm --filter @slidepix/mcp build && pnpm --filter slidepix build",
     "dev": "pnpm --parallel --filter @slidepix/webview --filter @slidepix/extension dev",
-    "test": "pnpm --filter @slidepix/core test && pnpm --filter slidepix test && pnpm --filter @slidepix/mcp test",
+    "test": "pnpm --filter @slidepix/core test && pnpm --filter @slidepix/webview test && pnpm --filter slidepix test && pnpm --filter @slidepix/mcp test",
     "typecheck": "pnpm -r typecheck",
     "docs:check": "node ./scripts/check-docs.mjs",
     "package": "pnpm build && pnpm --filter slidepix package"

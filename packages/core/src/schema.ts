@@ -42,10 +42,10 @@ export const textElementSchema = baseElementSchema.extend({
   type: z.literal("text"),
   markdown: z.string(),
   style: z.object({
-    fontFamily: z.string().default("Inter, sans-serif"),
+    fontFamily: z.string().default("system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"),
     fontSize: nonNegative.default(48),
     fontWeight: z.union([z.string(), z.number()]).default(400),
-    color: color.default("#f8fafc"),
+    color: color.default("#111827"),
     textAlign: z.enum(["left", "center", "right"]).default("left"),
     verticalAlign: z.enum(["top", "middle", "bottom"]).default("top"),
     lineHeight: finite.positive().default(1.2),
@@ -63,6 +63,14 @@ export const cropSchema = z.object({
 export const borderSchema = z.object({
   width: nonNegative.default(0),
   color: color.default("transparent")
+});
+
+export const shadowSchema = z.object({
+  enabled: z.boolean().default(false),
+  color: color.default("#00000040"),
+  offsetX: finite.default(0),
+  offsetY: finite.default(12),
+  blur: nonNegative.default(24)
 });
 
 export const mediaStorageSchema = z.enum(["embedded", "linked"]);
@@ -97,14 +105,49 @@ export const shapeElementSchema = baseElementSchema.extend({
   fill: color.default("#2563eb"),
   stroke: color.default("transparent"),
   strokeWidth: nonNegative.default(0),
-  borderRadius: nonNegative.default(0)
+  borderRadius: nonNegative.default(0),
+  shadow: shadowSchema.default({ enabled: false, color: "#00000040", offsetX: 0, offsetY: 12, blur: 24 })
+});
+
+export const tableElementSchema = baseElementSchema.extend({
+  type: z.literal("table"),
+  rows: z.number().int().min(1).max(50).default(3),
+  columns: z.number().int().min(1).max(20).default(3),
+  cells: z.array(z.array(z.string())).default([]),
+  headerRow: z.boolean().default(true),
+  style: z.object({
+    fontFamily: z.string().default("system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"),
+    fontSize: nonNegative.default(30),
+    fontWeight: z.union([z.string(), z.number()]).default(400),
+    color: color.default("#111827"),
+    headerFill: color.default("#e0e7ff"),
+    cellFill: color.default("#ffffff"),
+    borderColor: color.default("#94a3b8"),
+    borderWidth: nonNegative.default(2),
+    textAlign: z.enum(["left", "center", "right"]).default("left"),
+    verticalAlign: z.enum(["top", "middle", "bottom"]).default("middle"),
+    padding: nonNegative.default(10)
+  }).default({
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    fontSize: 30,
+    fontWeight: 400,
+    color: "#111827",
+    headerFill: "#e0e7ff",
+    cellFill: "#ffffff",
+    borderColor: "#94a3b8",
+    borderWidth: 2,
+    textAlign: "left",
+    verticalAlign: "middle",
+    padding: 10
+  })
 });
 
 export const elementSchema = z.discriminatedUnion("type", [
   textElementSchema,
   imageElementSchema,
   videoElementSchema,
-  shapeElementSchema
+  shapeElementSchema,
+  tableElementSchema
 ]);
 
 export const animationStepSchema = z.object({
@@ -145,10 +188,10 @@ export const deckSchema = z.object({
     height: finite.positive().default(1080)
   }),
   theme: z.object({
-    background: color.default("#0f172a"),
-    foreground: color.default("#f8fafc"),
+    background: color.default("#ffffff"),
+    foreground: color.default("#111827"),
     accent: color.default("#38bdf8"),
-    fontFamily: z.string().default("Inter, sans-serif")
+    fontFamily: z.string().default("system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif")
   }),
   pageNumbers: z.object({
     enabled: z.boolean().default(true),
@@ -169,6 +212,7 @@ export type TextElement = z.infer<typeof textElementSchema>;
 export type ImageElement = z.infer<typeof imageElementSchema>;
 export type VideoElement = z.infer<typeof videoElementSchema>;
 export type ShapeElement = z.infer<typeof shapeElementSchema>;
+export type TableElement = z.infer<typeof tableElementSchema>;
 export type MediaStorage = z.infer<typeof mediaStorageSchema>;
 export type AnimationStep = z.infer<typeof animationStepSchema>;
 export type Transition = z.infer<typeof transitionSchema>;
@@ -216,12 +260,12 @@ export function createDeck(title = "Untitled deck"): Deck {
     metadata: { title, author: "", description: "" },
     size: { width: 1920, height: 1080 },
     theme: {
-      background: "#0f172a",
-      foreground: "#f8fafc",
-      accent: "#38bdf8",
-      fontFamily: "Inter, sans-serif"
+      background: "#ffffff",
+      foreground: "#111827",
+      accent: "#2563eb",
+      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
     },
-    pageNumbers: { enabled: true, color: "#94a3b8", fontSize: 24 },
+    pageNumbers: { enabled: true, color: "#64748b", fontSize: 24 },
     layouts: {},
     slides: [{
       id: slideId,
@@ -245,10 +289,10 @@ export function createDeck(title = "Untitled deck"): Deck {
         hidden: false,
         markdown: `# ${title}`,
         style: {
-          fontFamily: "Inter, sans-serif",
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
           fontSize: 72,
           fontWeight: 700,
-          color: "#f8fafc",
+          color: "#111827",
           textAlign: "center",
           verticalAlign: "middle",
           lineHeight: 1.1,

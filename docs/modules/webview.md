@@ -57,8 +57,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Clicking a transition gap opens a visual editor for the destination slide's
   incoming transition and duration.
 - Selecting an image exposes canvas handles for radius and four-sided edge
-  fade. Double-clicking enters crop mode; drag pans the normalized crop and the
-  lower-right crop handle zooms. Videos expose only the shared radius handle.
+  fade. Double-clicking enters a persistent crop mode; drag pans the normalized
+  crop, the lower-right crop handle zooms, and the crop toolbar provides
+  zoom-out, zoom-in, reset, and explicit Done controls. Properties also exposes
+  crop zoom, image border width/color, and edge fade. Videos expose only the
+  shared radius handle.
 - Workspace media is linked by default. Properties embeds one selected item;
   **Embed all** embeds every linked image/video in the deck.
 - Copy/cut writes a typed SlidePix clipboard payload plus a private marker.
@@ -67,6 +70,18 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Text editing is available by double-clicking a text element or using
   **Edit Markdown · LaTeX · Code…** in Properties. The editor includes a live
   rendered preview using the shared core Markdown renderer.
+- Font family uses a native select populated with system-font stacks that are
+  available in the webview. Persisted custom families remain selectable for
+  portability; users do not need to type a CSS font stack for normal use.
+- The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,
+  add/remove row and column actions, a header toggle, typography, and
+  transparent header/cell/border colors. Limits match the core schema.
+- Shape Properties provides explicit transparent fill/border toggles and an
+  optional silhouette-aware shadow with color, offsets, and blur. Image borders
+  use the same transparent toggle.
+- Toolbar Undo/Redo and Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, or Ctrl+Y delegate to the
+  extension host, so history remains VS Code's `WorkspaceEdit` history. Native
+  input/textarea undo is left untouched while typing.
 - Properties starts with the editable element `name`; immutable IDs remain the
   timeline reference. Missing names display as `<type>-<id prefix>`.
 - Animation cards identify their target by element name, show click grouping,

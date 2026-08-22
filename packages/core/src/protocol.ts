@@ -14,4 +14,4 @@ export type WebviewToHostMessage =
   | { version: 1; type: "selectMedia"; requestId: string; kind: "image" | "video" }
   | { version: 1; type: "linkMedia"; requestId: string; kind: "image" | "video"; uri: string }
   | { version: 1; type: "embedMedia"; elementIds?: string[] }
-  | { version: 1; type: "command"; command: "save" | "exportPdf" | "exportPng" | "present" | "presenter" | "configureMcp"; slideIds?: string[] };
+  | { version: 1; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "present" | "presenter" | "configureMcp"; slideIds?: string[] };

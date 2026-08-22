@@ -33,7 +33,7 @@ Private command helpers:
 | `currentDocument()` | Returns the most recently active SlidePix text document for commands. |
 | `present(document, presenter?)` | Validates, creates an authenticated loopback session, opens the audience browser, and optionally creates the presenter panel. |
 | `updatePanels` / `postDeck` | Reparse every document change and send either a valid deck or diagnostic while preserving the source text. |
-| `receive` | Validates protocol version and routes document replacement, import, save, export, presentation, and MCP commands. |
+| `receive` | Validates protocol version and routes document replacement, host-owned undo/redo, import, save, export, presentation, and MCP commands. |
 | `importAsset` | Enforces the 100 MB limit and stores clipboard/browser file bytes as deduplicated embedded content. |
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
@@ -41,6 +41,8 @@ Private command helpers:
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's undo/autosave/external-change lifecycle.
+Undo/redo messages execute VS Code's built-in history commands rather than
+maintaining a competing history inside the webview.
 
 ## `src/presentation.ts`
 

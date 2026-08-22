@@ -6,11 +6,12 @@ import { parseDeckText, renderDeckDocument } from "../packages/core/dist/index.j
 import { resolveMediaPath } from "../packages/core/dist/assets.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const input = resolve(process.argv[2] ?? resolve(root, "examples/research-talk.slidepix.json"));
+const input = resolve(process.argv[2] ?? resolve(root, "examples/slidepix-demo.slidepix.json"));
 const output = resolve(process.argv[3] ?? "/private/tmp/slidepix-render-smoke");
 const parsed = parseDeckText(await readFile(input, "utf8"));
 if (!parsed.ok) throw new Error(parsed.message);
 await mkdir(output, { recursive: true });
+await mkdir(resolve(output, "slides"), { recursive: true });
 const assets = new Map();
 for (const slide of parsed.deck.slides) for (const element of slide.elements) {
   if (element.type !== "image" && element.type !== "video") continue;
@@ -38,8 +39,15 @@ try {
   const contact = await browser.newPage({ viewport: { width: parsed.deck.size.width, height: parsed.deck.size.height } });
   await contact.setContent(renderDeckDocument(parsed.deck, asset, { mode: "contact", columns: 2 }), { waitUntil: "networkidle" });
   await contact.screenshot({ path: resolve(output, "contact.png"), fullPage: true });
-  const single = contact.locator(".slidepix-slide").nth(Math.min(1, parsed.deck.slides.filter((slide) => !slide.hidden).length - 1));
-  await single.screenshot({ path: resolve(output, "single-slide.png") });
+
+  const visibleSlides = parsed.deck.slides.filter((slide) => !slide.hidden);
+  const frame = await browser.newPage({ viewport: { width: parsed.deck.size.width, height: parsed.deck.size.height } });
+  for (const [index, slide] of visibleSlides.entries()) {
+    await frame.setContent(renderDeckDocument(parsed.deck, asset, { mode: "frame", selectedSlideIds: [slide.id] }), { waitUntil: "networkidle" });
+    const target = frame.locator(".slidepix-slide");
+    await target.screenshot({ path: resolve(output, "slides", `slide-${String(index + 1).padStart(2, "0")}.png`) });
+    if (index === Math.min(1, visibleSlides.length - 1)) await target.screenshot({ path: resolve(output, "single-slide.png") });
+  }
 } finally {
   await browser.close();
 }
@@ -47,7 +55,7 @@ try {
 const pdf = await stat(resolve(output, "deck.pdf"));
 const png = await stat(resolve(output, "contact.png"));
 const singlePng = await stat(resolve(output, "single-slide.png"));
-console.log(JSON.stringify({ pdfBytes: pdf.size, pngBytes: png.size, singlePngBytes: singlePng.size, output }));
+console.log(JSON.stringify({ pdfBytes: pdf.size, pngBytes: png.size, singlePngBytes: singlePng.size, slidePngs: parsed.deck.slides.filter((slide) => !slide.hidden).length, output }));
 
 async function loadAsset(reference, storage) {
   const key = `${storage}:${reference}`;

@@ -99,9 +99,10 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "linkMedia") return this.resolveMedia(document, panel, message, vscode.Uri.parse(message.uri));
     if (message.type === "embedMedia") return this.embedMedia(document, message.elementIds);
     if (message.type === "command") {
-      const parsed = parseDeckText(document.getText());
+      if (message.command === "undo" || message.command === "redo") return void vscode.commands.executeCommand(message.command);
       if (message.command === "save") return void document.save();
       if (message.command === "configureMcp") return void vscode.commands.executeCommand("slidepix.configureMcp");
+      const parsed = parseDeckText(document.getText());
       if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
       if (message.command === "exportPdf") return exportPdf(this.context, parsed.deck, document.uri.fsPath);
       if (message.command === "exportPng") return exportPng(this.context, parsed.deck, document.uri.fsPath, message.slideIds);

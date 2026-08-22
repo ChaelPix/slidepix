@@ -14,7 +14,7 @@ cross-process message types, and shared DOM/HTML rendering semantics.
 | `deckSchema` and child schemas | Zod v4 executable data model. `deckSchema` is also the JSON Schema source. |
 | `parseDeckText(text)` | Parses JSON, rejects unsupported future versions, validates the full model, and returns a discriminated success/error result instead of throwing. |
 | `serializeDeck(deck)` | Revalidates a deck and returns stable two-space JSON with a final newline. Throws on invalid in-memory data. |
-| `createDeck(title?)` | Creates one valid 1920×1080 deck with a centered title text element. |
+| `createDeck(title?)` | Creates one valid 1920×1080 light-theme deck with a centered dark title using a portable system-font stack. |
 | `duplicateSlide(slide)` | Deep-copies the slide, creates new slide/element IDs, preserves morph keys, and clears the timeline. |
 | `Deck`, `Slide`, element and motion types | Types inferred from their schemas; do not maintain parallel handwritten interfaces. |
 
@@ -54,6 +54,11 @@ element, including deliberately negative `z` values. Print mode relies on each
 slide's exact page height and avoids breaks inside slides; it does not force an
 after-break that could create a trailing blank PDF page. Shared code-token
 classes and colors are consumed by editor, presentation, export, and MCP.
+Text keeps its declared logical pixel size in every output: editor and
+standalone documents use the same `slidepix-text-content` typography contract
+and disable browser text autoscaling. Tables render cell Markdown through the
+same sanitizer. Shape shadows use CSS drop shadows so triangles and ellipses
+follow their silhouette.
 Presentation state is initialized before a destination morph starts; otherwise
 timeline reset would immediately cancel the new Web Animations. The runtime
 also tolerates browsers that omit `Element.getAnimations`.
@@ -77,5 +82,6 @@ reach into `src`.
 JSON, future schema versions, morph-key duplication, and asset traversal.
 `src/render.test.ts` covers presenter-frame selection/fitting, presentation
 animation state and video lifecycle, negative layers, print pagination CSS,
-syntax highlighting, four-sided image fades, and resolver storage routing. Put
+syntax highlighting, typography parity, transparent paint, shape shadows,
+Markdown tables, four-sided image fades, and resolver storage routing. Put
 pure core regressions here before using slower integration tests.
