@@ -19,6 +19,11 @@ pnpm typecheck
 pnpm docs:check
 ```
 
+Extension and MCP Vitest configurations alias `@slidepix/core` directly to its
+source. Tests therefore work in a fresh checkout before `packages/core/dist`
+exists; do not remove those aliases or make `pnpm test` depend on stale build
+output.
+
 No browser is downloaded by `pnpm install` or embedded in the VSIX. PDF, PNG,
 MCP rendering, and the smoke script need a Chromium binary installed through
 **SlidePix: Install Export Renderer** or Playwright with
@@ -65,4 +70,3 @@ Cursor before publishing it.
 Never patch `dist`, `media`, vendored Playwright, or the generated JSON Schema.
 Change their sources and rebuild. The complete generated-file table and all
 script responsibilities are in [architecture.md](../architecture.md).
-

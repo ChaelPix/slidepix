@@ -14,9 +14,10 @@ VS Code and Cursor.
    and animations.
 
 Text supports Markdown, inline/display LaTeX, and fenced code. Images and videos
-can be chosen or dropped; clipboard images and plain text can be pasted.
-Imported media is copied into a sibling `.assets` folder, so copy that folder
-with the JSON deck when moving computers.
+can be chosen or dropped from the workspace Explorer and stay relatively linked
+by default. Use **Embed all** to copy them into the sibling `.assets` folder.
+Selected SlidePix elements can be copied between slides; clipboard images and
+plain text can also be pasted.
 
 PDF/PNG export asks once before downloading the optional Chromium renderer.
 Run **SlidePix: Configure MCP** to preview configuration for the bundled

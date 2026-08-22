@@ -54,6 +54,9 @@ element, including deliberately negative `z` values. Print mode relies on each
 slide's exact page height and avoids breaks inside slides; it does not force an
 after-break that could create a trailing blank PDF page. Shared code-token
 classes and colors are consumed by editor, presentation, export, and MCP.
+Presentation state is initialized before a destination morph starts; otherwise
+timeline reset would immediately cancel the new Web Animations. The runtime
+also tolerates browsers that omit `Element.getAnimations`.
 
 ### `src/protocol.ts`
 

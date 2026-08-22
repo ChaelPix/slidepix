@@ -36,6 +36,13 @@ describe("shared document rendering", () => {
     expect(html).toContain("addEventListener('visibilitychange'");
   });
 
+  it("initializes the destination timeline before starting its morph animations", () => {
+    const html = renderDeckDocument(createDeck("Morph ordering"), undefined, { mode: "present" });
+    const stateIndex = html.indexOf("animationState==='final'?finish():reset();if(t.type==='morph')");
+
+    expect(stateIndex).toBeGreaterThan(-1);
+  });
+
   it("keeps negative layers above the slide background in every output", () => {
     const html = renderDeckDocument(createDeck("Layers"));
 

@@ -1,7 +1,8 @@
 import Moveable from "react-moveable";
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   duplicateSlide,
+  elementSchema,
   renderMarkdown,
   type AnimationStep,
   type Deck,
@@ -19,6 +20,9 @@ type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
 type MediaResult = { reference: string; storage: MediaStorage };
 const pendingAssets = new Map<string, (result?: MediaResult, error?: string) => void>();
+const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
+type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
+let slidepixClipboard: SlidePixClipboard | undefined;
 
 export default function App() {
   const store = useDeckStore();
@@ -107,9 +111,40 @@ export default function App() {
   const addShape = (shape: "rectangle" | "ellipse" | "triangle") => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
     ...baseElement(slide.elements.length, "shape"), type: "shape", shape, fill: deck.theme.accent, stroke: "transparent", strokeWidth: 0, borderRadius: 0
   }));
+  const copyElement = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
+    if (!selected || isTextEntryTarget(event.target)) return;
+    event.preventDefault();
+    slidepixClipboard = { version: 1, token: crypto.randomUUID(), deckId: deck.id, sourceSlideId: slide.id, elements: [structuredClone(selected)] };
+    event.clipboardData.setData(SLIDEPIX_CLIPBOARD_TYPE, JSON.stringify(slidepixClipboard));
+    event.clipboardData.setData("text/plain", `slidepix://clipboard/${slidepixClipboard.token}`);
+    if (cut) deleteElement(deck, slide.id, selected.id, store.mutate, store.selectElement);
+  };
+  const paste = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    if (isTextEntryTarget(event.target)) return;
+    const file = [...event.clipboardData.files][0];
+    if (file?.type.startsWith("image/")) { event.preventDefault(); void importFile(file, "image"); return; }
+    const payload = readSlidePixClipboard(event.clipboardData);
+    if (payload) {
+      event.preventDefault();
+      if (payload.deckId !== deck.id) return void alert("Copying elements between different deck files is not supported yet. Embed and re-add the media instead.");
+      const preserveMorphKey = payload.sourceSlideId !== slide.id;
+      const pasted = payload.elements.map((element) => cloneElementForPaste(element, preserveMorphKey));
+      store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push(...pasted));
+      store.selectElement(pasted.at(-1)?.id);
+      return;
+    }
+    const text = event.clipboardData.getData("text/plain");
+    if (text) {
+      event.preventDefault();
+      store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
+        ...baseElement(slide.elements.length, "text"), type: "text", markdown: text,
+        style: { fontFamily: deck.theme.fontFamily, fontSize: 42, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
+      }));
+    }
+  };
 
   return (
-    <div className="app" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+    <div className="app" onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
       event.preventDefault();
       const uri = droppedFileUri(event.dataTransfer);
       if (uri) {
@@ -122,18 +157,7 @@ export default function App() {
       if (!file) return;
       if (file.type.startsWith("image/")) void importFile(file, "image");
       else if (file.type.startsWith("video/")) void importFile(file, "video");
-    }} onPaste={(event) => {
-      if (isTextEntryTarget(event.target)) return;
-      const file = [...event.clipboardData.files][0];
-      if (file?.type.startsWith("image/")) void importFile(file, "image");
-      else if (event.clipboardData.getData("text/plain")) {
-        const text = event.clipboardData.getData("text/plain");
-        store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
-          ...baseElement(slide.elements.length, "text"), type: "text", markdown: text,
-          style: { fontFamily: deck.theme.fontFamily, fontSize: 42, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
-        }));
-      }
-    }}>
+    }} onPaste={paste}>
       <Toolbar
         slide={slide}
         addText={addText}
@@ -173,29 +197,28 @@ export default function App() {
                   snappable
                   origin={false}
                   zoom={1 / store.zoom}
-                  onClick={({ isDouble }) => {
-                    if (isDouble && selected.type === "text") setEditingTextId(selected.id);
-                    if (isDouble && selected.type === "image") setCropElementId(selected.id);
-                  }}
                   onDrag={({ left, top, target: elementTarget }) => {
                     elementTarget.style.left = `${left}px`;
                     elementTarget.style.top = `${top}px`;
-                    store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.x = left; element.y = top; } });
+                    store.preview((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.x = left; element.y = top; } });
                   }}
+                  onDragEnd={store.commit}
                   onResize={({ width, height, drag, target: elementTarget }) => {
                     elementTarget.style.width = `${width}px`;
                     elementTarget.style.height = `${height}px`;
                     elementTarget.style.left = `${drag.left}px`;
                     elementTarget.style.top = `${drag.top}px`;
-                    store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
+                    store.preview((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
                   }}
+                  onResizeEnd={store.commit}
                   onRotate={({ rotation, target: elementTarget }) => {
                     elementTarget.style.transform = `rotate(${rotation}deg)`;
-                    store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) element.rotation = rotation; });
+                    store.preview((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) element.rotation = rotation; });
                   }}
+                  onRotateEnd={store.commit}
                 />
               )}
-              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropActive={cropActive} zoom={store.zoom} update={(patch) => store.mutate((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} closeCrop={() => setCropElementId(undefined)} />}
+              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} closeCrop={() => setCropElementId(undefined)} />}
             </div>
           </div>
         </div>
@@ -209,7 +232,7 @@ export default function App() {
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} />}
         </section>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} selectElement={store.selectElement} editText={setEditingTextId} editImage={(id) => setCropElementId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
+      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} preview={store.preview} commit={store.commit} selectElement={store.selectElement} editText={setEditingTextId} editImage={(id) => setCropElementId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
       <div className="zoom-control" title="Ctrl/Cmd + mouse wheel also zooms the canvas"><button aria-label="Zoom out" onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><input aria-label="Canvas zoom" type="range" min="10" max="150" step="5" value={Math.round(store.zoom * 100)} onChange={(event) => store.setZoom(Number(event.target.value) / 100)} /><span>{Math.round(store.zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
       {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} mutate={store.mutate} close={() => setEditingTextId(undefined)} />}
     </div>
@@ -281,43 +304,48 @@ function TransitionEditor({ transition, update, close }: { transition: Transitio
 
 type MediaElement = Extract<SlideElement, { type: "image" | "video" }>;
 
-function MediaControls({ element, cropActive, zoom, update, closeCrop }: { element: MediaElement; cropActive: boolean; zoom: number; update(patch: Partial<MediaElement>): void; closeCrop(): void }) {
+function MediaControls({ element, cropActive, zoom, preview, commit, closeCrop }: { element: MediaElement; cropActive: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; closeCrop(): void }) {
   const maxRadius = Math.max(1, Math.min(element.width, element.height) / 2);
   const radius = Math.min(maxRadius, element.borderRadius);
   const handleSize = 14 / zoom;
   const overlayStyle = { left: element.x, top: element.y, width: element.width, height: element.height, transform: `rotate(${element.rotation}deg)` };
   const radiusDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
-    startPointerDrag(event, (clientX) => update({ borderRadius: clamp(((clientX - rect.left) / rect.width) * element.width, 0, maxRadius) }));
+    const initial = radius;
+    startPointerDrag(event, (deltaX, deltaY) => {
+      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
+      preview({ borderRadius: clamp(initial + local.x, 0, maxRadius) });
+    }, commit);
   };
   const fadeDrag = element.type === "image" ? (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
-    startPointerDrag(event, (_clientX, clientY) => update({ edgeFade: clamp(((rect.bottom - clientY) / rect.height) * element.height, 0, Math.min(element.width, element.height) / 2) }));
+    const initial = element.edgeFade;
+    startPointerDrag(event, (deltaX, deltaY) => {
+      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
+      preview({ edgeFade: clamp(initial - local.y, 0, Math.min(element.width, element.height) / 2) });
+    }, commit);
   } : undefined;
   const panCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button")) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const startX = event.clientX;
-    const startY = event.clientY;
     const crop = { ...element.crop };
-    startPointerDrag(event, (clientX, clientY) => update({ crop: {
-      ...crop,
-      x: clamp(crop.x - ((clientX - startX) / rect.width) * crop.width, 0, 1 - crop.width),
-      y: clamp(crop.y - ((clientY - startY) / rect.height) * crop.height, 0, 1 - crop.height)
-    } }));
+    startPointerDrag(event, (deltaX, deltaY) => {
+      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
+      preview({ crop: {
+        ...crop,
+        x: clamp(crop.x - (local.x / Math.max(1, element.width)) * crop.width, 0, 1 - crop.width),
+        y: clamp(crop.y - (local.y / Math.max(1, element.height)) * crop.height, 0, 1 - crop.height)
+      } });
+    }, commit);
   } : undefined;
   const zoomCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
-    const startY = event.clientY;
     const crop = { ...element.crop };
     const centerX = crop.x + crop.width / 2;
     const centerY = crop.y + crop.height / 2;
-    startPointerDrag(event, (_clientX, clientY) => {
-      const factor = clamp(1 + (clientY - startY) / Math.max(1, rect.height), 0.08, 4);
+    startPointerDrag(event, (deltaX, deltaY) => {
+      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
+      const factor = clamp(1 + local.y / Math.max(1, element.height), 0.08, 4);
       const width = clamp(crop.width * factor, 0.05, 1);
       const height = clamp(crop.height * factor, 0.05, 1);
-      update({ crop: { x: clamp(centerX - width / 2, 0, 1 - width), y: clamp(centerY - height / 2, 0, 1 - height), width, height } });
-    });
+      preview({ crop: { x: clamp(centerX - width / 2, 0, 1 - width), y: clamp(centerY - height / 2, 0, 1 - height), width, height } });
+    }, commit);
   } : undefined;
 
   return <div className={`media-controls ${cropActive ? "crop-active" : ""}`} style={overlayStyle} onDoubleClick={() => cropActive && closeCrop()}>
@@ -329,8 +357,8 @@ function MediaControls({ element, cropActive, zoom, update, closeCrop }: { eleme
   </div>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, editText, editImage, relinkMedia }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
+function Inspector({ tab, setTab, deck, slide, element, mutate, preview, commit, selectElement, editText, editImage, relinkMedia }: {
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
 }) {
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   return <aside className="inspector">
@@ -358,11 +386,11 @@ function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, e
           {element.type === "shape" && <ColorField label="Fill" value={element.fill} onChange={(fill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} />}
           {(element.type === "image" || element.type === "video") && <>
             <div className="media-source-card"><span className={`storage-badge ${element.storage}`}>{element.storage}</span><code title={element.src}>{element.src}</code><div><button onClick={() => relinkMedia(element.type, element.id)}>Choose linked file…</button>{element.storage === "linked" && <button onClick={() => postMessage({ type: "embedMedia", elementIds: [element.id] })}>Embed in .assets</button>}</div></div>
-            <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} />
+            <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} onCommit={commit} />
             <p className="panel-help">Drag the yellow point on the top edge to round corners.</p>
           </>}
           {element.type === "image" && <>
-            <RangeField label="Edge fade" value={element.edgeFade} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(edgeFade) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} />
+            <RangeField label="Edge fade" value={element.edgeFade} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(edgeFade) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} onCommit={commit} />
             <p className="panel-help">Drag the blue point upward from the bottom edge to fade all four sides.</p>
             <button className="edit-text-button" onClick={() => editImage(element.id)}>Crop image (or double-click)</button>
             <label>Alt text<textarea value={element.alt ?? ""} onChange={(event) => update({ alt: event.target.value })} /></label>
@@ -405,7 +433,7 @@ function TextEditor({ deck, slideId, elementId, mutate, close }: { deck: Deck; s
 }
 
 function NumberField({ label, value, step = 1, onChange }: { label: string; value: number; step?: number; onChange(value: number): void }) { return <label>{label}<input type="number" value={Number.isFinite(value) ? value : 0} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
-function RangeField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange(value: number): void }) { return <label className="range-field"><span>{label}<output>{Math.round(value)} px</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function RangeField({ label, value, min, max, onChange, onCommit }: { label: string; value: number; min: number; max: number; onChange(value: number): void; onCommit?(): void }) { return <label className="range-field"><span>{label}<output>{Math.round(value)} px</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onCommit} onPointerCancel={onCommit} onKeyUp={onCommit} onBlur={onCommit} /></label>; }
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange(value: string): void }) { return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
 function InvalidDeck({ message }: { message: string }) { return <div className="invalid"><h1>SlidePix could not open this deck</h1><pre>{message}</pre><p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p></div>; }
@@ -433,5 +461,49 @@ function droppedFileUri(data: DataTransfer): string | undefined {
 }
 function parseDroppedValues(raw: string): string[] { if (!raw) return []; try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed.filter((value): value is string => typeof value === "string"); } catch { /* URI lists are newline-delimited, not JSON. */ } return raw.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#")); }
 function mediaKindFromPath(value: string): "image" | "video" | undefined { const pathname = value.split(/[?#]/)[0]!.toLowerCase(); if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/.test(pathname)) return "image"; if (/\.(mp4|webm|mov|m4v|ogv)$/.test(pathname)) return "video"; return undefined; }
-function startPointerDrag(event: ReactPointerEvent<HTMLElement>, move: (clientX: number, clientY: number) => void): void { event.preventDefault(); event.stopPropagation(); const pointerId = event.pointerId; const onMove = (next: PointerEvent) => { if (next.pointerId === pointerId) move(next.clientX, next.clientY); }; const stop = (next: PointerEvent) => { if (next.pointerId !== pointerId) return; window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", stop); window.removeEventListener("pointercancel", stop); }; window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", stop); window.addEventListener("pointercancel", stop); }
+function readSlidePixClipboard(data: DataTransfer): SlidePixClipboard | undefined {
+  const raw = data.getData(SLIDEPIX_CLIPBOARD_TYPE);
+  if (raw) try {
+    const candidate = JSON.parse(raw) as Partial<SlidePixClipboard>;
+    const elements = elementSchema.array().safeParse(candidate.elements);
+    if (candidate.version === 1 && typeof candidate.token === "string" && typeof candidate.deckId === "string" && typeof candidate.sourceSlideId === "string" && elements.success) {
+      slidepixClipboard = { version: 1, token: candidate.token, deckId: candidate.deckId, sourceSlideId: candidate.sourceSlideId, elements: elements.data };
+      return slidepixClipboard;
+    }
+  } catch { /* Ignore malformed external clipboard data. */ }
+  const marker = data.getData("text/plain").match(/^slidepix:\/\/clipboard\/(.+)$/)?.[1];
+  return marker && slidepixClipboard?.token === marker ? slidepixClipboard : undefined;
+}
+function cloneElementForPaste(element: SlideElement, preserveMorphKey: boolean): SlideElement {
+  const copy = structuredClone(element);
+  return { ...copy, id: crypto.randomUUID(), morphKey: preserveMorphKey ? copy.morphKey : crypto.randomUUID(), name: `${elementLabel(copy)} copy`, x: copy.x + (preserveMorphKey ? 0 : 20), y: copy.y + (preserveMorphKey ? 0 : 20) } as SlideElement;
+}
+function localPointerDelta(deltaX: number, deltaY: number, rotation: number, zoom: number): { x: number; y: number } {
+  const radians = rotation * Math.PI / 180;
+  const x = deltaX / zoom;
+  const y = deltaY / zoom;
+  return { x: x * Math.cos(radians) + y * Math.sin(radians), y: -x * Math.sin(radians) + y * Math.cos(radians) };
+}
+function startPointerDrag(event: ReactPointerEvent<HTMLElement>, move: (deltaX: number, deltaY: number) => void, finish: () => void): void {
+  event.preventDefault();
+  event.stopPropagation();
+  const pointerId = event.pointerId;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const target = event.currentTarget;
+  try { target.setPointerCapture(pointerId); } catch { /* Window listeners still preserve the drag. */ }
+  const onMove = (next: PointerEvent) => { if (next.pointerId === pointerId) move(next.clientX - startX, next.clientY - startY); };
+  const stop = (next: PointerEvent) => {
+    if (next.pointerId !== pointerId) return;
+    if (next.type === "pointerup") move(next.clientX - startX, next.clientY - startY);
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    try { if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId); } catch { /* The optimistic rerender may replace the handle. */ }
+    finish();
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
 function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }

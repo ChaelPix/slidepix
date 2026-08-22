@@ -15,6 +15,8 @@ type DeckStore = {
   selectSlide(id: string): void;
   selectElement(id?: string): void;
   setZoom(zoom: number): void;
+  preview(mutator: (draft: Deck) => void): void;
+  commit(): void;
   mutate(mutator: (draft: Deck) => void): void;
 };
 
@@ -33,6 +35,17 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
   selectSlide: (id) => set({ selectedSlideId: id, selectedElementId: undefined }),
   selectElement: (id) => set({ selectedElementId: id }),
   setZoom: (zoom) => set({ zoom: Math.min(1.5, Math.max(0.1, zoom)) }),
+  preview: (mutator) => {
+    const deck = get().deck;
+    if (!deck) return;
+    const next = structuredClone(deck);
+    mutator(next);
+    set({ deck: next });
+  },
+  commit: () => {
+    const deck = get().deck;
+    if (deck) postMessage({ type: "replaceDocument", text: serializeDeck(deck) });
+  },
   mutate: (mutator) => {
     const deck = get().deck;
     if (!deck) return;

@@ -52,9 +52,12 @@ The screen is organized like a simple slide application:
 
 - Add text with **Text**, then double-click the text box to write Markdown,
   LaTeX such as `$x^2$`, or fenced code.
-- Add media with **Image** or **Video**, or drag a file onto the editor. Imported
-  media is copied beside the deck and deduplicated automatically.
-- Paste plain text to create a text box, or paste an image from the clipboard.
+- Add media with **Image** or **Video**, or drag a workspace file from the
+  Explorer. Workspace media stays linked by a relative path by default; use
+  **Embed in .assets** or **Embed all** when the deck must be portable.
+- Copy and paste selected SlidePix elements between slides. Cross-slide copies
+  preserve their morph identity; plain text and clipboard images still create
+  new elements.
 - Change a slide transition by clicking the labelled gap between two slide
   previews. The transition belongs to the destination slide.
 - Add entrance animations from the **animations** tab after selecting an item.
@@ -111,3 +114,7 @@ Repository-native agent guidance is not kept in a loose MCP tutorial:
 Start with [architecture.md](architecture.md). It is the canonical map of
 modules, methods, scripts, runtime flows, invariants, tests, and known gaps.
 Repository-wide agent instructions live in [AGENTS.md](AGENTS.md).
+
+The canonical [visual-regression example](examples/research-talk.slidepix.json)
+demonstrates Markdown, LaTeX, highlighted code, image borders/radius/crop/fade,
+video, shapes, animations, ordinary transitions, and a two-slide crop morph.

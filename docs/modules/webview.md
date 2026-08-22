@@ -28,9 +28,12 @@ webview. The webview has no direct filesystem or Node access.
   `canvas-scale` wrapper. The wrapper alone is zoomed, so selection geometry,
   drag, resize, rotation, and morph inputs stay in logical slide units while
   controls remain visually consistent.
-- `useDeckStore.mutate(mutator)` clones the current deck, applies the mutation,
-  updates optimistic UI state, serializes through core, and posts one
-  `replaceDocument` message. Do not mutate the existing store deck directly.
+- `useDeckStore.preview(mutator)` clones and updates local UI state without a
+  document write. Pointer drags use it for smooth feedback.
+- `useDeckStore.commit()` persists the current preview once. A pointer drag
+  must commit on release/cancel rather than posting a `WorkspaceEdit` per pixel.
+- `useDeckStore.mutate(mutator)` performs a one-step preview and persistence for
+  ordinary discrete edits. Do not mutate the existing store deck directly.
 - `postMessage(message)` adds `PROTOCOL_VERSION`; `onHostMessage(handler)`
   filters mismatched host messages.
 
@@ -43,6 +46,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 ## Interaction invariants
 
 - Stored coordinates remain logical slide units regardless of zoom.
+- Pointer deltas are divided by canvas zoom and inverse-rotated into element
+  coordinates before changing radius, fade, crop pan, or crop zoom.
 - Only the interactive canvas emits `element-<id>` DOM IDs. Thumbnails must not
   duplicate them, because selection and Moveable target lookup require a unique
   main-canvas element.
@@ -56,6 +61,9 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   lower-right crop handle zooms. Videos expose only the shared radius handle.
 - Workspace media is linked by default. Properties embeds one selected item;
   **Embed all** embeds every linked image/video in the deck.
+- Copy/cut writes a typed SlidePix clipboard payload plus a private marker.
+  Paste checks it before plain text, assigns new element IDs, and preserves
+  morph keys only when copying to a different slide in the same deck.
 - Text editing is available by double-clicking a text element or using
   **Edit Markdown · LaTeX · Code…** in Properties. The editor includes a live
   rendered preview using the shared core Markdown renderer.
