@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDeck, duplicateSlide, parseDeckText, serializeDeck } from "./schema.js";
 import { renderDeckDocument, renderMarkdown } from "./render.js";
-import { resolveAssetPath } from "./assets.js";
+import { resolveAssetPath, resolveMediaPath } from "./assets.js";
 
 describe("deck schema", () => {
   it("round trips a new deck", () => {
@@ -26,6 +26,28 @@ describe("deck schema", () => {
 
   it("blocks asset traversal", () => {
     expect(() => resolveAssetPath("/tmp/talk.slidepix.json", "../secret")).toThrow(/escapes/);
+  });
+
+  it("resolves linked media only inside explicitly allowed workspace roots", () => {
+    expect(resolveMediaPath("/workspace/decks/talk.slidepix.json", "../media/chart.png", "linked", ["/workspace"]))
+      .toBe("/workspace/media/chart.png");
+    expect(() => resolveMediaPath("/workspace/decks/talk.slidepix.json", "../../../secret", "linked", ["/workspace"]))
+      .toThrow(/workspace roots/);
+  });
+
+  it("treats media from older decks without a storage field as embedded", () => {
+    const deck = createDeck();
+    deck.slides[0]!.elements = [{
+      id: "legacy-image", morphKey: "legacy-morph", type: "image", src: "legacy.png",
+      x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, z: 0, locked: false, hidden: false,
+      crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }
+    } as typeof deck.slides[0]["elements"][number]];
+    const raw = JSON.parse(JSON.stringify(deck));
+    delete raw.slides[0].elements[0].storage;
+    const parsed = parseDeckText(JSON.stringify(raw));
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.deck.slides[0]!.elements[0]).toMatchObject({ storage: "embedded" });
   });
 
   it("renders LaTeX as portable MathML", () => {

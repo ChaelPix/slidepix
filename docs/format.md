@@ -6,7 +6,8 @@ current behavior and the documentation should be corrected.
 
 ## Files
 
-A deck named `talk.slidepix.json` stores copied media in `talk.assets/`:
+A deck named `talk.slidepix.json` can link media inside the open workspace or
+store portable copies in `talk.assets/`:
 
 ```text
 talk.slidepix.json
@@ -15,10 +16,17 @@ talk.assets/
   a772…19.mp4
 ```
 
-Imported assets are named by SHA-256 content hash plus a safe extension. This
-deduplicates identical media. JSON references contain only relative,
-POSIX-style paths inside the asset directory. Absolute paths, NUL bytes, and
-`..` traversal outside the asset root are rejected.
+New files chosen from or dropped out of the VS Code/Cursor Explorer use
+`storage: "linked"` by default and keep a POSIX-style path relative to the deck.
+They may resolve only inside an open workspace root. **Embed in .assets** and
+the toolbar's **Embed all** command copy linked media into the sibling asset
+directory and change the element to `storage: "embedded"`.
+
+Embedded assets are named by SHA-256 content hash plus a safe extension, which
+deduplicates identical media. Embedded references resolve only inside the asset
+directory. Absolute paths, NUL bytes, and traversal outside the applicable
+root are rejected. Decks created before `storage` existed parse as `embedded`
+for backward compatibility.
 
 ## Coordinates and identity
 
@@ -60,5 +68,7 @@ ordered elements.
 Element types are `text`, `image`, `video`, and `shape`. Shared geometry fields
 are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior
 includes locking, hiding, optional name, and optional accessibility text.
+Image and video elements also carry `storage: "linked" | "embedded"`; the
+`src` string alone is never enough to decide its security boundary.
 
 See [Core module](modules/core.md) for parser and serializer method contracts.

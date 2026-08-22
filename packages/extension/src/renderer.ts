@@ -40,7 +40,7 @@ export async function exportPdf(context: vscode.ExtensionContext, deck: Deck, de
     defaultUri: vscode.Uri.file(deckPath.replace(/\.slidepix\.json$/i, ".pdf"))
   });
   if (!destination) return;
-  const server = new PresentationServer(deck, deckPath);
+  const server = new PresentationServer(deck, deckPath, undefined, workspaceRoots(deckPath));
   await server.start();
   const browser = await playwright().chromium.launch({ headless: true, executablePath });
   try {
@@ -64,7 +64,7 @@ export async function exportPng(context: vscode.ExtensionContext, deck: Deck, de
     defaultUri: vscode.Uri.file(deckPath.replace(/\.slidepix\.json$/i, slideIds?.length === 1 ? `-${slideIds[0]!.slice(0, 6)}.png` : ".png"))
   });
   if (!destination) return;
-  const server = new PresentationServer(deck, deckPath);
+  const server = new PresentationServer(deck, deckPath, undefined, workspaceRoots(deckPath));
   await server.start();
   const browser = await playwright().chromium.launch({ headless: true, executablePath });
   try {
@@ -95,4 +95,9 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<v
 
 function playwright(): typeof Playwright {
   return require(path.join(__dirname, "..", "vendor", "playwright-core")) as typeof Playwright;
+}
+
+function workspaceRoots(deckPath: string): string[] {
+  const roots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri).filter((uri) => uri.scheme === "file").map((uri) => uri.fsPath) ?? [];
+  return roots.length ? roots : [path.dirname(deckPath)];
 }

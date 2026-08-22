@@ -34,9 +34,11 @@ webview. The webview has no direct filesystem or Node access.
 - `postMessage(message)` adds `PROTOCOL_VERSION`; `onHostMessage(handler)`
   filters mismatched host messages.
 
-Media import sends base64 plus metadata to the host. The host chooses the safe,
-content-addressed filename and responds with the stored reference. Never build
-local filesystem paths in the webview.
+Clipboard/browser file import sends base64 plus metadata to the host. Explorer
+drop and file selection send a file URI to the host, which returns a safe
+workspace-relative linked reference or embeds an outside-workspace file. The
+webview never resolves or reads a local filesystem path itself. `SlideView`
+always calls its resolver with both `src` and `storage`, including thumbnails.
 
 ## Interaction invariants
 
@@ -47,8 +49,13 @@ local filesystem paths in the webview.
 - A locked item cannot be manipulated from the canvas.
 - Deleting an element also removes timeline steps that target it.
 - Selecting another slide clears element selection.
-- Clicking a transition gap changes the destination slide's incoming
-  transition.
+- Clicking a transition gap opens a visual editor for the destination slide's
+  incoming transition and duration.
+- Selecting an image exposes canvas handles for radius and four-sided edge
+  fade. Double-clicking enters crop mode; drag pans the normalized crop and the
+  lower-right crop handle zooms. Videos expose only the shared radius handle.
+- Workspace media is linked by default. Properties embeds one selected item;
+  **Embed all** embeds every linked image/video in the deck.
 - Text editing is available by double-clicking a text element or using
   **Edit Markdown · LaTeX · Code…** in Properties. The editor includes a live
   rendered preview using the shared core Markdown renderer.

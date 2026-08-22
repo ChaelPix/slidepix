@@ -20,11 +20,20 @@ describe("shared document rendering", () => {
     expect(html).not.toContain("scale(min(calc(");
   });
 
-  it("does not reset an already active slide when navigation stays on it", () => {
+  it("applies an explicit animation state when navigation stays on the active slide", () => {
     const html = renderDeckDocument(createDeck("Boundary test"), undefined, { mode: "present" });
 
-    expect(html).toContain("bounded===index&&slides[index]?.classList.contains('active')");
-    expect(html).toContain("{fit();return}");
+    expect(html).toContain("if(bounded===index&&active)");
+    expect(html).toContain("animationState==='final'?finish():reset()");
+    expect(html).toContain("if(!initial.has(a.targetElementId))");
+  });
+
+  it("pauses media on the slide being left and when the audience is hidden", () => {
+    const html = renderDeckDocument(createDeck("Video lifecycle"), undefined, { mode: "present" });
+
+    expect(html).toContain("function pauseVideos(slide)");
+    expect(html).toContain("pauseVideos(previous)");
+    expect(html).toContain("addEventListener('visibilitychange'");
   });
 
   it("keeps negative layers above the slide background in every output", () => {
@@ -40,5 +49,20 @@ describe("shared document rendering", () => {
     expect(html).toContain('data-language="python"');
     expect(html).toContain("hljs-keyword");
     expect(html).toContain("hljs-title");
+  });
+
+  it("renders four-sided image edge fading and passes media storage to the resolver", () => {
+    const deck = createDeck("Media");
+    deck.slides[0]!.elements.push({
+      id: "image-1", morphKey: "image-morph", type: "image", name: "chart", src: "media/chart.png", storage: "linked",
+      x: 0, y: 0, width: 400, height: 300, rotation: 0, opacity: 1, z: 1, locked: false, hidden: false,
+      crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 24, edgeFade: 20, border: { width: 0, color: "transparent" }
+    });
+    const calls: string[] = [];
+    const html = renderDeckDocument(deck, (reference, storage) => { calls.push(`${storage}:${reference}`); return reference; });
+
+    expect(calls).toContain("linked:media/chart.png");
+    expect(html).toContain("linear-gradient(to bottom");
+    expect(html).toContain("mask-composite:intersect");
   });
 });

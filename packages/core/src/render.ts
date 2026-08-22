@@ -15,7 +15,7 @@ import xml from "highlight.js/lib/languages/xml";
 // markdown-it-katex does not publish TypeScript declarations.
 // @ts-ignore The plugin follows MarkdownIt's standard PluginSimple shape.
 import markdownItKatex from "markdown-it-katex";
-import type { Deck, ImageElement, Slide, SlideElement } from "./schema.js";
+import type { Deck, ImageElement, MediaStorage, Slide, SlideElement } from "./schema.js";
 
 for (const [name, language] of Object.entries({ bash, c, cpp, css: cssLanguage, java, javascript, json, markdown: markdownLanguage, python, rust, typescript, xml })) {
   hljs.registerLanguage(name, language);
@@ -40,7 +40,7 @@ const markdown = new MarkdownIt({
 
 markdown.validateLink = (url) => /^(https?:|mailto:|#)/i.test(url);
 
-export type AssetResolver = (reference: string) => string;
+export type AssetResolver = (reference: string, storage: MediaStorage) => string;
 
 export function renderMarkdown(source: string): string {
   return markdown.render(source);
@@ -97,8 +97,8 @@ function renderElement(element: SlideElement, resolveAsset: AssetResolver): stri
       const muted = element.playback.muted ? " muted" : "";
       const loop = element.playback.loop ? " loop" : "";
       const controls = element.playback.controls ? " controls" : "";
-      const poster = element.poster ? ` poster="${attr(resolveAsset(element.poster))}"` : "";
-      return `<div ${common}><video src="${attr(resolveAsset(element.src))}"${poster}${autoplay}${muted}${loop}${controls} playsinline style="border-radius:${element.borderRadius}px"></video></div>`;
+      const poster = element.poster ? ` poster="${attr(resolveAsset(element.poster, "embedded"))}"` : "";
+      return `<div ${common}><video src="${attr(resolveAsset(element.src, element.storage))}"${poster}${autoplay}${muted}${loop}${controls} playsinline style="border-radius:${element.borderRadius}px"></video></div>`;
     }
     case "shape": {
       const clip = element.shape === "triangle" ? "clip-path:polygon(50% 0,100% 100%,0 100%);" : "";
@@ -115,9 +115,9 @@ function imageMarkup(element: ImageElement, resolveAsset: AssetResolver): string
   const left = -(crop.x / crop.width) * 100;
   const top = -(crop.y / crop.height) * 100;
   const fade = element.edgeFade > 0
-    ? `-webkit-mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);`
+    ? `-webkit-mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%),linear-gradient(to bottom,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%),linear-gradient(to bottom,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);mask-composite:intersect;`
     : "";
-  return `<div class="slidepix-image-clip" style="border-radius:${element.borderRadius}px;border:${element.border.width}px solid ${css(element.border.color)};${fade}"><img src="${attr(resolveAsset(element.src))}" alt="${attr(element.alt ?? "")}" style="width:${width}%;height:${height}%;left:${left}%;top:${top}%"></div>`;
+  return `<div class="slidepix-image-clip" style="border-radius:${element.borderRadius}px;border:${element.border.width}px solid ${css(element.border.color)};${fade}"><img src="${attr(resolveAsset(element.src, element.storage))}" alt="${attr(element.alt ?? "")}" style="width:${width}%;height:${height}%;left:${left}%;top:${top}%"></div>`;
 }
 
 function baseStyles(deck: Deck, mode: string, columns: number): string {
@@ -163,11 +163,15 @@ function fit(){const s=slides[index];if(!s)return;const k=Math.min(innerWidth/${
 function rotation(e){const m=e.style.transform.match(/rotate\\(([-\\d.]+)deg\\)/);return Number(m?.[1]||0)}
 function snapshot(slide){const map=new Map;if(!slide)return map;for(const e of slide.querySelectorAll('[data-morph-key]')){const image=e.querySelector('img'),clip=e.querySelector('.slidepix-image-clip');map.set(e.dataset.morphKey,{x:e.offsetLeft,y:e.offsetTop,width:e.offsetWidth,height:e.offsetHeight,rotation:rotation(e),opacity:getComputedStyle(e).opacity,image:image?{width:image.style.width,height:image.style.height,left:image.style.left,top:image.style.top}:null,radius:clip?.style.borderRadius})}return map}
 function morph(slide,from,transition){for(const e of slide.querySelectorAll('[data-morph-key]')){const prior=from.get(e.dataset.morphKey),duration=transition.durationMs||500,easing=transition.easing||'ease-in-out';if(!prior){e.animate([{opacity:0},{opacity:e.style.opacity||1}],{duration,easing});continue}const sx=prior.width/Math.max(1,e.offsetWidth),sy=prior.height/Math.max(1,e.offsetHeight),dx=prior.x+prior.width/2-(e.offsetLeft+e.offsetWidth/2),dy=prior.y+prior.height/2-(e.offsetTop+e.offsetHeight/2),targetRotation=rotation(e);e.animate([{transform:'translate('+dx+'px,'+dy+'px) rotate('+prior.rotation+'deg) scale('+sx+','+sy+')',opacity:prior.opacity},{transform:'translate(0,0) rotate('+targetRotation+'deg) scale(1,1)',opacity:e.style.opacity||1}],{duration,easing});const image=e.querySelector('img');if(image&&prior.image)image.animate([prior.image,{width:image.style.width,height:image.style.height,left:image.style.left,top:image.style.top}],{duration,easing});const clip=e.querySelector('.slidepix-image-clip');if(clip&&prior.radius)clip.animate([{borderRadius:prior.radius},{borderRadius:clip.style.borderRadius}],{duration,easing})}}
-function reset(){step=0;const s=slides[index],line=timelines[index]||[];for(const a of line){const e=s?.querySelector('[data-element-id="'+CSS.escape(a.targetElementId)+'"]');if(e&&a.phase==='entrance')e.style.visibility='hidden';if(e&&a.phase==='exit')e.style.visibility='visible'}}
+function cancelAnimations(slide){if(!slide)return;for(const e of slide.querySelectorAll('[data-element-id]'))for(const animation of e.getAnimations())animation.cancel()}
+function reset(){step=0;const s=slides[index],line=timelines[index]||[],initial=new Map;cancelAnimations(s);for(const a of line)if(!initial.has(a.targetElementId))initial.set(a.targetElementId,a.phase==='exit');for(const [id,visible] of initial){const e=s?.querySelector('[data-element-id="'+CSS.escape(id)+'"]');if(e)e.style.visibility=visible?'visible':'hidden'}}
+function finish(){const s=slides[index],line=timelines[index]||[];cancelAnimations(s);for(const a of line){const e=s?.querySelector('[data-element-id="'+CSS.escape(a.targetElementId)+'"]');if(e)e.style.visibility=a.phase==='exit'?'hidden':'visible'}step=line.length}
+function pauseVideos(slide){if(!slide)return;for(const video of slide.querySelectorAll('video'))video.pause()}
+function syncVideos(){slides.forEach((slide,slideIndex)=>{for(const video of slide.querySelectorAll('video')){if(slideIndex!==index){video.pause();continue}if(video.hasAttribute('autoplay'))video.play().catch(()=>{})}})}
 function play(a,offset){const s=slides[index],e=s?.querySelector('[data-element-id="'+CSS.escape(a.targetElementId)+'"]');if(!e)return 0;const delay=(a.delayMs||0)+offset,duration=a.durationMs||0,fly=a.direction==='right'?['40px','0']:a.direction==='up'?['0','40px']:a.direction==='down'?['0','-40px']:['-40px','0'];setTimeout(()=>{if(a.phase==='entrance')e.style.visibility='visible';const from=a.effect==='appear'?{}:a.effect==='fly'?{opacity:0,translate:fly.join(' ')}:{opacity:0},to={opacity:a.phase==='exit'?0:1,translate:'0 0'};e.animate(a.phase==='exit'?[to,from]:[from,to],{duration,easing:a.easing||'ease-out',fill:'both'}).finished.then(()=>{if(a.phase==='exit')e.style.visibility='hidden'})},delay);return delay+duration}
 function advance(){const line=timelines[index]||[];if(step>=line.length)return false;let cursor=0;do{const a=line[step++];cursor=play(a,a.trigger==='withPrevious'?0:cursor)}while(step<line.length&&line[step].trigger!=='onClick');return true}
-	function show(next){const bounded=Math.max(0,Math.min(slides.length-1,next));if(bounded===index&&slides[index]?.classList.contains('active')){fit();return}const before=snapshot(slides[index]?.classList.contains('active')?slides[index]:null);index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-')){const d=t.type.slice(6),v=d==='left'?'100%':d==='right'?'-100%':'0',w=d==='up'?'100%':d==='down'?'-100%':'0';s.animate([{transform:'translate('+v+','+w+') '+s.style.transform},{transform:s.style.transform}],{duration:t.durationMs,easing:t.easing})}reset();fit()}
-window.slidepixShow=show;window.slidepixAdvance=advance;addEventListener('resize',fit);addEventListener('keydown',e=>{if(e.key==='f')document.documentElement.requestFullscreen?.()});show(0)
+	function show(next,animationState='initial'){const bounded=Math.max(0,Math.min(slides.length-1,next)),active=slides[index]?.classList.contains('active');if(bounded===index&&active){animationState==='final'?finish():reset();syncVideos();fit();return}const previous=active?slides[index]:null,before=snapshot(previous);pauseVideos(previous);index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-')){const d=t.type.slice(6),v=d==='left'?'100%':d==='right'?'-100%':'0',w=d==='up'?'100%':d==='down'?'-100%':'0';s.animate([{transform:'translate('+v+','+w+') '+s.style.transform},{transform:s.style.transform}],{duration:t.durationMs,easing:t.easing})}animationState==='final'?finish():reset();syncVideos();fit()}
+window.slidepixShow=show;window.slidepixAdvance=advance;addEventListener('resize',fit);addEventListener('visibilitychange',()=>{if(document.hidden)slides.forEach(pauseVideos);else syncVideos()});addEventListener('keydown',e=>{if(e.key==='f')document.documentElement.requestFullscreen?.()});show(0)
 })();</script>`;
 }
 

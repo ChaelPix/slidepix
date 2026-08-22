@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { parseDeckText, type Deck, type HostToWebviewMessage, type WebviewToHostMessage } from "@slidepix/core";
-import { deckAssetDirectory } from "@slidepix/core/assets";
+import { parseDeckText, serializeDeck, type Deck, type HostToWebviewMessage, type WebviewToHostMessage } from "@slidepix/core";
+import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
 import { exportPdf, exportPng } from "./renderer";
 import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
@@ -32,7 +32,8 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, "media"),
-        vscode.Uri.file(deckAssetDirectory(document.uri.fsPath))
+        vscode.Uri.file(deckAssetDirectory(document.uri.fsPath)),
+        ...workspaceRootUris(document)
       ]
     };
     panel.webview.html = this.webviewHtml(panel.webview);
@@ -49,7 +50,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     const key = document.uri.toString();
     this.sessions.get(key)?.dispose();
     let presenterPanel: vscode.WebviewPanel | undefined;
-    const session = new PresentationServer(parsed.deck, document.uri.fsPath, (index) => presenterPanel?.webview.postMessage({ type: "state", index }));
+    const session = new PresentationServer(parsed.deck, document.uri.fsPath, (index) => presenterPanel?.webview.postMessage({ type: "state", index }), linkedRoots(document));
     await session.start();
     this.sessions.set(key, session);
     if (!presenter) {
@@ -76,9 +77,10 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     const text = document.getText();
     const parsed = parseDeckText(text);
     const assetUri = panel.webview.asWebviewUri(vscode.Uri.file(deckAssetDirectory(document.uri.fsPath))).toString();
+    const linkedUri = panel.webview.asWebviewUri(vscode.Uri.file(path.dirname(document.uri.fsPath))).toString();
     const message: HostToWebviewMessage = parsed.ok
-      ? { version: 1, type: "deck", text, deck: parsed.deck, uri: assetUri }
-      : { version: 1, type: "invalidDeck", text, message: parsed.message, uri: assetUri };
+      ? { version: 1, type: "deck", text, deck: parsed.deck, uri: assetUri, linkedUri }
+      : { version: 1, type: "invalidDeck", text, message: parsed.message, uri: assetUri, linkedUri };
     void panel.webview.postMessage(message);
   }
 
@@ -93,6 +95,9 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       return;
     }
     if (message.type === "importAsset") return this.importAsset(document, panel, message);
+    if (message.type === "selectMedia") return this.selectMedia(document, panel, message);
+    if (message.type === "linkMedia") return this.resolveMedia(document, panel, message, vscode.Uri.parse(message.uri));
+    if (message.type === "embedMedia") return this.embedMedia(document, message.elementIds);
     if (message.type === "command") {
       const parsed = parseDeckText(document.getText());
       if (message.command === "save") return void document.save();
@@ -110,17 +115,70 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     try {
       const bytes = Buffer.from(message.base64, "base64");
       if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("Media files are limited to 100 MB per import.");
-      const hash = createHash("sha256").update(bytes).digest("hex");
-      const extension = safeExtension(message.name, message.mime);
-      const reference = `${hash}${extension}`;
-      const directory = vscode.Uri.file(deckAssetDirectory(document.uri.fsPath));
-      await vscode.workspace.fs.createDirectory(directory);
-      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(directory, reference), bytes);
-      response.reference = reference;
+      response.reference = await storeEmbeddedBytes(document.uri.fsPath, bytes, message.name, message.mime);
+      response.storage = "embedded";
     } catch (error) {
       response.error = error instanceof Error ? error.message : "Could not import asset";
     }
     await panel.webview.postMessage(response);
+  }
+
+  private async selectMedia(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectMedia" }>): Promise<void> {
+    const filters: Record<string, string[]> = message.kind === "image"
+      ? { Images: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"] }
+      : { Videos: ["mp4", "webm", "mov", "m4v", "ogv"] };
+    const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFiles: true, canSelectFolders: false, filters, defaultUri: workspaceRootUris(document)[0] });
+    if (!picked?.[0]) return void panel.webview.postMessage({ version: 1, type: "assetImported", requestId: message.requestId } satisfies HostToWebviewMessage);
+    await this.resolveMedia(document, panel, message, picked[0]);
+  }
+
+  private async resolveMedia(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectMedia" | "linkMedia" }>, uri: vscode.Uri): Promise<void> {
+    const response: HostToWebviewMessage = { version: 1, type: "assetImported", requestId: message.requestId };
+    try {
+      if (uri.scheme !== "file") throw new Error("Only local workspace files can be linked.");
+      const kind = mediaKind(uri.fsPath);
+      if (kind !== message.kind) throw new Error(`Choose a supported ${message.kind} file.`);
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.size > 100 * 1024 * 1024) throw new Error("Media files are limited to 100 MB.");
+      const roots = linkedRoots(document);
+      const resolved = path.resolve(uri.fsPath);
+      const insideWorkspace = roots.some((root) => isInside(root, resolved));
+      if (insideWorkspace) {
+        response.reference = path.relative(path.dirname(document.uri.fsPath), resolved).replaceAll(path.sep, "/");
+        response.storage = "linked";
+      } else {
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        response.reference = await storeEmbeddedBytes(document.uri.fsPath, bytes, path.basename(uri.fsPath), "");
+        response.storage = "embedded";
+        void vscode.window.showInformationMessage("The selected file is outside the open workspace, so SlidePix embedded a safe copy.");
+      }
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Could not add media";
+    }
+    await panel.webview.postMessage(response);
+  }
+
+  private async embedMedia(document: vscode.TextDocument, elementIds?: string[]): Promise<void> {
+    const parsed = parseDeckText(document.getText());
+    if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
+    try {
+      const wanted = elementIds?.length ? new Set(elementIds) : undefined;
+      const roots = linkedRoots(document);
+      let count = 0;
+      for (const slide of parsed.deck.slides) for (const element of slide.elements) {
+        if ((element.type !== "image" && element.type !== "video") || element.storage !== "linked" || (wanted && !wanted.has(element.id))) continue;
+        const source = resolveMediaPath(document.uri.fsPath, element.src, "linked", roots);
+        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(source));
+        element.src = await storeEmbeddedBytes(document.uri.fsPath, bytes, path.basename(source), "");
+        element.storage = "embedded";
+        count += 1;
+      }
+      if (!count) return void vscode.window.showInformationMessage("No linked media needed embedding.");
+      await replaceDocument(document, serializeDeck(parsed.deck));
+      void vscode.window.showInformationMessage(`Embedded ${count} media element${count === 1 ? "" : "s"} in ${path.basename(deckAssetDirectory(document.uri.fsPath))}.`);
+    } catch (error) {
+      void vscode.window.showErrorMessage(error instanceof Error ? `Could not embed media: ${error.message}` : "Could not embed media.");
+    }
   }
 
   private webviewHtml(webview: vscode.Webview): string {
@@ -137,4 +195,42 @@ function safeExtension(name: string, mime: string): string {
   if (/^\.[a-z0-9]{1,8}$/.test(fromName)) return fromName;
   const known: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov" };
   return known[mime] ?? ".bin";
+}
+
+async function storeEmbeddedBytes(deckPath: string, bytes: Uint8Array, name: string, mime: string): Promise<string> {
+  const hash = createHash("sha256").update(bytes).digest("hex");
+  const reference = `${hash}${safeExtension(name, mime)}`;
+  const directory = vscode.Uri.file(deckAssetDirectory(deckPath));
+  await vscode.workspace.fs.createDirectory(directory);
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(directory, reference), bytes);
+  return reference;
+}
+
+async function replaceDocument(document: vscode.TextDocument, text: string): Promise<void> {
+  const end = document.lineAt(Math.max(0, document.lineCount - 1)).range.end;
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(document.uri, new vscode.Range(new vscode.Position(0, 0), end), text);
+  await vscode.workspace.applyEdit(edit);
+}
+
+function workspaceRootUris(document: vscode.TextDocument): vscode.Uri[] {
+  const roots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri).filter((uri) => uri.scheme === "file") ?? [];
+  return roots.length ? roots : [vscode.Uri.file(path.dirname(document.uri.fsPath))];
+}
+
+function linkedRoots(document: vscode.TextDocument): string[] {
+  return workspaceRootUris(document).map((uri) => uri.fsPath);
+}
+
+function isInside(root: string, target: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+  return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`);
+}
+
+function mediaKind(filePath: string): "image" | "video" | undefined {
+  const extension = path.extname(filePath).toLowerCase();
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif"].includes(extension)) return "image";
+  if ([".mp4", ".webm", ".mov", ".m4v", ".ogv"].includes(extension)) return "video";
+  return undefined;
 }

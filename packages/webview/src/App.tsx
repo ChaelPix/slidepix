@@ -1,11 +1,12 @@
 import Moveable from "react-moveable";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   duplicateSlide,
   renderMarkdown,
   type AnimationStep,
   type Deck,
   type HostToWebviewMessage,
+  type MediaStorage,
   type Slide,
   type SlideElement,
   type Transition
@@ -16,15 +17,15 @@ import { onHostMessage, postMessage } from "./vscode";
 
 type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
-const pendingAssets = new Map<string, (reference?: string, error?: string) => void>();
+type MediaResult = { reference: string; storage: MediaStorage };
+const pendingAssets = new Map<string, (result?: MediaResult, error?: string) => void>();
 
 export default function App() {
   const store = useDeckStore();
   const [tab, setTab] = useState<Tab>("properties");
   const [editingTextId, setEditingTextId] = useState<string>();
+  const [cropElementId, setCropElementId] = useState<string>();
   const [notesCollapsed, setNotesCollapsed] = useState(false);
-  const imageInput = useRef<HTMLInputElement>(null);
-  const videoInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
@@ -33,6 +34,11 @@ export default function App() {
   const slide = deck?.slides.find((item) => item.id === store.selectedSlideId) ?? deck?.slides[0];
   const selected = slide?.elements.find((item) => item.id === store.selectedElementId);
   const target = selected && !selected.locked ? document.getElementById(`element-${selected.id}`) : null;
+  const cropActive = selected?.type === "image" && cropElementId === selected.id;
+
+  useEffect(() => {
+    if (!selected || selected.type !== "image" || selected.id !== cropElementId) setCropElementId(undefined);
+  }, [selected?.id, selected?.type, cropElementId]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -60,18 +66,36 @@ export default function App() {
   if (store.error) return <InvalidDeck message={store.error} />;
   if (!deck || !slide) return <div className="loading">Opening SlidePix…</div>;
 
-  const assetUrl = (reference: string) => `${store.sourceUri?.replace(/\/$/, "")}/${reference}`;
+  const assetUrl = (reference: string, storage: MediaStorage) => {
+    const base = storage === "linked" ? store.linkedSourceUri : store.sourceUri;
+    if (!base) return reference;
+    try { return new URL(reference.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`).toString(); } catch { return reference; }
+  };
+  const addMedia = (kind: "image" | "video", result: MediaResult, name?: string, elementId?: string) => store.mutate((draft) => {
+    const targetSlide = draft.slides.find((item) => item.id === slide.id)!;
+    const existing = elementId ? targetSlide.elements.find((item) => item.id === elementId) : undefined;
+    if (existing?.type === kind) {
+      existing.src = result.reference;
+      existing.storage = result.storage;
+      return;
+    }
+    const common = baseElement(targetSlide.elements.length, kind);
+    targetSlide.elements.push(kind === "image"
+      ? { ...common, type: "image", src: result.reference, storage: result.storage, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: name ?? "" }
+      : { ...common, type: "video", src: result.reference, storage: result.storage, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true } });
+  });
+  const requestMedia = (kind: "image" | "video", uri?: string, elementId?: string) => {
+    const requestId = crypto.randomUUID();
+    pendingAssets.set(requestId, (result, error) => {
+      if (error) return void alert(error);
+      if (result) addMedia(kind, result, undefined, elementId);
+    });
+    postMessage(uri ? { type: "linkMedia", requestId, kind, uri } : { type: "selectMedia", requestId, kind });
+  };
   const importFile = async (file: File, kind: "image" | "video") => {
     if (file.size > 100 * 1024 * 1024) return void alert("Media files are limited to 100 MB per import.");
-    const reference = await sendAsset(file);
-    if (!reference) return;
-    store.mutate((draft) => {
-      const targetSlide = draft.slides.find((item) => item.id === slide.id)!;
-      const common = baseElement(targetSlide.elements.length, kind);
-      targetSlide.elements.push(kind === "image"
-        ? { ...common, type: "image", src: reference, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: file.name }
-        : { ...common, type: "video", src: reference, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true } });
-    });
+    const result = await sendAsset(file);
+    if (result) addMedia(kind, result, file.name);
   };
 
   const addText = () => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
@@ -87,6 +111,13 @@ export default function App() {
   return (
     <div className="app" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
       event.preventDefault();
+      const uri = droppedFileUri(event.dataTransfer);
+      if (uri) {
+        const kind = mediaKindFromPath(uri);
+        if (kind) requestMedia(kind, uri);
+        else alert("Drop an image or video file from the Explorer.");
+        return;
+      }
       const file = event.dataTransfer.files[0];
       if (!file) return;
       if (file.type.startsWith("image/")) void importFile(file, "image");
@@ -104,17 +135,14 @@ export default function App() {
       }
     }}>
       <Toolbar
-        deck={deck}
         slide={slide}
         addText={addText}
         addShape={addShape}
-        chooseImage={() => imageInput.current?.click()}
-        chooseVideo={() => videoInput.current?.click()}
-        selectedIds={store.selectedElementId ? [store.selectedElementId] : []}
+        chooseImage={() => requestMedia("image")}
+        chooseVideo={() => requestMedia("video")}
+        hasLinkedMedia={deck.slides.some((item) => item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
       />
-      <input ref={imageInput} hidden type="file" accept="image/*" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0], "image")} />
-      <input ref={videoInput} hidden type="file" accept="video/*" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0], "video")} />
-      <SlideRail deck={deck} selectedId={slide.id} select={store.selectSlide} mutate={store.mutate} />
+      <SlideRail deck={deck} selectedId={slide.id} select={store.selectSlide} mutate={store.mutate} resolveAsset={assetUrl} />
       <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
         <div className="canvas-scroll" onWheel={(event) => {
           if (!event.ctrlKey && !event.metaKey) return;
@@ -134,8 +162,9 @@ export default function App() {
                 resolveAsset={assetUrl}
                 onSelectElement={store.selectElement}
                 onEditText={setEditingTextId}
+                onEditImage={(id) => setCropElementId((current) => current === id ? undefined : id)}
               />
-              {target && selected && (
+              {target && selected && !cropActive && (
                 <Moveable
                   target={target}
                   draggable
@@ -146,6 +175,7 @@ export default function App() {
                   zoom={1 / store.zoom}
                   onClick={({ isDouble }) => {
                     if (isDouble && selected.type === "text") setEditingTextId(selected.id);
+                    if (isDouble && selected.type === "image") setCropElementId(selected.id);
                   }}
                   onDrag={({ left, top, target: elementTarget }) => {
                     elementTarget.style.left = `${left}px`;
@@ -165,6 +195,7 @@ export default function App() {
                   }}
                 />
               )}
+              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropActive={cropActive} zoom={store.zoom} update={(patch) => store.mutate((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} closeCrop={() => setCropElementId(undefined)} />}
             </div>
           </div>
         </div>
@@ -178,15 +209,15 @@ export default function App() {
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} />}
         </section>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} selectElement={store.selectElement} editText={setEditingTextId} />
+      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} selectElement={store.selectElement} editText={setEditingTextId} editImage={(id) => setCropElementId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
       <div className="zoom-control" title="Ctrl/Cmd + mouse wheel also zooms the canvas"><button aria-label="Zoom out" onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><input aria-label="Canvas zoom" type="range" min="10" max="150" step="5" value={Math.round(store.zoom * 100)} onChange={(event) => store.setZoom(Number(event.target.value) / 100)} /><span>{Math.round(store.zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
       {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} mutate={store.mutate} close={() => setEditingTextId(undefined)} />}
     </div>
   );
 }
 
-function Toolbar({ slide, addText, addShape, chooseImage, chooseVideo }: {
-  deck: Deck; slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; chooseImage(): void; chooseVideo(): void; selectedIds: string[];
+function Toolbar({ slide, addText, addShape, chooseImage, chooseVideo, hasLinkedMedia }: {
+  slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; chooseImage(): void; chooseVideo(): void; hasLinkedMedia: boolean;
 }) {
   return <header className="toolbar">
     <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
@@ -201,6 +232,7 @@ function Toolbar({ slide, addText, addShape, chooseImage, chooseVideo }: {
       <RibbonButton icon="save" label="Save" onClick={() => postMessage({ type: "command", command: "save" })} />
       <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
       <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
+      <RibbonButton icon="package" label="Embed all" disabled={!hasLinkedMedia} onClick={() => postMessage({ type: "embedMedia" })} />
       <RibbonButton icon="hubot" label="MCP" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
     </div></div>
     <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
@@ -210,24 +242,21 @@ function Toolbar({ slide, addText, addShape, chooseImage, chooseVideo }: {
   </header>;
 }
 
-function RibbonButton({ icon, label, primary, onClick }: { icon: string; label: string; primary?: boolean; onClick(): void }) {
-  return <button className={`ribbon-button ${primary ? "primary" : ""}`} title={label} onClick={onClick}><span className={`codicon codicon-${icon}`} /><span>{label}</span></button>;
+function RibbonButton({ icon, label, primary, disabled, onClick }: { icon: string; label: string; primary?: boolean; disabled?: boolean; onClick(): void }) {
+  return <button className={`ribbon-button ${primary ? "primary" : ""}`} title={label} disabled={disabled} onClick={onClick}><span className={`codicon codicon-${icon}`} /><span>{label}</span></button>;
 }
 
-function SlideRail({ deck, selectedId, select, mutate }: { deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void }) {
+function SlideRail({ deck, selectedId, select, mutate, resolveAsset }: { deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
+  const [transitionSlideId, setTransitionSlideId] = useState<string>();
   const addSlide = () => mutate((draft) => draft.slides.push({ id: crypto.randomUUID(), title: `Slide ${draft.slides.length + 1}`, notes: "", hidden: false, hidePageNumber: false, transition: { type: "none", durationMs: 500, easing: "ease-in-out" }, timeline: [], elements: [] }));
   return <aside className="slide-rail">
     <div className="rail-header"><strong>Slides</strong><button title="Add slide" onClick={addSlide}>＋</button></div>
     <div className="rail-scroll">
       {deck.slides.map((slide, index) => <div key={slide.id} className="rail-entry">
-        {index > 0 && <button className="transition-gap" title="Change transition" onClick={() => mutate((draft) => {
-          const target = draft.slides[index]!;
-          const current = transitionTypes.indexOf(target.transition.type);
-          target.transition.type = transitionTypes[(current + 1) % transitionTypes.length]!;
-        })}><span>{slide.transition.type === "none" ? "＋ transition" : slide.transition.type}</span></button>}
+        {index > 0 && <><button className={`transition-gap ${transitionSlideId === slide.id ? "active" : ""} ${slide.transition.type !== "none" ? "has-transition" : ""}`} title="Edit incoming transition" onClick={() => setTransitionSlideId((current) => current === slide.id ? undefined : slide.id)}><span className="codicon codicon-arrow-swap" /> <span>{slide.transition.type === "none" ? "Add transition" : transitionLabel(slide.transition.type)}</span></button>{transitionSlideId === slide.id && <TransitionEditor transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides[index]!.transition, patch))} close={() => setTransitionSlideId(undefined)} />}</>}
         <button className={`thumbnail ${selectedId === slide.id ? "active" : ""}`} onClick={() => select(slide.id)}>
           <span className="slide-index">{index + 1}</span>
-          <div className="thumb-clip" style={{ width: 192, height: 108 }}><SlideView deck={deck} slide={slide} scale={0.1} /></div>
+          <div className="thumb-clip" style={{ width: 192, height: 108 }}><SlideView deck={deck} slide={slide} scale={0.1} resolveAsset={resolveAsset} /></div>
           <span className="slide-title">{slide.title}{slide.hidden ? " (hidden)" : ""}</span>
         </button>
         <div className="rail-actions">
@@ -242,8 +271,66 @@ function SlideRail({ deck, selectedId, select, mutate }: { deck: Deck; selectedI
   </aside>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, editText }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; selectElement(id?: string): void; editText(id: string): void;
+function TransitionEditor({ transition, update, close }: { transition: Transition; update(patch: Partial<Transition>): void; close(): void }) {
+  return <div className="transition-editor" onClick={(event) => event.stopPropagation()}>
+    <header><strong>Incoming transition</strong><button className="icon-button" aria-label="Close transition editor" onClick={close}>×</button></header>
+    <div className="transition-options">{transitionTypes.map((type) => <button key={type} className={transition.type === type ? "active" : ""} title={transitionLabel(type)} onClick={() => update({ type })}><span className={`codicon codicon-${transitionIcon(type)}`} /><span>{transitionLabel(type)}</span></button>)}</div>
+    <label>Duration <span>{transition.durationMs} ms</span><input type="range" min="0" max="3000" step="100" value={transition.durationMs} onChange={(event) => update({ durationMs: Number(event.target.value) })} /></label>
+  </div>;
+}
+
+type MediaElement = Extract<SlideElement, { type: "image" | "video" }>;
+
+function MediaControls({ element, cropActive, zoom, update, closeCrop }: { element: MediaElement; cropActive: boolean; zoom: number; update(patch: Partial<MediaElement>): void; closeCrop(): void }) {
+  const maxRadius = Math.max(1, Math.min(element.width, element.height) / 2);
+  const radius = Math.min(maxRadius, element.borderRadius);
+  const handleSize = 14 / zoom;
+  const overlayStyle = { left: element.x, top: element.y, width: element.width, height: element.height, transform: `rotate(${element.rotation}deg)` };
+  const radiusDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
+    startPointerDrag(event, (clientX) => update({ borderRadius: clamp(((clientX - rect.left) / rect.width) * element.width, 0, maxRadius) }));
+  };
+  const fadeDrag = element.type === "image" ? (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
+    startPointerDrag(event, (_clientX, clientY) => update({ edgeFade: clamp(((rect.bottom - clientY) / rect.height) * element.height, 0, Math.min(element.width, element.height) / 2) }));
+  } : undefined;
+  const panCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const crop = { ...element.crop };
+    startPointerDrag(event, (clientX, clientY) => update({ crop: {
+      ...crop,
+      x: clamp(crop.x - ((clientX - startX) / rect.width) * crop.width, 0, 1 - crop.width),
+      y: clamp(crop.y - ((clientY - startY) / rect.height) * crop.height, 0, 1 - crop.height)
+    } }));
+  } : undefined;
+  const zoomCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
+    const startY = event.clientY;
+    const crop = { ...element.crop };
+    const centerX = crop.x + crop.width / 2;
+    const centerY = crop.y + crop.height / 2;
+    startPointerDrag(event, (_clientX, clientY) => {
+      const factor = clamp(1 + (clientY - startY) / Math.max(1, rect.height), 0.08, 4);
+      const width = clamp(crop.width * factor, 0.05, 1);
+      const height = clamp(crop.height * factor, 0.05, 1);
+      update({ crop: { x: clamp(centerX - width / 2, 0, 1 - width), y: clamp(centerY - height / 2, 0, 1 - height), width, height } });
+    });
+  } : undefined;
+
+  return <div className={`media-controls ${cropActive ? "crop-active" : ""}`} style={overlayStyle} onDoubleClick={() => cropActive && closeCrop()}>
+    {cropActive && element.type === "image" && <div className="crop-surface" onPointerDown={panCrop}><span style={{ fontSize: 12 / zoom, top: 12 / zoom, padding: `${5 / zoom}px ${8 / zoom}px` }}>Drag to reposition · drag corner to zoom · double-click to finish</span><i className="crop-corner top-left" /><i className="crop-corner top-right" /><i className="crop-corner bottom-left" /><button className="crop-zoom-handle crop-corner bottom-right" aria-label="Adjust image crop zoom" onPointerDown={zoomCrop} /></div>}
+    {!cropActive && <>
+      <button className="media-handle radius-handle" title="Drag to change corner radius" aria-label="Adjust corner radius" style={{ left: `${(radius / Math.max(1, element.width)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={radiusDrag} />
+      {element.type === "image" && <button className="media-handle fade-handle" title="Drag inward to fade all edges" aria-label="Adjust edge fade" style={{ bottom: `${(element.edgeFade / Math.max(1, element.height)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={fadeDrag} />}
+    </>}
+  </div>;
+}
+
+function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, editText, editImage, relinkMedia }: {
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
 }) {
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   return <aside className="inspector">
@@ -269,12 +356,15 @@ function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, e
             <label>Alignment<select value={element.style.textAlign} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.textAlign = event.target.value as "left" | "center" | "right"; })}><option>left</option><option>center</option><option>right</option></select></label>
           </>}
           {element.type === "shape" && <ColorField label="Fill" value={element.fill} onChange={(fill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} />}
-          {(element.type === "image" || element.type === "video") && <NumberField label="Corner radius" value={element.borderRadius} onChange={(borderRadius) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} />}
+          {(element.type === "image" || element.type === "video") && <>
+            <div className="media-source-card"><span className={`storage-badge ${element.storage}`}>{element.storage}</span><code title={element.src}>{element.src}</code><div><button onClick={() => relinkMedia(element.type, element.id)}>Choose linked file…</button>{element.storage === "linked" && <button onClick={() => postMessage({ type: "embedMedia", elementIds: [element.id] })}>Embed in .assets</button>}</div></div>
+            <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} />
+            <p className="panel-help">Drag the yellow point on the top edge to round corners.</p>
+          </>}
           {element.type === "image" && <>
-            <NumberField label="Edge fade" value={element.edgeFade} onChange={(edgeFade) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} />
-            <h4>Crop (normalized)</h4><div className="field-grid">
-              {(["x", "y", "width", "height"] as const).map((key) => <NumberField key={key} label={key} value={element.crop[key]} step={0.01} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.crop[key] = Math.max(key === "width" || key === "height" ? 0.01 : 0, Math.min(1, value)); })} />)}
-            </div>
+            <RangeField label="Edge fade" value={element.edgeFade} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(edgeFade) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} />
+            <p className="panel-help">Drag the blue point upward from the bottom edge to fade all four sides.</p>
+            <button className="edit-text-button" onClick={() => editImage(element.id)}>Crop image (or double-click)</button>
             <label>Alt text<textarea value={element.alt ?? ""} onChange={(event) => update({ alt: event.target.value })} /></label>
           </>}
           {element.type === "video" && <>
@@ -315,6 +405,7 @@ function TextEditor({ deck, slideId, elementId, mutate, close }: { deck: Deck; s
 }
 
 function NumberField({ label, value, step = 1, onChange }: { label: string; value: number; step?: number; onChange(value: number): void }) { return <label>{label}<input type="number" value={Number.isFinite(value) ? value : 0} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function RangeField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange(value: number): void }) { return <label className="range-field"><span>{label}<output>{Math.round(value)} px</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange(value: string): void }) { return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
 function InvalidDeck({ message }: { message: string }) { return <div className="invalid"><h1>SlidePix could not open this deck</h1><pre>{message}</pre><p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p></div>; }
@@ -323,8 +414,24 @@ function baseElement(z: number, type: SlideElement["type"]) { const id = crypto.
 function defaultAnimation(targetElementId: string): AnimationStep { return { id: crypto.randomUUID(), targetElementId, phase: "entrance", effect: "fade", trigger: "onClick", delayMs: 0, durationMs: 500, easing: "ease-out" }; }
 function elementLabel(element: SlideElement): string { return element.name?.trim() || `${element.type}-${element.id.slice(0, 4)}`; }
 function animationFlowLabel(timeline: AnimationStep[], index: number): string { const step = timeline[index]!; if (step.trigger === "withPrevious") return "With previous"; if (step.trigger === "afterPrevious") return "After previous"; return `Click ${timeline.slice(0, index + 1).filter((item) => item.trigger === "onClick").length}`; }
+function transitionLabel(type: Transition["type"]): string { return ({ none: "None", fade: "Fade", "slide-left": "From left", "slide-right": "From right", "slide-up": "From top", "slide-down": "From bottom", morph: "Morph" } as Record<Transition["type"], string>)[type]; }
+function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string) => void, setInvalid: (message: string, uri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference, message.error); pendingAssets.delete(message.requestId); } }
-async function sendAsset(file: File): Promise<string | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (reference, error) => { if (error) alert(error); resolve(reference); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string, linkedUri: string) => void, setInvalid: (message: string, uri: string, linkedUri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri, message.linkedUri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } }
+async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) alert(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
+function droppedFileUri(data: DataTransfer): string | undefined {
+  const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");
+  const direct = parseDroppedValues(uriList).find((value) => value.startsWith("file:"));
+  if (direct) return direct;
+  const paths = parseDroppedValues(data.getData("CodeFiles") || data.getData("codefiles"));
+  const filePath = paths[0];
+  if (!filePath) return undefined;
+  const normalized = filePath.replaceAll("\\", "/");
+  return encodeURI(normalized.match(/^[a-z]:\//i) ? `file:///${normalized}` : `file://${normalized.startsWith("/") ? "" : "/"}${normalized}`);
+}
+function parseDroppedValues(raw: string): string[] { if (!raw) return []; try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed.filter((value): value is string => typeof value === "string"); } catch { /* URI lists are newline-delimited, not JSON. */ } return raw.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#")); }
+function mediaKindFromPath(value: string): "image" | "video" | undefined { const pathname = value.split(/[?#]/)[0]!.toLowerCase(); if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/.test(pathname)) return "image"; if (/\.(mp4|webm|mov|m4v|ogv)$/.test(pathname)) return "video"; return undefined; }
+function startPointerDrag(event: ReactPointerEvent<HTMLElement>, move: (clientX: number, clientY: number) => void): void { event.preventDefault(); event.stopPropagation(); const pointerId = event.pointerId; const onMove = (next: PointerEvent) => { if (next.pointerId === pointerId) move(next.clientX, next.clientY); }; const stop = (next: PointerEvent) => { if (next.pointerId !== pointerId) return; window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", stop); window.removeEventListener("pointercancel", stop); }; window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", stop); window.addEventListener("pointercancel", stop); }
+function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }

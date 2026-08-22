@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { dirname, extname } from "node:path";
 import { join } from "node:path";
 import type * as Playwright from "playwright-core";
-import { parseDeckText, renderDeckDocument, type Deck, type Slide } from "@slidepix/core";
-import { resolveAssetPath } from "@slidepix/core/assets";
+import { parseDeckText, renderDeckDocument, type Deck, type MediaStorage, type Slide } from "@slidepix/core";
+import { resolveMediaPath } from "@slidepix/core/assets";
 
 export async function loadDeck(deckPath: string): Promise<Deck> {
   const parsed = parseDeckText(await readFile(deckPath, "utf8"));
@@ -38,7 +38,7 @@ export async function renderSlidesToPng(
   const scale = Math.min(3, Math.max(0.1, options.scale ?? 1));
   const columns = options.layout === "row" ? slides.length : options.layout === "column" ? 1 : Math.max(1, options.columns ?? Math.ceil(Math.sqrt(slides.length)));
   const assets = await collectAssets(deckPath, slides);
-  const html = renderDeckDocument(deck, (reference) => assets.get(reference) ?? reference, { mode: "contact", selectedSlideIds: slides.map((slide) => slide.id), columns });
+  const html = renderDeckDocument(deck, (reference, storage) => assets.get(mediaKey(reference, storage)) ?? reference, { mode: "contact", selectedSlideIds: slides.map((slide) => slide.id), columns });
   const executablePath = playwright().chromium.executablePath();
   try { await readFile(executablePath); } catch { throw new Error("SlidePix renderer is not installed. Run ‘SlidePix: Configure MCP’ or ‘SlidePix: Install Export Renderer’ in VS Code/Cursor."); }
   const browser = await playwright().chromium.launch({ headless: true, executablePath });
@@ -55,18 +55,22 @@ export async function renderSlidesToPng(
 }
 
 async function collectAssets(deckPath: string, slides: Slide[]): Promise<Map<string, string>> {
-  const references = new Set<string>();
+  const references = new Map<string, { reference: string; storage: MediaStorage }>();
   for (const slide of slides) for (const element of slide.elements) {
-    if (element.type === "image" || element.type === "video") references.add(element.src);
-    if (element.type === "video" && element.poster) references.add(element.poster);
+    if (element.type === "image" || element.type === "video") references.set(mediaKey(element.src, element.storage), { reference: element.src, storage: element.storage });
+    if (element.type === "video" && element.poster) references.set(mediaKey(element.poster, "embedded"), { reference: element.poster, storage: "embedded" });
   }
   const result = new Map<string, string>();
-  await Promise.all([...references].map(async (reference) => {
-    const filePath = resolveAssetPath(deckPath, reference);
+  await Promise.all([...references].map(async ([key, { reference, storage }]) => {
+    const filePath = resolveMediaPath(deckPath, reference, storage, [process.cwd(), dirname(deckPath)]);
     const bytes = await readFile(filePath);
-    result.set(reference, `data:${mimeType(extname(filePath))};base64,${bytes.toString("base64")}`);
+    result.set(key, `data:${mimeType(extname(filePath))};base64,${bytes.toString("base64")}`);
   }));
   return result;
+}
+
+function mediaKey(reference: string, storage: MediaStorage): string {
+  return `${storage}:${reference}`;
 }
 
 function mimeType(extension: string): string {

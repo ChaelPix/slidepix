@@ -17,6 +17,20 @@ describe("PresentationServer navigation", () => {
     expect(states).toEqual([1, 0]);
   });
 
+  it("opens forward slides at their initial step and previous slides at their completed step", () => {
+    const deck = createDeck("Animation navigation");
+    deck.slides.push(duplicateSlide(deck.slides[0]!));
+    const sent: string[] = [];
+    const server = new PresentationServer(deck, "/unused.slidepix.json");
+    const socket = { readyState: 1, send: (message: string) => sent.push(message) };
+    (server as unknown as { sockets: Set<typeof socket> }).sockets.add(socket);
+
+    server.command("next");
+    server.command("previous");
+
+    expect(sent.map((message) => JSON.parse(message).animationState)).toEqual(["initial", "final"]);
+  });
+
   it("renders a stable end-of-deck frame instead of accidentally rendering every slide", () => {
     const deck = createDeck("Presenter frame boundary");
     deck.slides.push(duplicateSlide(deck.slides[0]!));

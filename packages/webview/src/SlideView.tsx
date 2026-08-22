@@ -1,4 +1,4 @@
-import { renderMarkdown, type Deck, type Slide, type SlideElement } from "@slidepix/core";
+import { renderMarkdown, type Deck, type MediaStorage, type Slide, type SlideElement } from "@slidepix/core";
 import type { CSSProperties, MouseEvent } from "react";
 
 type Props = {
@@ -7,9 +7,10 @@ type Props = {
   scale?: number;
   interactive?: boolean;
   selectedElementId?: string;
-  resolveAsset?: (source: string) => string;
+  resolveAsset?: (source: string, storage: MediaStorage) => string;
   onSelectElement?: (id?: string) => void;
   onEditText?: (id: string) => void;
+  onEditImage?: (id: string) => void;
 };
 
 export function SlideView({
@@ -20,7 +21,8 @@ export function SlideView({
   selectedElementId,
   resolveAsset = (value) => value,
   onSelectElement,
-  onEditText
+  onEditText,
+  onEditImage
 }: Props) {
   const background = slide.background ?? deck.layouts[slide.layout ?? ""]?.background ?? deck.theme.background;
   const visibleSlides = deck.slides.filter((item) => !item.hidden);
@@ -45,7 +47,10 @@ export function SlideView({
           selected={selectedElementId === element.id}
           resolveAsset={resolveAsset}
           onMouseDown={(event) => stop(event, element.id)}
-          onDoubleClick={() => element.type === "text" && onEditText?.(element.id)}
+          onDoubleClick={() => {
+            if (element.type === "text") onEditText?.(element.id);
+            if (element.type === "image") onEditImage?.(element.id);
+          }}
         />
       ))}
       {deck.pageNumbers.enabled && !slide.hidePageNumber && pageIndex >= 0 && (
@@ -68,7 +73,7 @@ function ElementView({
   element: SlideElement;
   interactive: boolean;
   selected: boolean;
-  resolveAsset: (source: string) => string;
+  resolveAsset: (source: string, storage: MediaStorage) => string;
   onMouseDown: (event: MouseEvent) => void;
   onDoubleClick: () => void;
 }) {
@@ -107,15 +112,15 @@ function ElementView({
           dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }}
         />
       )}
-      {element.type === "image" && <ImageView element={element} src={resolveAsset(element.src)} />}
+      {element.type === "image" && <ImageView element={element} src={resolveAsset(element.src, element.storage)} />}
       {element.type === "video" && (
         <video
-          src={resolveAsset(element.src)}
-          poster={element.poster ? resolveAsset(element.poster) : undefined}
-          autoPlay={element.playback.mode === "autoplay"}
+          src={resolveAsset(element.src, element.storage)}
+          poster={element.poster ? resolveAsset(element.poster, "embedded") : undefined}
+          autoPlay={interactive && element.playback.mode === "autoplay"}
           muted={element.playback.muted}
           loop={element.playback.loop}
-          controls={element.playback.controls}
+          controls={interactive && element.playback.controls}
           style={{ borderRadius: element.borderRadius }}
         />
       )}
@@ -137,7 +142,7 @@ function ElementView({
 function ImageView({ element, src }: { element: Extract<SlideElement, { type: "image" }>; src: string }) {
   const crop = element.crop;
   const fade = element.edgeFade > 0
-    ? `linear-gradient(to right, transparent 0, black ${element.edgeFade}px, black calc(100% - ${element.edgeFade}px), transparent 100%)`
+    ? `linear-gradient(to right, transparent 0, black ${element.edgeFade}px, black calc(100% - ${element.edgeFade}px), transparent 100%), linear-gradient(to bottom, transparent 0, black ${element.edgeFade}px, black calc(100% - ${element.edgeFade}px), transparent 100%)`
     : undefined;
   return (
     <div
@@ -146,8 +151,10 @@ function ImageView({ element, src }: { element: Extract<SlideElement, { type: "i
         borderRadius: element.borderRadius,
         border: `${element.border.width}px solid ${element.border.color}`,
         WebkitMaskImage: fade,
-        maskImage: fade
-      }}
+        WebkitMaskComposite: "source-in",
+        maskImage: fade,
+        maskComposite: "intersect"
+      } as CSSProperties}
     >
       <img
         src={src}

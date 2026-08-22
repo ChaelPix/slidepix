@@ -34,7 +34,9 @@ Private command helpers:
 | `present(document, presenter?)` | Validates, creates an authenticated loopback session, opens the audience browser, and optionally creates the presenter panel. |
 | `updatePanels` / `postDeck` | Reparse every document change and send either a valid deck or diagnostic while preserving the source text. |
 | `receive` | Validates protocol version and routes document replacement, import, save, export, presentation, and MCP commands. |
-| `importAsset` | Enforces the 100 MB limit, hashes bytes, chooses a safe extension, creates the asset directory, and writes deduplicated content. |
+| `importAsset` | Enforces the 100 MB limit and stores clipboard/browser file bytes as deduplicated embedded content. |
+| `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
+| `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
 | `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP. |
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
@@ -48,13 +50,16 @@ would break the editor's undo/autosave/external-change lifecycle.
   for HTTP and WebSocket access, and sends initial state.
 - `url(pathname)` returns a tokenized loopback URL.
 - `command(next|previous|first|last)` clamps visible-slide state and broadcasts
-  only when the index changes, so boundary navigation cannot reset animations.
+  only when the index changes. Forward navigation initializes entrance state;
+  backward navigation completes the destination's timeline so a previously
+  visited slide is not an unexpectedly empty canvas.
 - `control(next|previous)` asks the connected audience to advance its current
   animation sequence before moving slides; without an audience it falls back
   to direct clamped navigation.
 - `dispose()` closes clients and the server.
 - Private routing serves `/audience`, `/print`, `/contact`, `/frame`, and safe
-  `/asset/<reference>` resources through core rendering and asset resolution.
+  `/asset/<reference>` resources through storage-aware core rendering and safe
+  embedded/workspace-linked resolution.
   `/frame` uses core's viewport-fitting frame mode for presenter previews and
   returns an explicit end-of-presentation frame for out-of-range indices.
 
@@ -63,6 +68,8 @@ the old frame atomically, preventing black flashes or stale rapid-click loads.
 
 Keep notes out of the audience document. New endpoints must retain token checks,
 `no-store`, MIME safety, and loopback-only binding.
+The audience runtime pauses every video on the slide being left and whenever
+the browser becomes hidden; autoplay media resumes only on the active slide.
 
 `src/presentation.test.ts` verifies boundary navigation, audience-less control
 fallback, and the explicit end-of-deck frame.

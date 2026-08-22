@@ -24,7 +24,8 @@ the task; this keeps context small while making ownership explicit.
 ```text
 talk.slidepix.json ── CustomTextEditorProvider ── versioned messages ── React webview
        │                         │                                      │
-       │                         ├── asset import → talk.assets/        └── visual edits
+       │                         ├── link workspace media               └── visual edits
+       │                         ├── embed copy → talk.assets/
        │                         └── WorkspaceEdit ← serialized deck         │
        └──────────────────────────────────────────────────────────────────────┘
 
@@ -63,8 +64,10 @@ Detailed ownership and method contracts:
    future schema versions are rejected without overwriting the source.
 3. Element IDs are unique. Duplicating a slide creates new element IDs but
    preserves each `morphKey` so morph matching continues to work.
-4. Asset references use relative POSIX-style paths and may not escape the
-   sibling asset directory.
+4. Every media element declares `storage`. `embedded` references stay inside
+   the sibling asset directory; `linked` references stay relative and may only
+   resolve inside an open workspace root. All consumers receive the storage
+   mode explicitly and use the shared safe resolver.
 5. Editor changes cross the versioned protocol and become `WorkspaceEdit`s.
    Do not bypass the text-document lifecycle with `writeFile` for normal edits.
 6. Webview HTML keeps a restrictive content security policy and narrowly scoped
@@ -128,10 +131,9 @@ Do not assume every planned feature is complete. Current known gaps include:
 
 - selection is single-item; grouping, alignment, distribution, and rich guides
   are not implemented;
-- image crop uses normalized numeric fields, without graphical crop handles;
 - layouts exist in the schema but have no layout designer;
-- portable `.slidepix` archives, external asset linking, font importing, and
-  embedded fonts are not implemented;
+- portable `.slidepix` archives, font importing, and embedded fonts are not
+  implemented;
 - the text source editor is a textarea; CodeMirror and syntax-highlighted code
   output are not integrated;
 - automated VS Code custom-editor integration and Cursor smoke tests are still

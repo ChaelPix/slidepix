@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { URL } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
-import { renderDeckDocument, type AssetResolver, type Deck } from "@slidepix/core";
-import { resolveAssetPath } from "@slidepix/core/assets";
+import { renderDeckDocument, type AssetResolver, type Deck, type MediaStorage } from "@slidepix/core";
+import { resolveMediaPath } from "@slidepix/core/assets";
 
 const MIME: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
@@ -21,7 +21,8 @@ export class PresentationServer {
   constructor(
     readonly deck: Deck,
     readonly deckPath: string,
-    private readonly onState?: (index: number) => void
+    private readonly onState?: (index: number) => void,
+    private readonly allowedLinkedRoots: string[] = []
   ) {}
 
   async start(): Promise<void> {
@@ -29,7 +30,7 @@ export class PresentationServer {
     const websocket = new WebSocketServer({ noServer: true });
     websocket.on("connection", (socket) => {
       this.sockets.add(socket);
-      socket.send(JSON.stringify({ type: "state", index: this.index }));
+      socket.send(JSON.stringify({ type: "state", index: this.index, animationState: "initial" }));
       socket.on("message", (data) => this.handleCommand(String(data)));
       socket.on("close", () => this.sockets.delete(socket));
     });
@@ -58,7 +59,7 @@ export class PresentationServer {
     if (command === "previous") this.index = Math.max(0, this.index - 1);
     if (command === "first") this.index = 0;
     if (command === "last") this.index = Math.max(0, count - 1);
-    if (this.index !== previousIndex) this.broadcast();
+    if (this.index !== previousIndex) this.broadcast(command === "previous" ? "final" : "initial");
   }
 
   control(command: "next" | "previous"): void {
@@ -81,8 +82,8 @@ export class PresentationServer {
     } catch { /* ignore malformed client messages */ }
   }
 
-  private broadcast(): void {
-    const message = JSON.stringify({ type: "state", index: this.index });
+  private broadcast(animationState: "initial" | "final" = "initial"): void {
+    const message = JSON.stringify({ type: "state", index: this.index, animationState });
     for (const socket of this.sockets) if (socket.readyState === 1) socket.send(message);
     this.onState?.(this.index);
   }
@@ -93,11 +94,13 @@ export class PresentationServer {
     try {
       if (url.pathname.startsWith("/asset/")) {
         const reference = decodeURIComponent(url.pathname.slice("/asset/".length));
-        const filePath = resolveAssetPath(this.deckPath, reference);
+        const storage: MediaStorage = url.searchParams.get("storage") === "linked" ? "linked" : "embedded";
+        const roots = this.allowedLinkedRoots.length ? this.allowedLinkedRoots : undefined;
+        const filePath = resolveMediaPath(this.deckPath, reference, storage, roots);
         const bytes = await readFile(filePath);
         return send(response, 200, MIME[extname(filePath).toLowerCase()] ?? "application/octet-stream", bytes);
       }
-      const asset = (reference: string) => this.url(`/asset/${encodeURIComponent(reference)}`);
+      const asset: AssetResolver = (reference, storage) => `${this.url(`/asset/${encodeURIComponent(reference)}`)}&storage=${storage}`;
       if (url.pathname === "/audience") {
         const html = renderDeckDocument(this.deck, asset, { mode: "present" }).replace("</body>", `${audienceBridge(this.port, this.token)}</body>`);
         return send(response, 200, "text/html; charset=utf-8", html);
@@ -119,7 +122,7 @@ export class PresentationServer {
 }
 
 function audienceBridge(port: number, token: string): string {
-  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='state')window.slidepixShow?.(m.index);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
+  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='state')window.slidepixShow?.(m.index,m.animationState);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
 }
 
 export function renderPresenterFrame(deck: Deck, index: number, resolveAsset: AssetResolver = (value) => value): string {

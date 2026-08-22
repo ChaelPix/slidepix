@@ -30,6 +30,7 @@ version bump must include an explicit migration strategy.
 | `deckAssetDirectory(deckPath)` | Maps `talk.slidepix.json` to sibling `talk.assets`. |
 | `normalizeAssetReference(reference)` | Converts backslashes to POSIX separators and removes one leading `./`. |
 | `resolveAssetPath(deckPath, reference)` | Resolves inside the asset root and rejects absolute, empty, NUL, or escaping paths. |
+| `resolveMediaPath(deckPath, reference, storage, allowedLinkedRoots?)` | Resolves embedded media through the asset root or linked media through an allowlist of workspace roots. |
 
 All extension, presentation, export, and MCP asset reads must use these helpers.
 Add security tests for path-handling changes.
@@ -41,7 +42,7 @@ Add security tests for path-handling changes.
 | `renderMarkdown(source)` | Produces sanitized HTML from Markdown with KaTeX/MathML and deterministic Highlight.js code tokens. Raw HTML is disabled; links receive safe attributes. |
 | `renderSlideMarkup(deck, slide, visibleIndex, resolveAsset?)` | Produces one positioned logical slide with all supported element types. |
 | `renderDeckDocument(deck, resolveAsset?, options?)` | Produces a standalone document for `present`, `frame`, `print`, or `contact` mode, including shared CSS and the relevant viewport/motion runtime. |
-| `AssetResolver` | Maps a stored asset reference to a webview URL, loopback URL, or data URI without changing render logic. |
+| `AssetResolver` | Maps `(reference, storage)` to a webview URL, loopback URL, or data URI without changing render logic. Never infer storage from the path string. |
 
 The React canvas has a separate component tree because it needs interaction,
 but it must match this renderer's visual semantics. Any field that changes how
@@ -72,6 +73,6 @@ reach into `src`.
 `src/schema.test.ts` covers deck creation, round-trip serialization, invalid
 JSON, future schema versions, morph-key duplication, and asset traversal.
 `src/render.test.ts` covers presenter-frame selection/fitting, presentation
-boundary idempotence, negative layers, print pagination CSS, and syntax
-highlighting. Put pure core regressions here before using slower integration
-tests.
+animation state and video lifecycle, negative layers, print pagination CSS,
+syntax highlighting, four-sided image fades, and resolver storage routing. Put
+pure core regressions here before using slower integration tests.

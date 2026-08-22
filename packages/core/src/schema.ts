@@ -65,9 +65,12 @@ export const borderSchema = z.object({
   color: color.default("transparent")
 });
 
+export const mediaStorageSchema = z.enum(["embedded", "linked"]);
+
 export const imageElementSchema = baseElementSchema.extend({
   type: z.literal("image"),
   src: z.string().min(1),
+  storage: mediaStorageSchema.default("embedded"),
   crop: cropSchema.default({ x: 0, y: 0, width: 1, height: 1 }),
   borderRadius: nonNegative.default(0),
   edgeFade: nonNegative.default(0),
@@ -77,6 +80,7 @@ export const imageElementSchema = baseElementSchema.extend({
 export const videoElementSchema = baseElementSchema.extend({
   type: z.literal("video"),
   src: z.string().min(1),
+  storage: mediaStorageSchema.default("embedded"),
   poster: z.string().optional(),
   borderRadius: nonNegative.default(0),
   playback: z.object({
@@ -165,6 +169,7 @@ export type TextElement = z.infer<typeof textElementSchema>;
 export type ImageElement = z.infer<typeof imageElementSchema>;
 export type VideoElement = z.infer<typeof videoElementSchema>;
 export type ShapeElement = z.infer<typeof shapeElementSchema>;
+export type MediaStorage = z.infer<typeof mediaStorageSchema>;
 export type AnimationStep = z.infer<typeof animationStepSchema>;
 export type Transition = z.infer<typeof transitionSchema>;
 

@@ -501,6 +501,14 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "storage": {
+                      "default": "embedded",
+                      "type": "string",
+                      "enum": [
+                        "embedded",
+                        "linked"
+                      ]
+                    },
                     "crop": {
                       "default": {
                         "x": 0,
@@ -592,6 +600,7 @@
                     "hidden",
                     "type",
                     "src",
+                    "storage",
                     "crop",
                     "borderRadius",
                     "edgeFade",
@@ -662,6 +671,14 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "storage": {
+                      "default": "embedded",
+                      "type": "string",
+                      "enum": [
+                        "embedded",
+                        "linked"
+                      ]
+                    },
                     "poster": {
                       "type": "string"
                     },
@@ -717,6 +734,7 @@
                     "hidden",
                     "type",
                     "src",
+                    "storage",
                     "borderRadius",
                     "playback"
                   ],

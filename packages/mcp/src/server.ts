@@ -40,7 +40,7 @@ function buildServer(): McpServer {
       notes: slide.notes,
       transition: slide.transition,
       timeline: slide.timeline,
-      elements: slide.elements.map(({ id, morphKey, type, x, y, width, height, rotation, z, hidden, locked }) => ({ id, morphKey, type, x, y, width, height, rotation, z, hidden, locked }))
+      elements: slide.elements
     })), null, 2) }] };
   });
 
