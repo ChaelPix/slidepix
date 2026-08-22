@@ -101,7 +101,7 @@ Edit source files, then regenerate outputs with the documented commands.
 | `pnpm package` | Performs a full workspace build and creates the VSIX. |
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
 | `packages/extension/scripts/vendor-playwright.mjs` | Copies the installed `playwright-core` package into the extension bundle. |
-| `scripts/render-smoke.mjs [deck] [output]` | Uses installed Chromium to create a smoke-test PDF and PNG from a built deck. |
+| `scripts/render-smoke.mjs [deck] [output]` | Uses installed Chromium to create a smoke-test PDF, contact sheet, and exact-size single-slide PNG from a built deck. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 
 See [docs/development.md](docs/development.md) for prerequisites, exact commands,
@@ -134,8 +134,6 @@ Do not assume every planned feature is complete. Current known gaps include:
   embedded fonts are not implemented;
 - the text source editor is a textarea; CodeMirror and syntax-highlighted code
   output are not integrated;
-- presenter-driven next/previous can move slides without exhausting audience
-  animation steps;
 - automated VS Code custom-editor integration and Cursor smoke tests are still
   missing.
 

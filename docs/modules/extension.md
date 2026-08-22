@@ -49,25 +49,41 @@ would break the editor's undo/autosave/external-change lifecycle.
 - `url(pathname)` returns a tokenized loopback URL.
 - `command(next|previous|first|last)` clamps visible-slide state and broadcasts
   only when the index changes, so boundary navigation cannot reset animations.
+- `control(next|previous)` asks the connected audience to advance its current
+  animation sequence before moving slides; without an audience it falls back
+  to direct clamped navigation.
 - `dispose()` closes clients and the server.
 - Private routing serves `/audience`, `/print`, `/contact`, `/frame`, and safe
   `/asset/<reference>` resources through core rendering and asset resolution.
-  `/frame` uses core's viewport-fitting frame mode for presenter previews.
+  `/frame` uses core's viewport-fitting frame mode for presenter previews and
+  returns an explicit end-of-presentation frame for out-of-range indices.
+
+Presenter current/next iframes are double-buffered. A loaded preview replaces
+the old frame atomically, preventing black flashes or stale rapid-click loads.
 
 Keep notes out of the audience document. New endpoints must retain token checks,
 `no-store`, MIME safety, and loopback-only binding.
 
-`src/presentation.test.ts` verifies that boundary navigation does not broadcast
-an unchanged slide index and therefore cannot restart a completed timeline.
+`src/presentation.test.ts` verifies boundary navigation, audience-less control
+fallback, and the explicit end-of-deck frame.
+
+## `src/presenter.ts`
+
+`presenterHtml(session, deck)` builds the VS Code presenter panel without
+depending on the VS Code runtime, so its current/next double-buffer behavior is
+unit-testable in `src/presenter.test.ts`. Keep speaker notes in this private
+panel and out of audience HTML.
 
 ## `src/renderer.ts`
 
 - `installRenderer(context, forcePrompt?)` stores a pinned Chromium build under
   extension global storage and asks for consent before downloading.
 - `exportPdf(context, deck, deckPath)` prints `/print` at exact logical page
-  size with backgrounds.
-- `exportPng(context, deck, deckPath, slideIds?)` screenshots `/contact` for one
-  slide or a contact sheet.
+  size with backgrounds and caps the PDF page range to the visible-slide count,
+  preventing Chromium from retaining a trailing blank pagination page.
+- `exportPng(context, deck, deckPath, slideIds?)` screenshots the single slide
+  element at exact logical dimensions, or the full `/contact` page for a
+  multi-slide contact sheet.
 
 Both exporters must close the browser and server in `finally`. Playwright Core
 is vendored into the VSIX; OS-specific Chromium is not.

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { URL } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
-import { renderDeckDocument, type Deck } from "@slidepix/core";
+import { renderDeckDocument, type AssetResolver, type Deck } from "@slidepix/core";
 import { resolveAssetPath } from "@slidepix/core/assets";
 
 const MIME: Record<string, string> = {
@@ -61,6 +61,13 @@ export class PresentationServer {
     if (this.index !== previousIndex) this.broadcast();
   }
 
+  control(command: "next" | "previous"): void {
+    const message = JSON.stringify({ type: "control", command });
+    let delivered = false;
+    for (const socket of this.sockets) if (socket.readyState === 1) { socket.send(message); delivered = true; }
+    if (!delivered) this.command(command);
+  }
+
   dispose(): void {
     for (const socket of this.sockets) socket.close();
     this.server?.close();
@@ -102,9 +109,7 @@ export class PresentationServer {
         return send(response, 200, "text/html; charset=utf-8", renderDeckDocument(this.deck, asset, { mode: "contact", selectedSlideIds: ids, columns }));
       }
       if (url.pathname === "/frame") {
-        const slides = this.deck.slides.filter((slide) => !slide.hidden);
-        const target = slides[Number(url.searchParams.get("index")) || 0];
-        return send(response, 200, "text/html; charset=utf-8", renderDeckDocument(this.deck, asset, { mode: "frame", selectedSlideIds: target ? [target.id] : [] }));
+        return send(response, 200, "text/html; charset=utf-8", renderPresenterFrame(this.deck, Number(url.searchParams.get("index")) || 0, asset));
       }
       send(response, 404, "text/plain", "Not found");
     } catch (error) {
@@ -114,7 +119,18 @@ export class PresentationServer {
 }
 
 function audienceBridge(port: number, token: string): string {
-  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='state')window.slidepixShow?.(m.index)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
+  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='state')window.slidepixShow?.(m.index);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
+}
+
+export function renderPresenterFrame(deck: Deck, index: number, resolveAsset: AssetResolver = (value) => value): string {
+  const target = deck.slides.filter((slide) => !slide.hidden)[index];
+  return target
+    ? renderDeckDocument(deck, resolveAsset, { mode: "frame", selectedSlideIds: [target.id] })
+    : emptyFrameDocument();
+}
+
+function emptyFrameDocument(): string {
+  return "<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{height:100%;margin:0;background:#111827;color:#94a3b8;font:16px system-ui;display:grid;place-items:center}</style></head><body>End of presentation</body></html>";
 }
 
 function send(response: import("node:http").ServerResponse, status: number, contentType: string, body: string | Uint8Array): void {

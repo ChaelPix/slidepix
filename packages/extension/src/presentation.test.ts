@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDeck, duplicateSlide } from "@slidepix/core";
-import { PresentationServer } from "./presentation";
+import { PresentationServer, renderPresenterFrame } from "./presentation";
 
 describe("PresentationServer navigation", () => {
   it("broadcasts only when the visible slide index changes", () => {
@@ -15,5 +15,25 @@ describe("PresentationServer navigation", () => {
     server.command("previous");
 
     expect(states).toEqual([1, 0]);
+  });
+
+  it("renders a stable end-of-deck frame instead of accidentally rendering every slide", () => {
+    const deck = createDeck("Presenter frame boundary");
+    deck.slides.push(duplicateSlide(deck.slides[0]!));
+    const html = renderPresenterFrame(deck, 99);
+
+    expect(html).toContain("End of presentation");
+    expect(html).not.toContain("slidepix-slide");
+  });
+
+  it("falls back to slide navigation when presenter control has no audience connection", () => {
+    const deck = createDeck("Presenter fallback");
+    deck.slides.push(duplicateSlide(deck.slides[0]!));
+    const states: number[] = [];
+    const server = new PresentationServer(deck, "/unused.slidepix.json", (index) => states.push(index));
+
+    server.control("next");
+
+    expect(states).toEqual([1]);
   });
 });

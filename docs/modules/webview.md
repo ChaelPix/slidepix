@@ -50,7 +50,16 @@ local filesystem paths in the webview.
 - Clicking a transition gap changes the destination slide's incoming
   transition.
 - Text editing is available by double-clicking a text element or using
-  **Edit Markdown · LaTeX · Code…** in Properties.
+  **Edit Markdown · LaTeX · Code…** in Properties. The editor includes a live
+  rendered preview using the shared core Markdown renderer.
+- Properties starts with the editable element `name`; immutable IDs remain the
+  timeline reference. Missing names display as `<type>-<id prefix>`.
+- Animation cards identify their target by element name, show click grouping,
+  and follow timeline array order from top to bottom.
+- Ctrl/Cmd plus mouse wheel and the bottom slider adjust canvas zoom. Speaker
+  notes can collapse to a compact header without changing persisted notes.
+- Checkbox fields use an explicit horizontal row so narrow inspectors do not
+  separate the control from its label.
 - All persistent changes go through `mutate`; selections, zoom, open tabs, and
   modal state stay transient.
 - App-wide canvas paste handling ignores inputs, textareas, selects, and
@@ -58,6 +67,9 @@ local filesystem paths in the webview.
   edits that field instead of creating a new slide element.
 
 ## Verification
+
+Vite uses a relative asset base so bundled Codicon and KaTeX fonts resolve from
+the VS Code webview origin instead of appearing as missing-glyph squares.
 
 Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a

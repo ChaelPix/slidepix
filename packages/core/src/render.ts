@@ -1,16 +1,40 @@
 import MarkdownIt from "markdown-it";
+import hljs from "highlight.js/lib/core";
+import bash from "highlight.js/lib/languages/bash";
+import c from "highlight.js/lib/languages/c";
+import cpp from "highlight.js/lib/languages/cpp";
+import cssLanguage from "highlight.js/lib/languages/css";
+import java from "highlight.js/lib/languages/java";
+import javascript from "highlight.js/lib/languages/javascript";
+import json from "highlight.js/lib/languages/json";
+import markdownLanguage from "highlight.js/lib/languages/markdown";
+import python from "highlight.js/lib/languages/python";
+import rust from "highlight.js/lib/languages/rust";
+import typescript from "highlight.js/lib/languages/typescript";
+import xml from "highlight.js/lib/languages/xml";
 // markdown-it-katex does not publish TypeScript declarations.
 // @ts-ignore The plugin follows MarkdownIt's standard PluginSimple shape.
 import markdownItKatex from "markdown-it-katex";
 import type { Deck, ImageElement, Slide, SlideElement } from "./schema.js";
+
+for (const [name, language] of Object.entries({ bash, c, cpp, css: cssLanguage, java, javascript, json, markdown: markdownLanguage, python, rust, typescript, xml })) {
+  hljs.registerLanguage(name, language);
+}
+hljs.registerAliases(["sh", "shell", "zsh"], { languageName: "bash" });
+hljs.registerAliases(["js", "jsx"], { languageName: "javascript" });
+hljs.registerAliases(["ts", "tsx"], { languageName: "typescript" });
+hljs.registerAliases(["html", "svg"], { languageName: "xml" });
 
 const markdown = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
   highlight(code, language) {
-    const lang = escapeHtml(language || "text");
-    return `<pre class="slidepix-code" data-language="${lang}"><code>${escapeHtml(code)}</code></pre>`;
+    const requested = language.trim().toLowerCase();
+    const selected = requested && hljs.getLanguage(requested) ? requested : undefined;
+    const highlighted = selected ? hljs.highlight(code, { language: selected }) : hljs.highlightAuto(code);
+    const lang = escapeHtml((selected ?? requested) || "text");
+    return `<pre class="slidepix-code" data-language="${lang}"><code class="hljs">${highlighted.value}</code></pre>`;
   }
 }).use(markdownItKatex, { output: "mathml", throwOnError: false });
 
@@ -102,12 +126,13 @@ function baseStyles(deck: Deck, mode: string, columns: number): string {
 @import url("data:text/css,");
 *{box-sizing:border-box}html,body{margin:0;background:#020617;color:${css(deck.theme.foreground)};font-family:${css(deck.theme.fontFamily)}}
 main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.size.width}px);gap:32px;padding:32px;width:max-content` : ""}}
-.slidepix-slide{position:relative;overflow:hidden;page-break-after:always;break-after:page}
+.slidepix-slide{position:relative;overflow:hidden;isolation:isolate;page-break-inside:avoid;break-inside:avoid}
 .slidepix-element{position:absolute;transform-origin:center center;overflow:visible}
 .slidepix-text-content{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
 .slidepix-text-content>*:first-child{margin-top:0}.slidepix-text-content>*:last-child{margin-bottom:0}
 .slidepix-text-content h1,.slidepix-text-content h2,.slidepix-text-content h3{line-height:1.08;margin:.25em 0}.slidepix-text-content h1{font-size:1.3em}.slidepix-text-content h2{font-size:1.15em}.slidepix-text-content h3{font-size:1em}
 .slidepix-code{padding:.45em .6em;border-radius:.25em;background:#111827;color:#e2e8f0;white-space:pre-wrap;overflow:hidden}
+.slidepix-code .hljs-keyword,.slidepix-code .hljs-selector-tag,.slidepix-code .hljs-literal{color:#c084fc}.slidepix-code .hljs-string,.slidepix-code .hljs-attr{color:#a7f3d0}.slidepix-code .hljs-number,.slidepix-code .hljs-symbol{color:#fbbf24}.slidepix-code .hljs-title,.slidepix-code .hljs-function .hljs-title{color:#7dd3fc}.slidepix-code .hljs-built_in,.slidepix-code .hljs-type{color:#f9a8d4}.slidepix-code .hljs-comment,.slidepix-code .hljs-quote{color:#94a3b8;font-style:italic}.slidepix-code .hljs-meta{color:#fb923c}.slidepix-code .hljs-variable,.slidepix-code .hljs-params{color:#e2e8f0}
 .katex{font-size:1em}.katex-display{display:block;margin:.4em 0;text-align:center}.katex-html{display:none!important}.katex-mathml{display:inline-block}.katex-display .katex-mathml{display:block}.katex-mathml annotation{display:none}
 .slidepix-image-clip,.slidepix-image-clip img,.slidepix-video video,.slidepix-shape-content{position:absolute;width:100%;height:100%}
 .slidepix-image-clip{overflow:hidden}.slidepix-image-clip img{max-width:none;object-fit:fill}

@@ -38,7 +38,7 @@ Add security tests for path-handling changes.
 
 | Export | Contract |
 | --- | --- |
-| `renderMarkdown(source)` | Produces sanitized HTML from Markdown with KaTeX/MathML. Raw HTML is disabled; links receive safe attributes. |
+| `renderMarkdown(source)` | Produces sanitized HTML from Markdown with KaTeX/MathML and deterministic Highlight.js code tokens. Raw HTML is disabled; links receive safe attributes. |
 | `renderSlideMarkup(deck, slide, visibleIndex, resolveAsset?)` | Produces one positioned logical slide with all supported element types. |
 | `renderDeckDocument(deck, resolveAsset?, options?)` | Produces a standalone document for `present`, `frame`, `print`, or `contact` mode, including shared CSS and the relevant viewport/motion runtime. |
 | `AssetResolver` | Maps a stored asset reference to a webview URL, loopback URL, or data URI without changing render logic. |
@@ -47,6 +47,12 @@ The React canvas has a separate component tree because it needs interaction,
 but it must match this renderer's visual semantics. Any field that changes how
 an element looks should be implemented and tested in both `render.ts` and
 `packages/webview/src/SlideView.tsx`.
+
+Slides are isolated stacking contexts: their background paints below every
+element, including deliberately negative `z` values. Print mode relies on each
+slide's exact page height and avoids breaks inside slides; it does not force an
+after-break that could create a trailing blank PDF page. Shared code-token
+classes and colors are consumed by editor, presentation, export, and MCP.
 
 ### `src/protocol.ts`
 
@@ -65,6 +71,7 @@ reach into `src`.
 
 `src/schema.test.ts` covers deck creation, round-trip serialization, invalid
 JSON, future schema versions, morph-key duplication, and asset traversal.
-`src/render.test.ts` covers presenter-frame selection/fitting and presentation
-boundary idempotence. Put pure core regressions here before using slower
-integration tests.
+`src/render.test.ts` covers presenter-frame selection/fitting, presentation
+boundary idempotence, negative layers, print pagination CSS, and syntax
+highlighting. Put pure core regressions here before using slower integration
+tests.

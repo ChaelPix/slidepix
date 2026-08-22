@@ -2,6 +2,7 @@ import Moveable from "react-moveable";
 import { useEffect, useRef, useState } from "react";
 import {
   duplicateSlide,
+  renderMarkdown,
   type AnimationStep,
   type Deck,
   type HostToWebviewMessage,
@@ -21,6 +22,7 @@ export default function App() {
   const store = useDeckStore();
   const [tab, setTab] = useState<Tab>("properties");
   const [editingTextId, setEditingTextId] = useState<string>();
+  const [notesCollapsed, setNotesCollapsed] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
 
@@ -65,7 +67,7 @@ export default function App() {
     if (!reference) return;
     store.mutate((draft) => {
       const targetSlide = draft.slides.find((item) => item.id === slide.id)!;
-      const common = baseElement(targetSlide.elements.length);
+      const common = baseElement(targetSlide.elements.length, kind);
       targetSlide.elements.push(kind === "image"
         ? { ...common, type: "image", src: reference, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: file.name }
         : { ...common, type: "video", src: reference, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true } });
@@ -73,13 +75,13 @@ export default function App() {
   };
 
   const addText = () => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
-    ...baseElement(slide.elements.length),
+    ...baseElement(slide.elements.length, "text"),
     type: "text",
     markdown: "Double-click to edit",
     style: { fontFamily: deck.theme.fontFamily, fontSize: 48, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
   }));
   const addShape = (shape: "rectangle" | "ellipse" | "triangle") => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
-    ...baseElement(slide.elements.length), type: "shape", shape, fill: deck.theme.accent, stroke: "transparent", strokeWidth: 0, borderRadius: 0
+    ...baseElement(slide.elements.length, "shape"), type: "shape", shape, fill: deck.theme.accent, stroke: "transparent", strokeWidth: 0, borderRadius: 0
   }));
 
   return (
@@ -96,7 +98,7 @@ export default function App() {
       else if (event.clipboardData.getData("text/plain")) {
         const text = event.clipboardData.getData("text/plain");
         store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
-          ...baseElement(slide.elements.length), type: "text", markdown: text,
+          ...baseElement(slide.elements.length, "text"), type: "text", markdown: text,
           style: { fontFamily: deck.theme.fontFamily, fontSize: 42, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
         }));
       }
@@ -113,8 +115,12 @@ export default function App() {
       <input ref={imageInput} hidden type="file" accept="image/*" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0], "image")} />
       <input ref={videoInput} hidden type="file" accept="video/*" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0], "video")} />
       <SlideRail deck={deck} selectedId={slide.id} select={store.selectSlide} mutate={store.mutate} />
-      <main className="workspace">
-        <div className="canvas-scroll">
+      <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
+        <div className="canvas-scroll" onWheel={(event) => {
+          if (!event.ctrlKey && !event.metaKey) return;
+          event.preventDefault();
+          store.setZoom(store.zoom * Math.exp(-event.deltaY * 0.002));
+        }}>
           <div className="canvas-frame" style={{ width: deck.size.width * store.zoom, height: deck.size.height * store.zoom }}>
             <div
               className="canvas-scale"
@@ -162,34 +168,50 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="notes"><label>Speaker notes</label><textarea value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} /></div>
+        <section className="notes">
+          <header className="notes-header">
+            <strong>Speaker notes</strong>
+            <button className="icon-button" title={notesCollapsed ? "Show speaker notes" : "Collapse speaker notes"} aria-label={notesCollapsed ? "Show speaker notes" : "Collapse speaker notes"} onClick={() => setNotesCollapsed((value) => !value)}>
+              <span className={`codicon codicon-chevron-${notesCollapsed ? "up" : "down"}`} />
+            </button>
+          </header>
+          {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} />}
+        </section>
       </main>
       <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} selectElement={store.selectElement} editText={setEditingTextId} />
-      <div className="zoom-control"><button onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><span>{Math.round(store.zoom * 100)}%</span><button onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
+      <div className="zoom-control" title="Ctrl/Cmd + mouse wheel also zooms the canvas"><button aria-label="Zoom out" onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><input aria-label="Canvas zoom" type="range" min="10" max="150" step="5" value={Math.round(store.zoom * 100)} onChange={(event) => store.setZoom(Number(event.target.value) / 100)} /><span>{Math.round(store.zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
       {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} mutate={store.mutate} close={() => setEditingTextId(undefined)} />}
     </div>
   );
 }
 
-function Toolbar({ deck, slide, addText, addShape, chooseImage, chooseVideo, selectedIds }: {
+function Toolbar({ slide, addText, addShape, chooseImage, chooseVideo }: {
   deck: Deck; slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; chooseImage(): void; chooseVideo(): void; selectedIds: string[];
 }) {
   return <header className="toolbar">
-    <div className="brand"><span className="codicon codicon-preview" /> SlidePix</div>
-    <button onClick={addText}><span className="codicon codicon-symbol-string" /> Text</button>
-    <button onClick={chooseImage}><span className="codicon codicon-file-media" /> Image</button>
-    <button onClick={chooseVideo}><span className="codicon codicon-device-camera-video" /> Video</button>
-    <select aria-label="Add shape" defaultValue="" onChange={(event) => { if (event.target.value) addShape(event.target.value as "rectangle" | "ellipse" | "triangle"); event.target.value = ""; }}>
-      <option value="" disabled>Shape…</option><option value="rectangle">Rectangle</option><option value="ellipse">Circle</option><option value="triangle">Triangle</option>
-    </select>
+    <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
+    <div className="ribbon-group"><span className="ribbon-label">Insert</span><div className="ribbon-actions">
+      <RibbonButton icon="symbol-string" label="Text" onClick={addText} />
+      <RibbonButton icon="file-media" label="Image" onClick={chooseImage} />
+      <RibbonButton icon="device-camera-video" label="Video" onClick={chooseVideo} />
+      <label className="ribbon-select"><span className="codicon codicon-symbol-structure" /><select aria-label="Add shape" defaultValue="" onChange={(event) => { if (event.target.value) addShape(event.target.value as "rectangle" | "ellipse" | "triangle"); event.target.value = ""; }}><option value="" disabled>Shape</option><option value="rectangle">Rectangle</option><option value="ellipse">Circle</option><option value="triangle">Triangle</option></select></label>
+    </div></div>
     <span className="toolbar-spacer" />
-    <button onClick={() => postMessage({ type: "command", command: "save" })}><span className="codicon codicon-save" /> Save</button>
-    <button onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })}>Export PNG</button>
-    <button onClick={() => postMessage({ type: "command", command: "exportPdf" })}>Export PDF</button>
-    <button onClick={() => postMessage({ type: "command", command: "configureMcp" })}>MCP</button>
-    <button className="primary" onClick={() => postMessage({ type: "command", command: "present" })}><span className="codicon codicon-play" /> Present</button>
-    <button onClick={() => postMessage({ type: "command", command: "presenter" })}>Presenter</button>
+    <div className="ribbon-group"><span className="ribbon-label">File &amp; export</span><div className="ribbon-actions">
+      <RibbonButton icon="save" label="Save" onClick={() => postMessage({ type: "command", command: "save" })} />
+      <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
+      <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
+      <RibbonButton icon="hubot" label="MCP" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
+    </div></div>
+    <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
+      <RibbonButton icon="play" label="Present" primary onClick={() => postMessage({ type: "command", command: "present" })} />
+      <RibbonButton icon="multiple-windows" label="Presenter" onClick={() => postMessage({ type: "command", command: "presenter" })} />
+    </div></div>
   </header>;
+}
+
+function RibbonButton({ icon, label, primary, onClick }: { icon: string; label: string; primary?: boolean; onClick(): void }) {
+  return <button className={`ribbon-button ${primary ? "primary" : ""}`} title={label} onClick={onClick}><span className={`codicon codicon-${icon}`} /><span>{label}</span></button>;
 }
 
 function SlideRail({ deck, selectedId, select, mutate }: { deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void }) {
@@ -230,6 +252,7 @@ function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, e
       {tab === "properties" && <>
         <h3>{element ? element.type : "Slide"}</h3>
         {element ? <>
+          <label>Element name<input autoComplete="off" value={element.name ?? ""} placeholder={elementLabel(element)} onChange={(event) => update({ name: event.target.value.trimStart() || undefined })} /></label>
           <div className="field-grid">
             <NumberField label="X" value={element.x} onChange={(x) => update({ x })} />
             <NumberField label="Y" value={element.y} onChange={(y) => update({ y })} />
@@ -256,38 +279,50 @@ function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, e
           </>}
           {element.type === "video" && <>
             <label>Playback<select value={element.playback.mode} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.mode = event.target.value as "manual" | "autoplay"; })}><option value="manual">Manual</option><option value="autoplay">Autoplay</option></select></label>
-            <label><input type="checkbox" checked={element.playback.muted} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.muted = event.target.checked; })} /> Muted</label>
-            <label><input type="checkbox" checked={element.playback.loop} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.loop = event.target.checked; })} /> Loop</label>
-            <label><input type="checkbox" checked={element.playback.controls} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.controls = event.target.checked; })} /> Controls</label>
+            <CheckboxField label="Muted" checked={element.playback.muted} onChange={(muted) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.muted = muted; })} />
+            <CheckboxField label="Loop" checked={element.playback.loop} onChange={(loop) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.loop = loop; })} />
+            <CheckboxField label="Controls" checked={element.playback.controls} onChange={(controls) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.controls = controls; })} />
           </>}
         </> : <>
           <label>Slide title<input value={slide.title} onChange={(event) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.title = event.target.value; })} /></label>
           <ColorField label="Background" value={slide.background ?? deck.theme.background} onChange={(background) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.background = background; })} />
-          <label><input type="checkbox" checked={slide.hidePageNumber} onChange={(event) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.hidePageNumber = event.target.checked; })} /> Hide page number</label>
+          <CheckboxField label="Hide page number" checked={slide.hidePageNumber} onChange={(hidePageNumber) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.hidePageNumber = hidePageNumber; })} />
         </>}
       </>}
       {tab === "layers" && <><h3>Layers</h3>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${item.id === element?.id ? "active" : ""}`} key={item.id} onClick={() => selectElement(item.id)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}>{item.locked ? "🔒" : "🔓"}</button><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}>{item.hidden ? "○" : "●"}</button><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}>↑</button><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}>↓</button></div>)}</>}
-      {tab === "animations" && <><h3>Animation timeline</h3><button disabled={!element} onClick={() => element && mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.push(defaultAnimation(element.id)))}>＋ Add entrance</button>{slide.timeline.map((step, index) => <AnimationRow key={step.id} step={step} index={index} mutate={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.timeline[index]!, patch))} remove={() => mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.splice(index, 1))} />)}</>}
+      {tab === "animations" && <><h3>Animation timeline</h3><p className="panel-help">Select an element, then add its entrance. The cards run from top to bottom.</p><button className="add-animation" disabled={!element} onClick={() => element && mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.push(defaultAnimation(element.id)))}>＋ Add entrance{element ? ` for ${elementLabel(element)}` : ""}</button><div className="animation-list">{slide.timeline.map((step, index) => <AnimationRow key={step.id} step={step} index={index} flowLabel={animationFlowLabel(slide.timeline, index)} element={slide.elements.find((item) => item.id === step.targetElementId)} selectElement={selectElement} mutate={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.timeline[index]!, patch))} remove={() => mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.splice(index, 1))} />)}</div></>}
     </div>
   </aside>;
 }
 
-function AnimationRow({ step, index, mutate, remove }: { step: AnimationStep; index: number; mutate(patch: Partial<AnimationStep>): void; remove(): void }) {
-  return <div className="animation-row"><strong>{index + 1}. {step.effect}</strong><select value={step.effect} onChange={(e) => mutate({ effect: e.target.value as AnimationStep["effect"] })}><option>appear</option><option>fade</option><option>fly</option></select><select value={step.trigger} onChange={(e) => mutate({ trigger: e.target.value as AnimationStep["trigger"] })}><option value="onClick">on click</option><option value="withPrevious">with previous</option><option value="afterPrevious">after previous</option></select><NumberField label="Delay ms" value={step.delayMs} onChange={(delayMs) => mutate({ delayMs })} /><NumberField label="Duration ms" value={step.durationMs} onChange={(durationMs) => mutate({ durationMs })} /><button onClick={remove}>Remove</button></div>;
+function AnimationRow({ step, index, flowLabel, element, selectElement, mutate, remove }: { step: AnimationStep; index: number; flowLabel: string; element?: SlideElement; selectElement(id?: string): void; mutate(patch: Partial<AnimationStep>): void; remove(): void }) {
+  return <div className="animation-row">
+    <header><span className="animation-index">{index + 1}</span><button className="animation-target" disabled={!element} onClick={() => selectElement(element?.id)}>{element ? elementLabel(element) : "Missing element"}</button><span className="animation-flow">{flowLabel}</span></header>
+    <div className="animation-summary">{step.phase} · {step.effect}</div>
+    <label>Effect<select value={step.effect} onChange={(e) => mutate({ effect: e.target.value as AnimationStep["effect"] })}><option>appear</option><option>fade</option><option>fly</option></select></label>
+    <label>Start<select value={step.trigger} onChange={(e) => mutate({ trigger: e.target.value as AnimationStep["trigger"] })}><option value="onClick">On click</option><option value="withPrevious">With previous</option><option value="afterPrevious">After previous</option></select></label>
+    {step.effect === "fly" && <label>Direction<select value={step.direction ?? "left"} onChange={(e) => mutate({ direction: e.target.value as NonNullable<AnimationStep["direction"]> })}><option>left</option><option>right</option><option>up</option><option>down</option></select></label>}
+    <div className="field-grid"><NumberField label="Delay ms" value={step.delayMs} onChange={(delayMs) => mutate({ delayMs })} /><NumberField label="Duration ms" value={step.durationMs} onChange={(durationMs) => mutate({ durationMs })} /></div><button className="danger-quiet" onClick={remove}>Remove animation</button>
+  </div>;
 }
 
 function TextEditor({ deck, slideId, elementId, mutate, close }: { deck: Deck; slideId: string; elementId: string; mutate(fn: (deck: Deck) => void): void; close(): void }) {
   const element = findElement(deck, slideId, elementId);
+  const slide = deck.slides.find((item) => item.id === slideId);
   if (element?.type !== "text") return null;
-  return <div className="modal-backdrop" onMouseDown={close}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={close}>Done</button></header><textarea autoFocus value={element.markdown} onChange={(event) => mutate((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; })} /><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks.</p></div></div>;
+  const background = slide?.background ?? deck.layouts[slide?.layout ?? ""]?.background ?? deck.theme.background;
+  return <div className="modal-backdrop" onMouseDown={close}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={close}>Done</button></header><textarea autoFocus value={element.markdown} onChange={(event) => mutate((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; })} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks.</p></div></div>;
 }
 
 function NumberField({ label, value, step = 1, onChange }: { label: string; value: number; step?: number; onChange(value: number): void }) { return <label>{label}<input type="number" value={Number.isFinite(value) ? value : 0} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange(value: string): void }) { return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
+function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
 function InvalidDeck({ message }: { message: string }) { return <div className="invalid"><h1>SlidePix could not open this deck</h1><pre>{message}</pre><p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p></div>; }
 
-function baseElement(z: number) { return { id: crypto.randomUUID(), morphKey: crypto.randomUUID(), x: 240, y: 240, width: 640, height: 360, rotation: 0, opacity: 1, z, locked: false, hidden: false } as const; }
+function baseElement(z: number, type: SlideElement["type"]) { const id = crypto.randomUUID(); return { id, name: `${type}-${id.slice(0, 4)}`, morphKey: crypto.randomUUID(), x: 240, y: 240, width: 640, height: 360, rotation: 0, opacity: 1, z, locked: false, hidden: false } as const; }
 function defaultAnimation(targetElementId: string): AnimationStep { return { id: crypto.randomUUID(), targetElementId, phase: "entrance", effect: "fade", trigger: "onClick", delayMs: 0, durationMs: 500, easing: "ease-out" }; }
+function elementLabel(element: SlideElement): string { return element.name?.trim() || `${element.type}-${element.id.slice(0, 4)}`; }
+function animationFlowLabel(timeline: AnimationStep[], index: number): string { const step = timeline[index]!; if (step.trigger === "withPrevious") return "With previous"; if (step.trigger === "afterPrevious") return "After previous"; return `Click ${timeline.slice(0, index + 1).filter((item) => item.trigger === "onClick").length}`; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }

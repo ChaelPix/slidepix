@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderDeckDocument } from "./render.js";
+import { renderDeckDocument, renderMarkdown } from "./render.js";
 import { createDeck, duplicateSlide } from "./schema.js";
 
 describe("shared document rendering", () => {
@@ -25,5 +25,20 @@ describe("shared document rendering", () => {
 
     expect(html).toContain("bounded===index&&slides[index]?.classList.contains('active')");
     expect(html).toContain("{fit();return}");
+  });
+
+  it("keeps negative layers above the slide background in every output", () => {
+    const html = renderDeckDocument(createDeck("Layers"));
+
+    expect(html).toContain(".slidepix-slide{position:relative;overflow:hidden;isolation:isolate;page-break-inside:avoid;break-inside:avoid}");
+    expect(html).not.toContain("page-break-after:always");
+  });
+
+  it("adds deterministic syntax highlighting to fenced code", () => {
+    const html = renderMarkdown("```python\ndef train(value):\n    return value + 1\n```");
+
+    expect(html).toContain('data-language="python"');
+    expect(html).toContain("hljs-keyword");
+    expect(html).toContain("hljs-title");
   });
 });

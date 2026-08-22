@@ -47,7 +47,8 @@ export async function exportPdf(context: vscode.ExtensionContext, deck: Deck, de
     const page = await browser.newPage();
     await page.goto(server.url("/print"), { waitUntil: "networkidle" });
     await page.emulateMedia({ media: "screen" });
-    await page.pdf({ path: destination.fsPath, width: `${deck.size.width}px`, height: `${deck.size.height}px`, printBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
+    const visibleSlideCount = Math.max(1, deck.slides.filter((slide) => !slide.hidden).length);
+    await page.pdf({ path: destination.fsPath, width: `${deck.size.width}px`, height: `${deck.size.height}px`, pageRanges: `1-${visibleSlideCount}`, printBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
     void vscode.window.showInformationMessage(`Exported ${path.basename(destination.fsPath)}`);
   } finally {
     await browser.close();
@@ -70,7 +71,11 @@ export async function exportPng(context: vscode.ExtensionContext, deck: Deck, de
     const page = await browser.newPage({ viewport: { width: Math.max(800, deck.size.width), height: Math.max(600, deck.size.height) }, deviceScaleFactor: 1 });
     const query = slideIds?.length ? `&ids=${encodeURIComponent(slideIds.join(","))}` : "";
     await page.goto(`${server.url("/contact")}${query}`, { waitUntil: "networkidle" });
-    await page.screenshot({ path: destination.fsPath, fullPage: true, type: "png" });
+    if (slideIds?.length === 1) {
+      await page.locator(".slidepix-slide").first().screenshot({ path: destination.fsPath, type: "png" });
+    } else {
+      await page.screenshot({ path: destination.fsPath, fullPage: true, type: "png" });
+    }
     void vscode.window.showInformationMessage(`Exported ${path.basename(destination.fsPath)}`);
   } finally {
     await browser.close();

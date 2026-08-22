@@ -5,6 +5,7 @@ import { parseDeckText, type Deck, type HostToWebviewMessage, type WebviewToHost
 import { deckAssetDirectory } from "@slidepix/core/assets";
 import { exportPdf, exportPng } from "./renderer";
 import { PresentationServer } from "./presentation";
+import { presenterHtml } from "./presenter";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -57,7 +58,10 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     }
     presenterPanel = vscode.window.createWebviewPanel("slidepix.presenter", "SlidePix Presenter", vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
     presenterPanel.webview.html = presenterHtml(session, parsed.deck);
-    presenterPanel.webview.onDidReceiveMessage((message: { command?: "next" | "previous" | "first" | "last" }) => message.command && session.command(message.command));
+    presenterPanel.webview.onDidReceiveMessage((message: { command?: "next" | "previous" | "first" | "last" }) => {
+      if (message.command === "next" || message.command === "previous") session.control(message.command);
+      else if (message.command) session.command(message.command);
+    });
     presenterPanel.onDidDispose(() => session.dispose());
     await vscode.env.openExternal(vscode.Uri.parse(session.url("/audience")));
   }
@@ -134,11 +138,3 @@ function safeExtension(name: string, mime: string): string {
   const known: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov" };
   return known[mime] ?? ".bin";
 }
-
-function presenterHtml(session: PresentationServer, deck: Deck): string {
-  const nonce = crypto.randomUUID().replaceAll("-", "");
-  const frame = (index: number) => `${session.url("/frame")}&index=${index}`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http://127.0.0.1:${session.port}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background);padding:16px;margin:0}.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}iframe{width:100%;aspect-ratio:${deck.size.width}/${deck.size.height};border:1px solid var(--vscode-panel-border);background:#000}.controls{display:flex;gap:8px;margin:14px 0}button{padding:8px 12px}pre{white-space:pre-wrap;font-family:inherit}.timer{font-size:22px;font-variant-numeric:tabular-nums}</style></head><body><div class="grid"><div><h3>Current</h3><iframe id="current" src="${frame(0)}"></iframe></div><div><h3>Next</h3><iframe id="next" src="${frame(1)}"></iframe></div></div><div class="controls"><button data-command="first">First</button><button data-command="previous">Previous</button><button data-command="next">Next</button><button data-command="last">Last</button><span class="timer" id="timer">00:00</span><button id="reset">Reset timer</button></div><h3>Notes</h3><pre id="notes">${escapeHtml(deck.slides.filter(s=>!s.hidden)[0]?.notes ?? "")}</pre><script nonce="${nonce}">const vscode=acquireVsCodeApi(),slides=${JSON.stringify(deck.slides.filter(s=>!s.hidden).map(s=>({notes:s.notes})))},base=${JSON.stringify(session.url("/frame"))};let started=Date.now();document.querySelectorAll('[data-command]').forEach(b=>b.onclick=()=>vscode.postMessage({command:b.dataset.command}));document.getElementById('reset').onclick=()=>started=Date.now();setInterval(()=>{const s=Math.floor((Date.now()-started)/1000);document.getElementById('timer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')},500);addEventListener('message',e=>{if(e.data.type!=='state')return;const i=e.data.index;document.getElementById('current').src=base+'&index='+i;document.getElementById('next').src=base+'&index='+(i+1);document.getElementById('notes').textContent=slides[i]?.notes||''});</script></body></html>`;
-}
-
-function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character); }
