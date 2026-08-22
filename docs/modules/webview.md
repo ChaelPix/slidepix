@@ -57,11 +57,12 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Clicking a transition gap opens a visual editor for the destination slide's
   incoming transition and duration.
 - Selecting an image exposes canvas handles for radius and four-sided edge
-  fade. Double-clicking enters a persistent crop mode; drag pans the normalized
-  crop, the lower-right crop handle zooms, and the crop toolbar provides
-  zoom-out, zoom-in, reset, and explicit Done controls. Properties also exposes
-  crop zoom, image border width/color, and edge fade. Videos expose only the
-  shared radius handle.
+  fade. The fade uses the same geometry-derived rounded SVG mask in editor and
+  export, so it follows the configured corner radius. Double-clicking enters a
+  persistent crop mode that shows the image outside the crop window. Drag pans;
+  wheel zoom anchors under the pointer; the diagonal handle and toolbar slider
+  preserve the current normalized crop ratio. The toolbar also provides reset
+  and explicit Done controls. Videos expose only the shared radius handle.
 - Workspace media is linked by default. Properties embeds one selected item;
   **Embed all** embeds every linked image/video in the deck.
 - Copy/cut writes a typed SlidePix clipboard payload plus a private marker.
@@ -70,9 +71,10 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Text editing is available by double-clicking a text element or using
   **Edit Markdown · LaTeX · Code…** in Properties. The editor includes a live
   rendered preview using the shared core Markdown renderer.
-- Font family uses a native select populated with system-font stacks that are
-  available in the webview. Persisted custom families remain selectable for
-  portability; users do not need to type a CSS font stack for normal use.
+- Font family uses a portable select plus a host-native **System fonts…** quick
+  picker. The extension scans platform font directories and returns the chosen
+  CSS family through a typed request/response message, avoiding the unreliable
+  Local Font Access API inside VS Code/Cursor webviews.
 - The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,
   add/remove row and column actions, a header toggle, typography, and
   transparent header/cell/border colors. Limits match the core schema.
@@ -86,10 +88,13 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   timeline reference. Missing names display as `<type>-<id prefix>`.
 - Animation cards identify their target by element name, show click grouping,
   and follow timeline array order from top to bottom.
-- Ctrl/Cmd plus mouse wheel and the bottom slider adjust canvas zoom. Speaker
+- Ctrl/Cmd plus mouse wheel and the top-right slider adjust canvas zoom. Speaker
   notes can collapse to a compact header without changing persisted notes.
 - Checkbox fields use an explicit horizontal row so narrow inspectors do not
   separate the control from its label.
+- Numeric Properties fields use large decrement/increment targets, select their
+  value on focus, support focused-wheel adjustment, and use Shift for ×10 or
+  Alt for ×0.1 nudges. Range properties use a visible card and slider.
 - All persistent changes go through `mutate`; selections, zoom, open tabs, and
   modal state stay transient.
 - App-wide canvas paste handling ignores inputs, textareas, selects, and

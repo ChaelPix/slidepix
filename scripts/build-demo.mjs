@@ -29,6 +29,10 @@ const image = (id, name, x, y, width, height, crop, radius, fade, border, morphK
 const shape = (id, name, kind, x, y, width, height, fill, radius = 0, stroke = "transparent", strokeWidth = 0, morphKey = id) => ({
   ...common(id, name, x, y, width, height, 1, morphKey), type: "shape", shape: kind, fill, stroke, strokeWidth, borderRadius: radius
 });
+const table = (id, name, x, y, width, height, cells) => ({
+  ...common(id, name, x, y, width, height, 2), type: "table", rows: cells.length, columns: cells[0]?.length ?? 1, cells, headerRow: true,
+  style: { fontFamily: font, fontSize: 28, fontWeight: 450, color: ink, headerFill: "#dbeafe", cellFill: "transparent", borderColor: "#93c5fd", borderWidth: 3, textAlign: "left", verticalAlign: "middle", padding: 16 }
+});
 const transition = (type, durationMs = 650) => ({ type, durationMs, easing: "ease-in-out" });
 const animation = (id, targetElementId, effect, trigger = "onClick", direction, delayMs = 0, durationMs = 500) => ({
   id, targetElementId, phase: "entrance", effect, trigger, ...(direction ? { direction } : {}), delayMs, durationMs, easing: "ease-out"
@@ -61,6 +65,22 @@ const slides = [
       shape("e02-card", "git-friendly-card", "rectangle", 1260, 260, 500, 420, "#ffffff", 36, "#dbeafe", 5),
       text("e02-card-copy", "git-friendly-copy", "## Human-readable\n\n- visual editing\n- stable JSON\n- relative assets\n- clean diffs", 1320, 320, 380, 330, 34, ink, 520),
       text("e02-result", "source-of-truth", "**The canvas and the file stay in sync.**", 1260, 755, 510, 130, 32, coral, 750, "center")
+    ]
+  },
+  {
+    id: "demo-table", title: "Tables and shape styling", background: "#ffffff", hidden: false, hidePageNumber: false,
+    notes: "Tables use Markdown cells, centered headers, transparent fills, and the same renderer in the editor and every export.", transition: transition("slide-down", 700), timeline: [],
+    elements: [
+      text("e-table-title", "table-title", "# Structured data, still visual", 105, 65, 1600, 130, 62, ink, 760),
+      table("e-table", "feature-table", 110, 245, 1080, 580, [
+        ["**Capability**", "**Canvas**", "**Export**"],
+        ["Markdown + $x^2$", "Live", "Exact"],
+        ["Transparent cells", "Editable", "Portable"],
+        ["Rows / columns", "One click", "Stable JSON"]
+      ]),
+      { ...shape("e-table-card", "transparent-shadow-card", "rectangle", 1300, 260, 500, 470, "transparent", 54, blue, 7), shadow: { enabled: true, color: "#0f172a40", offsetX: 22, offsetY: 28, blur: 34 } },
+      text("e-table-card-copy", "table-card-copy", "## Designed on canvas\n\n- centered headers\n- transparent paint\n- soft shape shadow\n- Markdown cells", 1370, 335, 360, 320, 33, ink, 520),
+      text("e-table-caption", "table-caption", "**Add or remove rows and columns from Properties.**", 1220, 825, 650, 80, 28, coral, 720, "center")
     ]
   },
   {

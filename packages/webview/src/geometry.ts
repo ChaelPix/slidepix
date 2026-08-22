@@ -18,11 +18,17 @@ export function cropZoomPercent(crop: ImageCrop): number {
 }
 
 export function scaleCrop(crop: ImageCrop, factor: number): ImageCrop {
-  const centerX = crop.x + crop.width / 2;
-  const centerY = crop.y + crop.height / 2;
+  return scaleCropAround(crop, factor, 0.5, 0.5);
+}
+
+export function scaleCropAround(crop: ImageCrop, factor: number, anchorX: number, anchorY: number): ImageCrop {
+  const safeAnchorX = clamp(anchorX, 0, 1);
+  const safeAnchorY = clamp(anchorY, 0, 1);
+  const sourceX = crop.x + crop.width * safeAnchorX;
+  const sourceY = crop.y + crop.height * safeAnchorY;
   const width = clamp(crop.width * factor, 0.05, 1);
   const height = clamp(crop.height * factor, 0.05, 1);
-  return { x: clamp(centerX - width / 2, 0, 1 - width), y: clamp(centerY - height / 2, 0, 1 - height), width, height };
+  return { x: clamp(sourceX - width * safeAnchorX, 0, 1 - width), y: clamp(sourceY - height * safeAnchorY, 0, 1 - height), width, height };
 }
 
 export function setCropZoom(crop: ImageCrop, percent: number): ImageCrop {

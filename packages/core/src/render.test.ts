@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderDeckDocument, renderMarkdown } from "./render.js";
+import { renderDeckDocument, renderMarkdown, roundedEdgeFadeMask } from "./render.js";
 import { createDeck, duplicateSlide, elementSchema } from "./schema.js";
 
 describe("shared document rendering", () => {
@@ -38,9 +38,28 @@ describe("shared document rendering", () => {
 
   it("initializes the destination timeline before starting its morph animations", () => {
     const html = renderDeckDocument(createDeck("Morph ordering"), undefined, { mode: "present" });
-    const stateIndex = html.indexOf("animationState==='final'?finish():reset();if(t.type==='morph')");
+    const stateIndex = html.indexOf("animationState==='final'?finish():reset()");
+    const morphIndex = html.indexOf("if(t.type==='morph')", stateIndex);
 
     expect(stateIndex).toBeGreaterThan(-1);
+    expect(morphIndex).toBeGreaterThan(stateIndex);
+  });
+
+  it("pushes the real outgoing and incoming slides without a dark fallback", () => {
+    const deck = createDeck("Slide transition");
+    const second = duplicateSlide(deck.slides[0]!);
+    second.transition = { type: "slide-left", durationMs: 700, easing: "ease-in-out" };
+    deck.slides.push(second);
+
+    const html = renderDeckDocument(deck, undefined, { mode: "present" });
+
+    expect(html).toContain("html,body{margin:0;background:#ffffff");
+    expect(html).not.toContain("background:#020617");
+    expect(html).toContain(".slidepix-slide.active,.mode-present .slidepix-slide.transitioning{display:block}");
+    expect(html).toContain("function slideTransition(current,previous,transition)");
+    expect(html).toContain("previous.animate([{transform:priorBase}");
+    expect(html).toContain("direction==='left'?['-100%','0']");
+    expect(html).toContain("fit();if(t.type==='morph')");
   });
 
   it("keeps negative layers above the slide background in every output", () => {
@@ -69,8 +88,17 @@ describe("shared document rendering", () => {
     const html = renderDeckDocument(deck, (reference, storage) => { calls.push(`${storage}:${reference}`); return reference; });
 
     expect(calls).toContain("linked:media/chart.png");
-    expect(html).toContain("linear-gradient(to bottom");
-    expect(html).toContain("mask-composite:intersect");
+    expect(html).toContain("data:image/svg+xml");
+    expect(html).toContain("feGaussianBlur");
+    expect(html).toContain("mask-size:100% 100%");
+  });
+
+  it("builds a rounded edge-fade mask from element geometry", () => {
+    const mask = roundedEdgeFadeMask(600, 400, 80, 50);
+
+    expect(mask).toContain(encodeURIComponent('viewBox="0 0 600 400"'));
+    expect(mask).toContain(encodeURIComponent('rx="44"'));
+    expect(roundedEdgeFadeMask(600, 400, 80, 0)).toBeUndefined();
   });
 
   it("keeps editor font sizes literal and disables browser text autoscaling", () => {
@@ -111,6 +139,7 @@ describe("shared document rendering", () => {
     expect(html).toContain('class="slidepix-table-content"');
     expect(html.match(/<th /g)).toHaveLength(2);
     expect(html.match(/<td /g)).toHaveLength(2);
+    expect(html.match(/<th style="[^"]*text-align:center/g)).toHaveLength(2);
     expect(html).toContain("<strong>Name</strong>");
     expect(html).toContain("<math");
   });

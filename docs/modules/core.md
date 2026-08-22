@@ -57,18 +57,25 @@ classes and colors are consumed by editor, presentation, export, and MCP.
 Text keeps its declared logical pixel size in every output: editor and
 standalone documents use the same `slidepix-text-content` typography contract
 and disable browser text autoscaling. Tables render cell Markdown through the
-same sanitizer. Shape shadows use CSS drop shadows so triangles and ellipses
-follow their silhouette.
+same sanitizer and center header cells independently of body alignment. Image
+edge fade is a geometry-derived blurred rounded-rectangle SVG mask shared with
+the editor, so it follows corner radius rather than producing square corners.
+Shape shadows use CSS drop shadows so triangles and ellipses follow their
+silhouette.
 Presentation state is initialized before a destination morph starts; otherwise
 timeline reset would immediately cancel the new Web Animations. The runtime
-also tolerates browsers that omit `Element.getAnimations`.
+also tolerates browsers that omit `Element.getAnimations`. Directional slide
+transitions keep both complete slides mounted and push them together across an
+absolutely positioned, clipped stage; the document and letterbox background is
+the deck theme background rather than a hard-coded dark color.
 
 ### `src/protocol.ts`
 
 `PROTOCOL_VERSION`, `HostToWebviewMessage`, and `WebviewToHostMessage` define the
-only extension↔webview messages. Add a new union member for a new operation and
-handle it exhaustively on both sides. Bump the protocol only for an incompatible
-wire change, not for every new compatible message.
+only extension↔webview messages. Media import and native system-font selection
+use request IDs with typed host responses. Add a new union member for a new
+operation and handle it exhaustively on both sides. Bump the protocol only for
+an incompatible wire change, not for every new compatible message.
 
 ### `src/index.ts`
 

@@ -3,7 +3,8 @@
 `slidepix-demo.slidepix.json` is the canonical light-theme product demo and
 visual-regression deck. It intentionally covers Markdown, LaTeX, highlighted
 code, image border/radius/crop/fade, shapes, animations, ordinary transitions,
-morph, an embedded H.264 video, and a poster frame.
+morph, Markdown tables with centered headers, transparent paint, shape shadows,
+an embedded H.264 video, and a poster frame.
 
 The generated hero image is stored by content hash in
 `slidepix-demo.assets/`. Its production prompt requested a bright 16:9 soft-3D
@@ -19,7 +20,7 @@ people, and no watermark.
    pnpm --filter @slidepix/core build
    ```
 
-2. Build the first five slides with the hero asset reference:
+2. Build the first six slides with the hero asset reference:
 
    ```sh
    node scripts/build-demo.mjs <hero-hash.png>

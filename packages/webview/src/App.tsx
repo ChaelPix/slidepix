@@ -1,5 +1,5 @@
 import Moveable from "react-moveable";
-import { useEffect, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import {
   duplicateSlide,
   elementSchema,
@@ -13,7 +13,7 @@ import {
   type Transition
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
-import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, setCropZoom } from "./geometry";
+import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
 import { useDeckStore } from "./store";
 import { onHostMessage, postMessage } from "./vscode";
 
@@ -21,6 +21,7 @@ type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
 type MediaResult = { reference: string; storage: MediaStorage };
 const pendingAssets = new Map<string, (result?: MediaResult, error?: string) => void>();
+const pendingFonts = new Map<string, (family?: string, error?: string) => void>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
 type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
 let slidepixClipboard: SlidePixClipboard | undefined;
@@ -240,7 +241,7 @@ export default function App() {
                   onRotateEnd={store.commit}
                 />
               )}
-              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCropElementId(undefined)} />}
+              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} source={selected.type === "image" ? assetUrl(selected.src, selected.storage) : undefined} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCropElementId(undefined)} />}
             </div>
           </div>
         </div>
@@ -331,7 +332,8 @@ function TransitionEditor({ transition, update, close }: { transition: Transitio
 
 type MediaElement = Extract<SlideElement, { type: "image" | "video" }>;
 
-function MediaControls({ element, cropActive, zoom, preview, commit, finishCrop }: { element: MediaElement; cropActive: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; finishCrop(): void }) {
+function MediaControls({ element, source, cropActive, zoom, preview, commit, finishCrop }: { element: MediaElement; source?: string; cropActive: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; finishCrop(): void }) {
+  const wheelCommit = useRef<number | undefined>(undefined);
   const maxRadius = Math.max(1, Math.min(element.width, element.height) / 2);
   const radius = Math.min(maxRadius, element.borderRadius);
   const handleSize = 14 / zoom;
@@ -364,30 +366,42 @@ function MediaControls({ element, cropActive, zoom, preview, commit, finishCrop 
   } : undefined;
   const zoomCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLButtonElement>) => {
     const crop = { ...element.crop };
-    const centerX = crop.x + crop.width / 2;
-    const centerY = crop.y + crop.height / 2;
     startPointerDrag(event, (deltaX, deltaY) => {
       const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
-      const factor = clamp(1 + local.y / Math.max(1, element.height), 0.08, 4);
-      const width = clamp(crop.width * factor, 0.05, 1);
-      const height = clamp(crop.height * factor, 0.05, 1);
-      preview({ crop: { x: clamp(centerX - width / 2, 0, 1 - width), y: clamp(centerY - height / 2, 0, 1 - height), width, height } });
+      const factor = Math.exp((local.x / Math.max(1, element.width) + local.y / Math.max(1, element.height)) * 0.55);
+      preview({ crop: scaleCrop(crop, factor) });
     }, commit);
+  } : undefined;
+  const wheelCrop = element.type === "image" ? (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const local = localPointerDelta(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2), element.rotation, zoom);
+    const anchorX = clamp(0.5 + local.x / Math.max(1, element.width), 0, 1);
+    const anchorY = clamp(0.5 + local.y / Math.max(1, element.height), 0, 1);
+    preview({ crop: scaleCropAround(element.crop, Math.exp(event.deltaY * 0.0015), anchorX, anchorY) });
+    if (wheelCommit.current) window.clearTimeout(wheelCommit.current);
+    wheelCommit.current = window.setTimeout(commit, 180);
   } : undefined;
 
   const updateCrop = (crop: Extract<SlideElement, { type: "image" }>["crop"]) => { preview({ crop } as Partial<MediaElement>); commit(); };
   return <div className={`media-controls ${cropActive ? "crop-active" : ""}`} style={overlayStyle}>
-    {cropActive && element.type === "image" && <div className="crop-surface" onPointerDown={panCrop}>
-      <div className="crop-toolbar" style={{ fontSize: 12 / zoom, top: 12 / zoom, gap: 5 / zoom, padding: `${5 / zoom}px ${7 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()}>
-        <span>Drag image to reposition</span>
-        <button title="Zoom out" onClick={() => updateCrop(scaleCrop(element.crop, 1.2))}>−</button>
-        <output>{cropZoomPercent(element.crop)}%</output>
-        <button title="Zoom in" onClick={() => updateCrop(scaleCrop(element.crop, 1 / 1.2))}>＋</button>
-        <button title="Reset crop" onClick={() => updateCrop({ x: 0, y: 0, width: 1, height: 1 })}>Reset</button>
-        <button className="crop-done" onClick={finishCrop}>Done</button>
+    {cropActive && element.type === "image" && <>
+      {source && <img className="crop-ghost" src={source} alt="" style={{ width: `${100 / element.crop.width}%`, height: `${100 / element.crop.height}%`, left: `${-(element.crop.x / element.crop.width) * 100}%`, top: `${-(element.crop.y / element.crop.height) * 100}%` }} />}
+      <div className="crop-surface" onPointerDown={panCrop} onWheel={wheelCrop}>
+        <div className="crop-toolbar" style={{ fontSize: 12 / zoom, top: 12 / zoom, gap: 5 / zoom, padding: `${5 / zoom}px ${7 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()}>
+          <span>Drag to move · ratio locked</span>
+          <button title="Zoom out" onClick={() => updateCrop(scaleCrop(element.crop, 1.2))}>−</button>
+          <input className="crop-zoom-slider" aria-label="Crop zoom" type="range" min="100" max="1000" step="5" value={cropZoomPercent(element.crop)} style={{ width: 130 / zoom }} onChange={(event) => preview({ crop: setCropZoom(element.crop, Number(event.target.value)) })} onPointerUp={commit} onPointerCancel={commit} onKeyUp={commit} onBlur={commit} />
+          <output>{cropZoomPercent(element.crop)}%</output>
+          <button title="Zoom in" onClick={() => updateCrop(scaleCrop(element.crop, 1 / 1.2))}>＋</button>
+          <button title="Reset crop" onClick={() => updateCrop({ x: 0, y: 0, width: 1, height: 1 })}>Reset</button>
+          <button className="crop-done" onClick={finishCrop}>Done</button>
+        </div>
+        <i className="crop-corner top-left" /><i className="crop-corner top-right" /><i className="crop-corner bottom-left" /><button className="crop-zoom-handle crop-corner bottom-right" aria-label="Adjust image crop zoom" title="Drag diagonally to zoom while keeping the crop ratio" onPointerDown={zoomCrop} />
+        <span className="crop-hint" style={{ fontSize: 12 / zoom, bottom: 12 / zoom }}>Drag anywhere to reposition · wheel to zoom</span>
       </div>
-      <i className="crop-corner top-left" /><i className="crop-corner top-right" /><i className="crop-corner bottom-left" /><button className="crop-zoom-handle crop-corner bottom-right" aria-label="Adjust image crop zoom" title="Drag inward to zoom" onPointerDown={zoomCrop} />
-    </div>}
+    </>}
     {!cropActive && <>
       <button className="media-handle radius-handle" title="Drag to change corner radius" aria-label="Adjust corner radius" style={{ left: `${(radius / Math.max(1, element.width)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={radiusDrag} />
       {element.type === "image" && <button className="media-handle fade-handle" title="Drag inward to fade all edges" aria-label="Adjust edge fade" style={{ bottom: `${(element.edgeFade / Math.max(1, element.height)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={fadeDrag} />}
@@ -406,14 +420,16 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
         <h3>{element ? element.type : "Slide"}</h3>
         {element ? <>
           <label>Element name<input autoComplete="off" value={element.name ?? ""} placeholder={elementLabel(element)} onChange={(event) => update({ name: event.target.value.trimStart() || undefined })} /></label>
-          <div className="field-grid">
+          <h4 className="property-heading">Geometry</h4>
+          <div className="field-grid geometry-grid">
             <NumberField label="X" value={element.x} onChange={(x) => update({ x })} />
             <NumberField label="Y" value={element.y} onChange={(y) => update({ y })} />
-            <NumberField label="W" value={element.width} onChange={(width) => update({ width })} />
-            <NumberField label="H" value={element.height} onChange={(height) => update({ height })} />
+            <NumberField label="W" value={element.width} min={0} onChange={(width) => update({ width })} />
+            <NumberField label="H" value={element.height} min={0} onChange={(height) => update({ height })} />
             <NumberField label="Rotate" value={element.rotation} onChange={(rotation) => update({ rotation })} />
-            <NumberField label="Opacity" value={element.opacity} step={0.05} onChange={(opacity) => update({ opacity })} />
+            <NumberField label="Opacity" value={element.opacity} step={0.05} min={0} max={1} onChange={(opacity) => update({ opacity })} />
           </div>
+          <h4 className="property-heading">Appearance</h4>
           {element.type === "text" && <>
             <button className="edit-text-button" onClick={() => editText(element.id)}>Edit Markdown · LaTeX · Code…</button>
             <ColorField label="Text color" value={element.style.color} onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.color = color; })} />
@@ -441,7 +457,7 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
             </div>
             <CheckboxField label="Header row" checked={element.headerRow} onChange={(headerRow) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.headerRow = headerRow; })} />
             <div className="table-cell-editor" style={{ gridTemplateColumns: `repeat(${element.columns}, minmax(86px, 1fr))` }}>
-              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; })} />))}
+              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea className={row === 0 && element.headerRow ? "header-cell" : ""} key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; })} />))}
             </div>
             <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontSize = Math.max(0, fontSize); })} />
             <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontFamily = fontFamily; })} />
@@ -518,22 +534,26 @@ const FONT_CANDIDATES = [
 ] as const;
 
 function FontFamilyPicker({ value, onChange }: { value: string; onChange(value: string): void }) {
-  const queryLocalFonts = (window as Window & { queryLocalFonts?: () => Promise<Array<{ family: string }>> }).queryLocalFonts;
-  const [localFonts, setLocalFonts] = useState<Array<{ label: string; value: string }>>([]);
-  const available = [...FONT_CANDIDATES, ...localFonts].filter((font, index, fonts) => fonts.findIndex((item) => item.value === font.value) === index);
+  const available = [...FONT_CANDIDATES];
   const custom = available.some((font) => font.value === value) ? [] : [{ label: `Current: ${value}`, value }];
-  const discover = async () => {
-    if (!queryLocalFonts) return;
-    try {
-      const found = await queryLocalFonts();
-      const families = [...new Set(found.map((font) => font.family.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-      setLocalFonts(families.map((family) => ({ label: family, value: `"${family.replaceAll('"', "\\\"")}", sans-serif` })));
-    } catch { /* The host may deny local-font permission; the portable list remains available. */ }
+  const discover = () => {
+    const requestId = crypto.randomUUID();
+    pendingFonts.set(requestId, (family, error) => {
+      pendingFonts.delete(requestId);
+      if (error) alert(`Could not list system fonts: ${error}`);
+      else if (family) onChange(family);
+    });
+    postMessage({ type: "selectFont", requestId, current: value });
   };
-  return <label>Font family<div className="font-picker"><select value={value} onChange={(event) => onChange(event.target.value)}>{[...custom, ...available].map((font) => <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>{font.label}</option>)}</select>{queryLocalFonts && <button type="button" title="Load fonts installed on this computer" onClick={() => void discover()}>System fonts…</button>}</div></label>;
+  return <label>Font family<div className="font-picker"><select value={value} onChange={(event) => onChange(event.target.value)}>{[...custom, ...available].map((font) => <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>{font.label}</option>)}</select><button type="button" title="Choose a font installed on this computer" onClick={discover}>System fonts…</button></div></label>;
 }
 
-function NumberField({ label, value, step = 1, onChange }: { label: string; value: number; step?: number; onChange(value: number): void }) { return <label>{label}<input type="number" value={Number.isFinite(value) ? value : 0} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function NumberField({ label, value, step = 1, min, max, onChange }: { label: string; value: number; step?: number; min?: number; max?: number; onChange(value: number): void }) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const update = (next: number) => onChange(roundStep(clampOptional(next, min, max), step));
+  const nudge = (direction: -1 | 1, event: { shiftKey: boolean; altKey: boolean }) => update(safeValue + direction * step * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1));
+  return <label className="number-field"><span>{label}</span><span className="number-control"><button type="button" tabIndex={-1} title={`Decrease ${label} · Shift for ×10`} aria-label={`Decrease ${label}`} onClick={(event) => nudge(-1, event)}>−</button><input type="number" value={safeValue} step={step} min={min} max={max} onFocus={(event) => event.currentTarget.select()} onWheel={(event) => { if (document.activeElement !== event.currentTarget) return; event.preventDefault(); nudge(event.deltaY > 0 ? -1 : 1, event); }} onChange={(event) => update(Number(event.target.value))} /><button type="button" tabIndex={-1} title={`Increase ${label} · Shift for ×10`} aria-label={`Increase ${label}`} onClick={(event) => nudge(1, event)}>＋</button></span></label>;
+}
 function RangeField({ label, value, min, max, onChange, onCommit, suffix = " px" }: { label: string; value: number; min: number; max: number; onChange(value: number): void; onCommit?(): void; suffix?: string }) { return <label className="range-field"><span>{label}<output>{Math.round(value)}{suffix}</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onCommit} onPointerCancel={onCommit} onKeyUp={onCommit} onBlur={onCommit} /></label>; }
 function ColorField({ label, value, allowTransparent = false, onChange }: { label: string; value: string; allowTransparent?: boolean; onChange(value: string): void }) {
   const transparent = value.trim().toLowerCase() === "transparent";
@@ -549,11 +569,13 @@ function animationFlowLabel(timeline: AnimationStep[], index: number): string { 
 function transitionLabel(type: Transition["type"]): string { return ({ none: "None", fade: "Fade", "slide-left": "From left", "slide-right": "From right", "slide-up": "From top", "slide-down": "From bottom", morph: "Morph" } as Record<Transition["type"], string>)[type]; }
 function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
+function clampOptional(value: number, min?: number, max?: number): number { return Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, value)); }
+function roundStep(value: number, step: number): number { const precision = Math.max(0, (String(step).split(".")[1] ?? "").length); return Number(value.toFixed(Math.min(8, precision))); }
 function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): string[][] { return Array.from({ length: table.rows }, (_, row) => Array.from({ length: table.columns }, (_, column) => table.cells[row]?.[column] ?? "")); }
 function resizeTable(table: Extract<SlideElement, { type: "table" }>, rows: number, columns: number): void { table.rows = clamp(Math.round(rows), 1, 50); table.columns = clamp(Math.round(columns), 1, 20); table.cells = normalizedTableCells(table); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string, linkedUri: string) => void, setInvalid: (message: string, uri: string, linkedUri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri, message.linkedUri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string, linkedUri: string) => void, setInvalid: (message: string, uri: string, linkedUri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri, message.linkedUri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) alert(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");

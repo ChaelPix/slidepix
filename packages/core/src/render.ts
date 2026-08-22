@@ -46,6 +46,19 @@ export function renderMarkdown(source: string): string {
   return markdown.render(source);
 }
 
+export function roundedEdgeFadeMask(width: number, height: number, borderRadius: number, edgeFade: number): string | undefined {
+  const safeWidth = Math.max(1, width);
+  const safeHeight = Math.max(1, height);
+  const fade = Math.min(Math.max(0, edgeFade), Math.min(safeWidth, safeHeight) / 2);
+  if (fade <= 0) return undefined;
+  const radius = Math.min(Math.max(0, borderRadius), Math.min(safeWidth, safeHeight) / 2);
+  const inset = Math.min(fade * 0.72, Math.min(safeWidth, safeHeight) / 2 - 0.01);
+  const blur = Math.max(0.5, fade * 0.36);
+  const innerRadius = Math.max(0, radius - inset);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${token(safeWidth)} ${token(safeHeight)}"><defs><filter id="fade" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="${token(blur)}"/></filter></defs><rect x="${token(inset)}" y="${token(inset)}" width="${token(Math.max(0.01, safeWidth - inset * 2))}" height="${token(Math.max(0.01, safeHeight - inset * 2))}" rx="${token(innerRadius)}" fill="white" filter="url(#fade)"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
 export function renderSlideMarkup(
   deck: Deck,
   slide: Slide,
@@ -113,7 +126,8 @@ function renderElement(element: SlideElement, resolveAsset: AssetResolver): stri
         const fill = tag === "th" ? element.style.headerFill : element.style.cellFill;
         const cells = Array.from({ length: element.columns }, (_, column) => {
           const source = element.cells[row]?.[column] ?? "";
-          return `<${tag} style="${attr(`background:${css(fill)};border:${element.style.borderWidth}px solid ${css(element.style.borderColor)};padding:${element.style.padding}px;text-align:${element.style.textAlign}`)}"><div class="slidepix-table-cell" style="${attr(`justify-content:${vertical}`)}">${renderMarkdown(source)}</div></${tag}>`;
+          const textAlign = tag === "th" ? "center" : element.style.textAlign;
+          return `<${tag} style="${attr(`background:${css(fill)};border:${element.style.borderWidth}px solid ${css(element.style.borderColor)};padding:${element.style.padding}px;text-align:${textAlign}`)}"><div class="slidepix-table-cell" style="${attr(`justify-content:${vertical}`)}">${renderMarkdown(source)}</div></${tag}>`;
         }).join("");
         return `<tr>${cells}</tr>`;
       }).join("");
@@ -129,9 +143,8 @@ function imageMarkup(element: ImageElement, resolveAsset: AssetResolver): string
   const height = 100 / crop.height;
   const left = -(crop.x / crop.width) * 100;
   const top = -(crop.y / crop.height) * 100;
-  const fade = element.edgeFade > 0
-    ? `-webkit-mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%),linear-gradient(to bottom,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(to right,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%),linear-gradient(to bottom,transparent 0,#000 ${element.edgeFade}px,#000 calc(100% - ${element.edgeFade}px),transparent 100%);mask-composite:intersect;`
-    : "";
+  const mask = roundedEdgeFadeMask(element.width, element.height, element.borderRadius, element.edgeFade);
+  const fade = mask ? `-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;` : "";
   return `<div class="slidepix-image-clip" style="${attr(`border-radius:${element.borderRadius}px;border:${element.border.width}px solid ${css(element.border.color)};${fade}`)}"><img src="${attr(resolveAsset(element.src, element.storage))}" alt="${attr(element.alt ?? "")}" style="${attr(`width:${width}%;height:${height}%;left:${left}%;top:${top}%`)}"></div>`;
 }
 
@@ -139,7 +152,7 @@ function baseStyles(deck: Deck, mode: string, columns: number): string {
   const contact = mode === "contact";
   return `
 @import url("data:text/css,");
-*{box-sizing:border-box}html{-webkit-text-size-adjust:none;text-size-adjust:none}html,body{margin:0;background:#020617;color:${css(deck.theme.foreground)};font-family:${css(deck.theme.fontFamily)}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:none;text-size-adjust:none}html,body{margin:0;background:${css(deck.theme.background)};color:${css(deck.theme.foreground)};font-family:${css(deck.theme.fontFamily)}}
 main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.size.width}px);gap:32px;padding:32px;width:max-content` : ""}}
 .slidepix-slide{position:relative;overflow:hidden;isolation:isolate;page-break-inside:avoid;break-inside:avoid}
 .slidepix-element{position:absolute;transform-origin:center center;overflow:visible}
@@ -156,8 +169,8 @@ main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.si
 .slidepix-page-number{position:absolute;right:32px;bottom:20px;z-index:2147483647}
 @page{size:${deck.size.width}px ${deck.size.height}px;margin:0}
 @media print{html,body{background:transparent}.slidepix-slide{margin:0}}
-	body.mode-present{overflow:hidden}.mode-present main{width:100vw;height:100vh}.mode-present .slidepix-slide{display:none;transform-origin:top left}
-	body.mode-present .slidepix-slide.active{display:block}
+	body.mode-present{overflow:hidden}.mode-present main{position:relative;width:100vw;height:100vh;overflow:hidden}.mode-present .slidepix-slide{display:none;position:absolute;left:0;top:0;transform-origin:top left}
+	body.mode-present .slidepix-slide.active,.mode-present .slidepix-slide.transitioning{display:block}
 	body.mode-frame{overflow:hidden}.mode-frame main{position:relative;width:100vw;height:100vh}.mode-frame .slidepix-slide{position:absolute;left:0;top:0;transform-origin:top left}
 	`;
 }
@@ -174,8 +187,9 @@ function presentationScript(deck: Deck): string {
   const transitions = JSON.stringify(deck.slides.filter((slide) => !slide.hidden).map((slide) => slide.transition));
   const timelines = JSON.stringify(deck.slides.filter((slide) => !slide.hidden).map((slide) => slide.timeline));
   return `<script>(function(){
-const slides=[...document.querySelectorAll('.slidepix-slide')],transitions=${transitions},timelines=${timelines};let index=0,step=0;
-function fit(){const s=slides[index];if(!s)return;const k=Math.min(innerWidth/${deck.size.width},innerHeight/${deck.size.height});s.style.transform='scale('+k+')';s.style.marginLeft=(innerWidth-${deck.size.width}*k)/2+'px';s.style.marginTop=(innerHeight-${deck.size.height}*k)/2+'px'}
+const slides=[...document.querySelectorAll('.slidepix-slide')],transitions=${transitions},timelines=${timelines};let index=0,step=0,transitionRun=0;
+function fitSlide(s){if(!s)return;const k=Math.min(innerWidth/${deck.size.width},innerHeight/${deck.size.height});s.style.transform='scale('+k+')';s.style.left=(innerWidth-${deck.size.width}*k)/2+'px';s.style.top=(innerHeight-${deck.size.height}*k)/2+'px'}
+function fit(){for(const s of slides)if(s.classList.contains('active')||s.classList.contains('transitioning'))fitSlide(s)}
 function rotation(e){const m=e.style.transform.match(/rotate\\(([-\\d.]+)deg\\)/);return Number(m?.[1]||0)}
 function snapshot(slide){const map=new Map;if(!slide)return map;for(const e of slide.querySelectorAll('[data-morph-key]')){const image=e.querySelector('img'),clip=e.querySelector('.slidepix-image-clip');map.set(e.dataset.morphKey,{x:e.offsetLeft,y:e.offsetTop,width:e.offsetWidth,height:e.offsetHeight,rotation:rotation(e),opacity:getComputedStyle(e).opacity,image:image?{width:image.style.width,height:image.style.height,left:image.style.left,top:image.style.top}:null,radius:clip?.style.borderRadius})}return map}
 function morph(slide,from,transition){for(const e of slide.querySelectorAll('[data-morph-key]')){const prior=from.get(e.dataset.morphKey),duration=transition.durationMs||500,easing=transition.easing||'ease-in-out';if(!prior){e.animate([{opacity:0},{opacity:e.style.opacity||1}],{duration,easing});continue}const sx=prior.width/Math.max(1,e.offsetWidth),sy=prior.height/Math.max(1,e.offsetHeight),dx=prior.x+prior.width/2-(e.offsetLeft+e.offsetWidth/2),dy=prior.y+prior.height/2-(e.offsetTop+e.offsetHeight/2),targetRotation=rotation(e);e.animate([{transform:'translate('+dx+'px,'+dy+'px) rotate('+prior.rotation+'deg) scale('+sx+','+sy+')',opacity:prior.opacity},{transform:'translate(0,0) rotate('+targetRotation+'deg) scale(1,1)',opacity:e.style.opacity||1}],{duration,easing});const image=e.querySelector('img');if(image&&prior.image)image.animate([prior.image,{width:image.style.width,height:image.style.height,left:image.style.left,top:image.style.top}],{duration,easing});const clip=e.querySelector('.slidepix-image-clip');if(clip&&prior.radius)clip.animate([{borderRadius:prior.radius},{borderRadius:clip.style.borderRadius}],{duration,easing})}}
@@ -186,7 +200,13 @@ function pauseVideos(slide){if(!slide)return;for(const video of slide.querySelec
 function syncVideos(){slides.forEach((slide,slideIndex)=>{for(const video of slide.querySelectorAll('video')){if(slideIndex!==index){video.pause();continue}if(video.hasAttribute('autoplay'))video.play().catch(()=>{})}})}
 function play(a,offset){const s=slides[index],e=s?.querySelector('[data-element-id="'+CSS.escape(a.targetElementId)+'"]');if(!e)return 0;const delay=(a.delayMs||0)+offset,duration=a.durationMs||0,fly=a.direction==='right'?['40px','0']:a.direction==='up'?['0','40px']:a.direction==='down'?['0','-40px']:['-40px','0'];setTimeout(()=>{if(a.phase==='entrance')e.style.visibility='visible';const from=a.effect==='appear'?{}:a.effect==='fly'?{opacity:0,translate:fly.join(' ')}:{opacity:0},to={opacity:a.phase==='exit'?0:1,translate:'0 0'};e.animate(a.phase==='exit'?[to,from]:[from,to],{duration,easing:a.easing||'ease-out',fill:'both'}).finished.then(()=>{if(a.phase==='exit')e.style.visibility='hidden'})},delay);return delay+duration}
 function advance(){const line=timelines[index]||[];if(step>=line.length)return false;let cursor=0;do{const a=line[step++];cursor=play(a,a.trigger==='withPrevious'?0:cursor)}while(step<line.length&&line[step].trigger!=='onClick');return true}
-	function show(next,animationState='initial'){const bounded=Math.max(0,Math.min(slides.length-1,next)),active=slides[index]?.classList.contains('active');if(bounded===index&&active){animationState==='final'?finish():reset();syncVideos();fit();return}const previous=active?slides[index]:null,before=snapshot(previous);pauseVideos(previous);index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];animationState==='final'?finish():reset();if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-')){const d=t.type.slice(6),v=d==='left'?'100%':d==='right'?'-100%':'0',w=d==='up'?'100%':d==='down'?'-100%':'0';s.animate([{transform:'translate('+v+','+w+') '+s.style.transform},{transform:s.style.transform}],{duration:t.durationMs,easing:t.easing})}syncVideos();fit()}
+function stopSlideTransitions(){transitionRun++;for(const s of slides){for(const animation of s.getAnimations?.()||[])animation.cancel();s.classList.remove('transitioning');s.style.zIndex=''}}
+function keepTransitionSlides(current,previous){current.classList.add('transitioning');current.style.zIndex='1';if(previous){previous.classList.add('transitioning');previous.style.zIndex='0'}}
+function settleTransition(run,current,previous,animations){Promise.allSettled(animations.map(animation=>animation.finished)).then(()=>{if(run!==transitionRun)return;current.classList.remove('transitioning');current.style.zIndex='';if(previous){previous.classList.remove('transitioning');previous.style.zIndex=''}})}
+function slideVector(type){const direction=type.slice(6);return direction==='left'?['-100%','0']:direction==='right'?['100%','0']:direction==='up'?['0','-100%']:['0','100%']}
+function opposite(value){return value==='0'?'0':value.startsWith('-')?value.slice(1):'-'+value}
+function slideTransition(current,previous,transition){const run=transitionRun,[x,y]=slideVector(transition.type),duration=transition.durationMs||0,easing=transition.easing||'ease-in-out',base=current.style.transform;keepTransitionSlides(current,previous);const animations=[current.animate([{transform:base+' translate('+x+','+y+')'},{transform:base}],{duration,easing})];if(previous){const priorBase=previous.style.transform;animations.push(previous.animate([{transform:priorBase},{transform:priorBase+' translate('+opposite(x)+','+opposite(y)+')'}],{duration,easing}))}settleTransition(run,current,previous,animations)}
+	function show(next,animationState='initial'){const bounded=Math.max(0,Math.min(slides.length-1,next)),active=slides[index]?.classList.contains('active');if(bounded===index&&active){animationState==='final'?finish():reset();syncVideos();fit();return}const previous=active?slides[index]:null,before=snapshot(previous);pauseVideos(previous);stopSlideTransitions();index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];animationState==='final'?finish():reset();fit();if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-'))slideTransition(s,previous,t);syncVideos()}
 window.slidepixShow=show;window.slidepixAdvance=advance;addEventListener('resize',fit);addEventListener('visibilitychange',()=>{if(document.hidden)slides.forEach(pauseVideos);else syncVideos()});addEventListener('keydown',e=>{if(e.key==='f')document.documentElement.requestFullscreen?.()});show(0)
 })();</script>`;
 }
@@ -198,4 +218,8 @@ function escapeHtml(value: string): string {
 const attr = escapeHtml;
 function css(value: string): string {
   return value.replace(/[;{}]/g, "");
+}
+
+function token(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
 }

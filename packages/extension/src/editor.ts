@@ -6,6 +6,7 @@ import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
 import { exportPdf, exportPng } from "./renderer";
 import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
+import { cssFontFamily, discoverSystemFontFamilies } from "./fonts";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -98,6 +99,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "selectMedia") return this.selectMedia(document, panel, message);
     if (message.type === "linkMedia") return this.resolveMedia(document, panel, message, vscode.Uri.parse(message.uri));
     if (message.type === "embedMedia") return this.embedMedia(document, message.elementIds);
+    if (message.type === "selectFont") return this.selectFont(panel, message);
     if (message.type === "command") {
       if (message.command === "undo" || message.command === "redo") return void vscode.commands.executeCommand(message.command);
       if (message.command === "save") return void document.save();
@@ -109,6 +111,23 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);
     }
+  }
+
+  private async selectFont(panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectFont" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 1, type: "fontSelected", requestId: message.requestId };
+    try {
+      const families = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "Finding system fonts…" }, discoverSystemFontFamilies);
+      const items = families.map((family) => ({ label: family, description: cssFontFamily(family), family: cssFontFamily(family) }));
+      const picked = await vscode.window.showQuickPick(items, {
+        title: "SlidePix system font",
+        placeHolder: "Type to filter fonts installed on this computer",
+        matchOnDescription: true
+      });
+      response.family = picked?.family;
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Could not discover system fonts";
+    }
+    await panel.webview.postMessage(response);
   }
 
   private async importAsset(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "importAsset" }>): Promise<void> {

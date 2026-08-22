@@ -174,14 +174,23 @@ button:disabled { opacity: .45; cursor: default; }
 .inspector nav { display: flex; border-bottom: 1px solid var(--vscode-panel-border); }
 .inspector nav button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 10px 2px; font-size: 11px; text-transform: capitalize; }
 .inspector nav button.active { border-bottom: 2px solid var(--vscode-focusBorder); }
-.inspector-body { padding: 12px; overflow: auto; }
+.inspector-body { padding: 12px; overflow: auto; scrollbar-gutter: stable; }
 .inspector-body h3 { margin: 4px 0 14px; text-transform: capitalize; }
 .inspector-body h4 { margin: 14px 0 8px; }
+.property-heading { padding-top: 10px; border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .inspector-body label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--vscode-descriptionForeground); }
 .inspector-body input, .inspector-body textarea, .inspector-body select { min-width: 0; width: 100%; padding: 5px; }
 .inspector-body label.checkbox-field { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 28px; margin-bottom: 6px; }
 .inspector-body .checkbox-field input { flex: none; width: 16px; height: 16px; margin: 0; }
 .field-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; }
+.geometry-grid { padding: 9px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; background: var(--vscode-editor-background); }
+.number-field > span:first-child { font-size: 10px; font-weight: 600; }
+.number-control { display: grid; grid-template-columns: 27px minmax(0, 1fr) 27px; min-height: 30px; overflow: hidden; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; background: var(--vscode-input-background); }
+.number-control:focus-within { border-color: var(--vscode-focusBorder); outline: 1px solid var(--vscode-focusBorder); }
+.number-control input { z-index: 1; padding: 4px 2px; border: 0; border-radius: 0; text-align: center; font-variant-numeric: tabular-nums; appearance: textfield; }
+.number-control input::-webkit-inner-spin-button, .number-control input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.number-control button { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--vscode-descriptionForeground); font-size: 15px; }
+.number-control button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
 .color-field { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 5px; }
 .color-field input[type=color] { padding: 1px; width: 34px; }
 .transparent-toggle { min-width: 30px; padding-inline: 6px; }
@@ -190,12 +199,15 @@ button:disabled { opacity: .45; cursor: default; }
 .table-size-actions button { min-width: 0; }
 .table-cell-editor { display: grid; gap: 4px; margin-bottom: 12px; overflow-x: auto; }
 .table-cell-editor textarea { min-width: 86px; min-height: 48px; resize: vertical; }
+.table-cell-editor textarea.header-cell { background: color-mix(in srgb, var(--vscode-button-background) 16%, var(--vscode-input-background)); font-weight: 700; text-align: center; }
 .font-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; }
 .font-picker button { white-space: nowrap; }
 .edit-text-button, .add-animation { width: 100%; margin: 0 0 12px; padding: 7px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 .edit-text-button.active { outline: 2px solid var(--vscode-focusBorder); }
 .panel-help { margin: -6px 0 10px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.4; }
-.range-field > span { display: flex; justify-content: space-between; }
+.range-field { padding: 7px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 5px; background: var(--vscode-editor-background); }
+.range-field > span { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; }
+.range-field input[type=range] { height: 18px; padding: 0; accent-color: var(--vscode-button-background); }
 .range-field output { color: var(--vscode-foreground); font-variant-numeric: tabular-nums; }
 .media-source-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; margin-bottom: 12px; padding: 8px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-editor-background); }
 .media-source-card code { overflow: hidden; color: var(--vscode-descriptionForeground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -222,19 +234,23 @@ button:disabled { opacity: .45; cursor: default; }
 .media-handle { position: absolute; z-index: 2; min-width: 0; padding: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 5px #000c; pointer-events: auto; touch-action: none; }
 .radius-handle { top: 0; background: #f6c945; transform: translate(-50%, -50%); }
 .fade-handle { left: 50%; background: #38a7ff; transform: translate(-50%, 50%); }
-.crop-surface { position: absolute; inset: 0; border: 3px dashed #fff; outline: 1px solid #000; background: #0001; cursor: move; pointer-events: auto; touch-action: none; }
-.crop-toolbar { position: absolute; left: 50%; z-index: 4; width: max-content; max-width: 96%; display: flex; align-items: center; border-radius: 4px; background: #111e; color: #fff; font-family: system-ui, sans-serif; transform: translateX(-50%); cursor: default; pointer-events: auto; }
+.crop-ghost { position: absolute; z-index: 0; max-width: none; opacity: .2; filter: saturate(.45); pointer-events: none; }
+.crop-surface { position: absolute; inset: 0; z-index: 1; border: 3px solid #fff; outline: 1px solid #000; background: #0001; cursor: grab; pointer-events: auto; touch-action: none; }
+.crop-surface:active { cursor: grabbing; }
+.crop-toolbar { position: absolute; left: 50%; z-index: 4; width: max-content; max-width: 96%; display: flex; align-items: center; border: 1px solid #ffffff40; border-radius: 6px; background: #111e; color: #fff; box-shadow: 0 4px 18px #0008; font-family: system-ui, sans-serif; transform: translateX(-50%); cursor: default; pointer-events: auto; }
 .crop-toolbar button { min-width: 0; padding: .18em .5em; border-color: #ffffff55; background: #ffffff18; color: #fff; }
 .crop-toolbar button:hover { background: #ffffff35; }
 .crop-toolbar output { min-width: 4ch; color: #fff; text-align: center; font-variant-numeric: tabular-nums; }
+.crop-toolbar .crop-zoom-slider { min-width: 90px; height: 18px; padding: 0; accent-color: #60a5fa; }
 .crop-toolbar .crop-done { background: #2563eb; }
+.crop-hint { position: absolute; left: 50%; z-index: 4; width: max-content; padding: .35em .65em; border-radius: 4px; background: #111c; color: #fff; font-family: system-ui, sans-serif; transform: translateX(-50%); pointer-events: none; }
 .crop-corner { position: absolute; width: 24px; height: 24px; border-color: #fff; border-style: solid; background: transparent; }
 .crop-corner.top-left { left: -3px; top: -3px; border-width: 4px 0 0 4px; }
 .crop-corner.top-right { right: -3px; top: -3px; border-width: 4px 4px 0 0; }
 .crop-corner.bottom-left { left: -3px; bottom: -3px; border-width: 0 0 4px 4px; }
 .crop-corner.bottom-right { right: -6px; bottom: -6px; border-width: 0 4px 4px 0; cursor: nwse-resize; pointer-events: auto; touch-action: none; }
 
-.zoom-control { position: fixed; right: calc(var(--inspector) + 12px); bottom: 12px; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 2px; border: 1px solid var(--vscode-panel-border); border-radius: 5px; background: var(--vscode-editorGroupHeader-tabsBackground); box-shadow: 0 2px 8px #0005; }
+.zoom-control { position: fixed; right: calc(var(--inspector) + 12px); top: calc(var(--toolbar) + 12px); z-index: 50; display: flex; align-items: center; gap: 6px; padding: 2px; border: 1px solid var(--vscode-panel-border); border-radius: 5px; background: var(--vscode-editorGroupHeader-tabsBackground); box-shadow: 0 2px 8px #0005; }
 .zoom-control button { border: 0; }
 .zoom-control input { width: 90px; }
 .zoom-control span { min-width: 42px; font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; }

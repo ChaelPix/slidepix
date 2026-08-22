@@ -171,15 +171,15 @@
           "src": "3138572bd3448a799c8d56626f36bff6da5b6e9830a9a976ef08ef25449fed12.png",
           "storage": "embedded",
           "crop": {
-            "x": 0.10766812838040858,
+            "x": 0.14,
             "y": 0,
-            "width": 0.7692307692307693,
-            "height": 0.7692307692307693
+            "width": 0.78,
+            "height": 1
           },
-          "borderRadius": 0,
-          "edgeFade": 20,
+          "borderRadius": 52,
+          "edgeFade": 0,
           "border": {
-            "width": 0,
+            "width": 5,
             "color": "#2563eb"
           }
         }
@@ -299,7 +299,7 @@
           "type": "shape",
           "shape": "rectangle",
           "fill": "#ffffff",
-          "stroke": "#578ed6",
+          "stroke": "#dbeafe",
           "strokeWidth": 5,
           "borderRadius": 36,
           "shadow": {
@@ -355,6 +355,180 @@
             "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
             "fontSize": 32,
             "fontWeight": 750,
+            "color": "#ff735c",
+            "textAlign": "center",
+            "verticalAlign": "top",
+            "lineHeight": 1.18,
+            "padding": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "demo-table",
+      "title": "Tables and shape styling",
+      "background": "#ffffff",
+      "notes": "Tables use Markdown cells, centered headers, transparent fills, and the same renderer in the editor and every export.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-down",
+        "durationMs": 700,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "e-table-title",
+          "morphKey": "e-table-title",
+          "x": 105,
+          "y": 65,
+          "width": 1600,
+          "height": 130,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 3,
+          "locked": false,
+          "hidden": false,
+          "name": "table-title",
+          "type": "text",
+          "markdown": "# Structured data, still visual",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 62,
+            "fontWeight": 760,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.18,
+            "padding": 6
+          }
+        },
+        {
+          "id": "e-table",
+          "morphKey": "e-table",
+          "x": 110,
+          "y": 245,
+          "width": 1080,
+          "height": 580,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "feature-table",
+          "type": "table",
+          "rows": 4,
+          "columns": 3,
+          "cells": [
+            [
+              "**Capability**",
+              "**Canvas**",
+              "**Export**"
+            ],
+            [
+              "Markdown + $x^2$",
+              "Live",
+              "Exact"
+            ],
+            [
+              "Transparent cells",
+              "Editable",
+              "Portable"
+            ],
+            [
+              "Rows / columns",
+              "One click",
+              "Stable JSON"
+            ]
+          ],
+          "headerRow": true,
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 28,
+            "fontWeight": 450,
+            "color": "#111827",
+            "headerFill": "#dbeafe",
+            "cellFill": "transparent",
+            "borderColor": "#93c5fd",
+            "borderWidth": 3,
+            "textAlign": "left",
+            "verticalAlign": "middle",
+            "padding": 16
+          }
+        },
+        {
+          "id": "e-table-card",
+          "morphKey": "e-table-card",
+          "x": 1300,
+          "y": 260,
+          "width": 500,
+          "height": 470,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "transparent-shadow-card",
+          "type": "shape",
+          "shape": "rectangle",
+          "fill": "transparent",
+          "stroke": "#2563eb",
+          "strokeWidth": 7,
+          "borderRadius": 54,
+          "shadow": {
+            "enabled": true,
+            "color": "#0f172a40",
+            "offsetX": 22,
+            "offsetY": 28,
+            "blur": 34
+          }
+        },
+        {
+          "id": "e-table-card-copy",
+          "morphKey": "e-table-card-copy",
+          "x": 1370,
+          "y": 335,
+          "width": 360,
+          "height": 320,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 3,
+          "locked": false,
+          "hidden": false,
+          "name": "table-card-copy",
+          "type": "text",
+          "markdown": "## Designed on canvas\n\n- centered headers\n- transparent paint\n- soft shape shadow\n- Markdown cells",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 33,
+            "fontWeight": 520,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.18,
+            "padding": 6
+          }
+        },
+        {
+          "id": "e-table-caption",
+          "morphKey": "e-table-caption",
+          "x": 1220,
+          "y": 825,
+          "width": 650,
+          "height": 80,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 3,
+          "locked": false,
+          "hidden": false,
+          "name": "table-caption",
+          "type": "text",
+          "markdown": "**Add or remove rows and columns from Properties.**",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 28,
+            "fontWeight": 720,
             "color": "#ff735c",
             "textAlign": "center",
             "verticalAlign": "top",
@@ -667,74 +841,6 @@
             "lineHeight": 1.18,
             "padding": 6
           }
-        },
-        {
-          "id": "3e456758-c991-43ab-803b-d46520b802ce",
-          "morphKey": "bfd04561-af06-47bc-899e-6281fd4e09ae",
-          "x": 952,
-          "y": 728,
-          "width": 938,
-          "height": 162,
-          "rotation": 0,
-          "opacity": 1,
-          "z": 4,
-          "locked": false,
-          "hidden": false,
-          "name": "table-3e45",
-          "type": "table",
-          "rows": 5,
-          "columns": 5,
-          "cells": [
-            [
-              "Header 1",
-              "",
-              "",
-              "",
-              ""
-            ],
-            [
-              "",
-              "",
-              "",
-              "",
-              ""
-            ],
-            [
-              "",
-              "",
-              "",
-              "",
-              ""
-            ],
-            [
-              "",
-              "",
-              "",
-              "",
-              ""
-            ],
-            [
-              "",
-              "",
-              "",
-              "",
-              ""
-            ]
-          ],
-          "headerRow": true,
-          "style": {
-            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
-            "fontSize": 30,
-            "fontWeight": 400,
-            "color": "#111827",
-            "headerFill": "#e0e7ff",
-            "cellFill": "#ffffff",
-            "borderColor": "#94a3b8",
-            "borderWidth": 2,
-            "textAlign": "left",
-            "verticalAlign": "middle",
-            "padding": 10
-          }
         }
       ]
     },
@@ -975,9 +1081,9 @@
           "hidden": false,
           "name": "embedded-demo-reel",
           "type": "video",
-          "src": "3f75e571ff5ecaf0f47b64a0f697e5f4e16ebcabd82b4399e1527dfd6318aecf.mp4",
+          "src": "6383f37f4633b7fc3202831cf7052854f77e850c5fbf8cb19262509fe76354e8.mp4",
           "storage": "embedded",
-          "poster": "b20e346afe3588cf5a5650e0933530a5f06dc8efb68e9d47961b0d022f509619.png",
+          "poster": "3362e868c0b5c134abc45d61bc47298dfdbfbf0bd497f8605e93305840ef4497.png",
           "borderRadius": 44,
           "playback": {
             "mode": "manual",
@@ -1059,11 +1165,11 @@
           "strokeWidth": 4,
           "borderRadius": 0,
           "shadow": {
-            "enabled": true,
+            "enabled": false,
             "color": "#00000040",
-            "offsetX": 12,
-            "offsetY": 19,
-            "blur": 10
+            "offsetX": 0,
+            "offsetY": 12,
+            "blur": 24
           }
         },
         {

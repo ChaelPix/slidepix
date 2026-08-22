@@ -1,4 +1,4 @@
-import { renderMarkdown, type Deck, type MediaStorage, type Slide, type SlideElement } from "@slidepix/core";
+import { renderMarkdown, roundedEdgeFadeMask, type Deck, type MediaStorage, type Slide, type SlideElement } from "@slidepix/core";
 import type { CSSProperties, MouseEvent } from "react";
 
 type Props = {
@@ -156,7 +156,7 @@ function ElementView({
                     background: row === 0 && element.headerRow ? element.style.headerFill : element.style.cellFill,
                     border: `${element.style.borderWidth}px solid ${element.style.borderColor}`,
                     padding: element.style.padding,
-                    textAlign: element.style.textAlign
+                    textAlign: row === 0 && element.headerRow ? "center" : element.style.textAlign
                   }}
                 >
                   <div
@@ -176,9 +176,7 @@ function ElementView({
 
 function ImageView({ element, src }: { element: Extract<SlideElement, { type: "image" }>; src: string }) {
   const crop = element.crop;
-  const fade = element.edgeFade > 0
-    ? `linear-gradient(to right, transparent 0, black ${element.edgeFade}px, black calc(100% - ${element.edgeFade}px), transparent 100%), linear-gradient(to bottom, transparent 0, black ${element.edgeFade}px, black calc(100% - ${element.edgeFade}px), transparent 100%)`
-    : undefined;
+  const fade = roundedEdgeFadeMask(element.width, element.height, element.borderRadius, element.edgeFade);
   return (
     <div
       className="image-clip"
@@ -186,9 +184,11 @@ function ImageView({ element, src }: { element: Extract<SlideElement, { type: "i
         borderRadius: element.borderRadius,
         border: `${element.border.width}px solid ${element.border.color}`,
         WebkitMaskImage: fade,
-        WebkitMaskComposite: "source-in",
         maskImage: fade,
-        maskComposite: "intersect"
+        WebkitMaskSize: "100% 100%",
+        maskSize: "100% 100%",
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat"
       } as CSSProperties}
     >
       <img

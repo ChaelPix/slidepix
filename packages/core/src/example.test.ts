@@ -18,9 +18,10 @@ describe("visual regression example", () => {
     const images = elements.filter((element) => element.type === "image");
     const videos = elements.filter((element) => element.type === "video");
     const shapes = elements.filter((element) => element.type === "shape");
+    const tables = elements.filter((element) => element.type === "table");
     const effects = new Set(deck.slides.flatMap((slide) => slide.timeline.map((step) => step.effect)));
 
-    expect(deck.slides).toHaveLength(6);
+    expect(deck.slides).toHaveLength(7);
     expect(text.some((element) => element.markdown.includes("$$"))).toBe(true);
     expect(text.some((element) => element.markdown.includes("```typescript"))).toBe(true);
     expect(deck.theme).toMatchObject({ background: "#ffffff", foreground: "#111827" });
@@ -28,10 +29,13 @@ describe("visual regression example", () => {
     expect(images.some((element) => element.border.width > 0 && element.borderRadius > 0)).toBe(true);
     expect(images.some((element) => element.edgeFade > 0 && element.crop.width < 1)).toBe(true);
     expect(videos).toHaveLength(1);
+    expect(tables.some((element) => element.rows >= 4 && element.cells.some((row) => row.some((cell) => cell.includes("$x^2$"))))).toBe(true);
+    expect(tables.some((element) => element.style.cellFill === "transparent")).toBe(true);
     expect(new Set(shapes.map((element) => element.shape))).toEqual(new Set(["rectangle", "ellipse", "triangle"]));
+    expect(shapes.some((element) => element.shadow.enabled)).toBe(true);
     expect(effects).toEqual(new Set(["appear", "fade", "fly"]));
     expect(new Set(deck.slides.map((slide) => slide.transition.type))).toEqual(
-      new Set(["none", "fade", "slide-right", "slide-up", "morph", "slide-left"])
+      new Set(["none", "fade", "slide-down", "slide-right", "slide-up", "morph", "slide-left"])
     );
 
     const morphDestination = deck.slides.find((slide) => slide.transition.type === "morph");

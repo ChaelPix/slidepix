@@ -37,12 +37,21 @@ Private command helpers:
 | `importAsset` | Enforces the 100 MB limit and stores clipboard/browser file bytes as deduplicated embedded content. |
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
+| `selectFont` | Scans platform font directories, opens a native searchable quick picker, and returns the selected CSS family through the versioned protocol. |
 | `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP. |
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's undo/autosave/external-change lifecycle.
 Undo/redo messages execute VS Code's built-in history commands rather than
 maintaining a competing history inside the webview.
+
+## `src/fonts.ts`
+
+`discoverSystemFontFamilies()` scans bounded platform font directories without
+loading font binaries. `fontFamilyFromFilename()` derives searchable family
+labels and `cssFontFamily()` creates a quoted stack with a suitable fallback.
+Keep these pure helpers independently testable; the VS Code picker stays in
+`editor.ts`.
 
 ## `src/presentation.ts`
 
@@ -67,6 +76,8 @@ maintaining a competing history inside the webview.
 
 Presenter current/next iframes are double-buffered. A loaded preview replaces
 the old frame atomically, preventing black flashes or stale rapid-click loads.
+Preview shells and the explicit end-of-deck frame use the deck theme background
+instead of a hard-coded dark placeholder.
 
 Keep notes out of the audience document. New endpoints must retain token checks,
 `no-store`, MIME safety, and loopback-only binding.

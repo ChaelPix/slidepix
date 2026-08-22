@@ -11,5 +11,7 @@ describe("presenter panel HTML", () => {
     expect(html).toContain("if(frame!==next)frame.remove()");
     expect(html).toContain("swapFrame('current',i)");
     expect(html).toContain("swapFrame('next',i+1)");
+    expect(html).toContain(".frame-shell{position:relative");
+    expect(html).toContain("background:#ffffff");
   });
 });

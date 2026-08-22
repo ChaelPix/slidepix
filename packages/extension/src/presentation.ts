@@ -129,11 +129,17 @@ export function renderPresenterFrame(deck: Deck, index: number, resolveAsset: As
   const target = deck.slides.filter((slide) => !slide.hidden)[index];
   return target
     ? renderDeckDocument(deck, resolveAsset, { mode: "frame", selectedSlideIds: [target.id] })
-    : emptyFrameDocument();
+    : emptyFrameDocument(deck);
 }
 
-function emptyFrameDocument(): string {
-  return "<!doctype html><html><head><meta charset=\"utf-8\"><style>html,body{height:100%;margin:0;background:#111827;color:#94a3b8;font:16px system-ui;display:grid;place-items:center}</style></head><body>End of presentation</body></html>";
+function emptyFrameDocument(deck: Deck): string {
+  const background = cssValue(deck.theme.background);
+  const foreground = cssValue(deck.theme.foreground);
+  return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{height:100%;margin:0;background:${background};color:${foreground};font:16px system-ui;display:grid;place-items:center}</style></head><body>End of presentation</body></html>`;
+}
+
+function cssValue(value: string): string {
+  return value.replace(/[;{}<>"']/g, "");
 }
 
 function send(response: import("node:http").ServerResponse, status: number, contentType: string, body: string | Uint8Array): void {

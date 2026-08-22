@@ -38,6 +38,7 @@ describe("PresentationServer navigation", () => {
 
     expect(html).toContain("End of presentation");
     expect(html).not.toContain("slidepix-slide");
+    expect(html).toContain("background:#ffffff");
   });
 
   it("falls back to slide navigation when presenter control has no audience connection", () => {
