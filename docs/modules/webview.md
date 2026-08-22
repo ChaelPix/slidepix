@@ -24,6 +24,10 @@ webview. The webview has no direct filesystem or Node access.
 - `SlideView(props)` renders one slide at a logical size and applies a visual
   scale. It sorts elements by `z`, resolves media through a supplied resolver,
   and generates visible-order page numbers.
+- The main editor keeps `SlideView` and Moveable inside one logical-size
+  `canvas-scale` wrapper. The wrapper alone is zoomed, so selection geometry,
+  drag, resize, rotation, and morph inputs stay in logical slide units while
+  controls remain visually consistent.
 - `useDeckStore.mutate(mutator)` clones the current deck, applies the mutation,
   updates optimistic UI state, serializes through core, and posts one
   `replaceDocument` message. Do not mutate the existing store deck directly.
@@ -37,17 +41,24 @@ local filesystem paths in the webview.
 ## Interaction invariants
 
 - Stored coordinates remain logical slide units regardless of zoom.
+- Only the interactive canvas emits `element-<id>` DOM IDs. Thumbnails must not
+  duplicate them, because selection and Moveable target lookup require a unique
+  main-canvas element.
 - A locked item cannot be manipulated from the canvas.
 - Deleting an element also removes timeline steps that target it.
 - Selecting another slide clears element selection.
 - Clicking a transition gap changes the destination slide's incoming
   transition.
+- Text editing is available by double-clicking a text element or using
+  **Edit Markdown · LaTeX · Code…** in Properties.
 - All persistent changes go through `mutate`; selections, zoom, open tabs, and
   modal state stay transient.
+- App-wide canvas paste handling ignores inputs, textareas, selects, and
+  content-editable targets, so pasting inside the Markdown editor or inspector
+  edits that field instead of creating a new slide element.
 
 ## Verification
 
 Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
-

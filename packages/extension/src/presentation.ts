@@ -53,11 +53,12 @@ export class PresentationServer {
 
   command(command: "next" | "previous" | "first" | "last"): void {
     const count = this.deck.slides.filter((slide) => !slide.hidden).length;
+    const previousIndex = this.index;
     if (command === "next") this.index = Math.min(count - 1, this.index + 1);
     if (command === "previous") this.index = Math.max(0, this.index - 1);
     if (command === "first") this.index = 0;
     if (command === "last") this.index = Math.max(0, count - 1);
-    this.broadcast();
+    if (this.index !== previousIndex) this.broadcast();
   }
 
   dispose(): void {
@@ -103,7 +104,7 @@ export class PresentationServer {
       if (url.pathname === "/frame") {
         const slides = this.deck.slides.filter((slide) => !slide.hidden);
         const target = slides[Number(url.searchParams.get("index")) || 0];
-        return send(response, 200, "text/html; charset=utf-8", renderDeckDocument(this.deck, asset, { mode: "contact", selectedSlideIds: target ? [target.id] : [], columns: 1 }).replace("</head>", `<style>body{overflow:hidden}main{padding:0!important;display:block!important;transform-origin:top left;transform:scale(min(calc(100vw / ${this.deck.size.width}),calc(100vh / ${this.deck.size.height})))}</style></head>`));
+        return send(response, 200, "text/html; charset=utf-8", renderDeckDocument(this.deck, asset, { mode: "frame", selectedSlideIds: target ? [target.id] : [] }));
       }
       send(response, 404, "text/plain", "Not found");
     } catch (error) {

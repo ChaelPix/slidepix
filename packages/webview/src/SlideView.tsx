@@ -41,6 +41,7 @@ export function SlideView({
         <ElementView
           key={element.id}
           element={element}
+          interactive={interactive}
           selected={selectedElementId === element.id}
           resolveAsset={resolveAsset}
           onMouseDown={(event) => stop(event, element.id)}
@@ -58,12 +59,14 @@ export function SlideView({
 
 function ElementView({
   element,
+  interactive,
   selected,
   resolveAsset,
   onMouseDown,
   onDoubleClick
 }: {
   element: SlideElement;
+  interactive: boolean;
   selected: boolean;
   resolveAsset: (source: string) => string;
   onMouseDown: (event: MouseEvent) => void;
@@ -82,7 +85,7 @@ function ElementView({
   };
   return (
     <div
-      id={`element-${element.id}`}
+      id={interactive ? `element-${element.id}` : undefined}
       className={`slide-element ${selected ? "selected" : ""}`}
       data-element-id={element.id}
       style={style}

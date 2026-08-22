@@ -1,5 +1,5 @@
 import Moveable from "react-moveable";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   duplicateSlide,
   type AnimationStep,
@@ -90,6 +90,7 @@ export default function App() {
       if (file.type.startsWith("image/")) void importFile(file, "image");
       else if (file.type.startsWith("video/")) void importFile(file, "video");
     }} onPaste={(event) => {
+      if (isTextEntryTarget(event.target)) return;
       const file = [...event.clipboardData.files][0];
       if (file?.type.startsWith("image/")) void importFile(file, "image");
       else if (event.clipboardData.getData("text/plain")) {
@@ -115,48 +116,55 @@ export default function App() {
       <main className="workspace">
         <div className="canvas-scroll">
           <div className="canvas-frame" style={{ width: deck.size.width * store.zoom, height: deck.size.height * store.zoom }}>
-            <SlideView
-              deck={deck}
-              slide={slide}
-              scale={store.zoom}
-              interactive
-              selectedElementId={store.selectedElementId}
-              resolveAsset={assetUrl}
-              onSelectElement={store.selectElement}
-              onEditText={setEditingTextId}
-            />
-            {target && selected && (
-              <Moveable
-                target={target}
-                draggable
-                resizable
-                rotatable
-                snappable
-                origin={false}
-                zoom={1 / store.zoom}
-                onDrag={({ left, top, target: elementTarget }) => {
-                  elementTarget.style.left = `${left}px`;
-                  elementTarget.style.top = `${top}px`;
-                  store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.x = left; element.y = top; } });
-                }}
-                onResize={({ width, height, drag, target: elementTarget }) => {
-                  elementTarget.style.width = `${width}px`;
-                  elementTarget.style.height = `${height}px`;
-                  elementTarget.style.left = `${drag.left}px`;
-                  elementTarget.style.top = `${drag.top}px`;
-                  store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
-                }}
-                onRotate={({ rotation, target: elementTarget }) => {
-                  elementTarget.style.transform = `rotate(${rotation}deg)`;
-                  store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) element.rotation = rotation; });
-                }}
+            <div
+              className="canvas-scale"
+              style={{ width: deck.size.width, height: deck.size.height, zoom: store.zoom }}
+            >
+              <SlideView
+                deck={deck}
+                slide={slide}
+                interactive
+                selectedElementId={store.selectedElementId}
+                resolveAsset={assetUrl}
+                onSelectElement={store.selectElement}
+                onEditText={setEditingTextId}
               />
-            )}
+              {target && selected && (
+                <Moveable
+                  target={target}
+                  draggable
+                  resizable
+                  rotatable
+                  snappable
+                  origin={false}
+                  zoom={1 / store.zoom}
+                  onClick={({ isDouble }) => {
+                    if (isDouble && selected.type === "text") setEditingTextId(selected.id);
+                  }}
+                  onDrag={({ left, top, target: elementTarget }) => {
+                    elementTarget.style.left = `${left}px`;
+                    elementTarget.style.top = `${top}px`;
+                    store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.x = left; element.y = top; } });
+                  }}
+                  onResize={({ width, height, drag, target: elementTarget }) => {
+                    elementTarget.style.width = `${width}px`;
+                    elementTarget.style.height = `${height}px`;
+                    elementTarget.style.left = `${drag.left}px`;
+                    elementTarget.style.top = `${drag.top}px`;
+                    store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
+                  }}
+                  onRotate={({ rotation, target: elementTarget }) => {
+                    elementTarget.style.transform = `rotate(${rotation}deg)`;
+                    store.mutate((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) element.rotation = rotation; });
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
         <div className="notes"><label>Speaker notes</label><textarea value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} /></div>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} selectElement={store.selectElement} />
+      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} mutate={store.mutate} selectElement={store.selectElement} editText={setEditingTextId} />
       <div className="zoom-control"><button onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><span>{Math.round(store.zoom * 100)}%</span><button onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
       {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} mutate={store.mutate} close={() => setEditingTextId(undefined)} />}
     </div>
@@ -212,8 +220,8 @@ function SlideRail({ deck, selectedId, select, mutate }: { deck: Deck; selectedI
   </aside>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; selectElement(id?: string): void;
+function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement, editText }: {
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; mutate(fn: (deck: Deck) => void): void; selectElement(id?: string): void; editText(id: string): void;
 }) {
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   return <aside className="inspector">
@@ -231,6 +239,7 @@ function Inspector({ tab, setTab, deck, slide, element, mutate, selectElement }:
             <NumberField label="Opacity" value={element.opacity} step={0.05} onChange={(opacity) => update({ opacity })} />
           </div>
           {element.type === "text" && <>
+            <button className="edit-text-button" onClick={() => editText(element.id)}>Edit Markdown · LaTeX · Code…</button>
             <ColorField label="Text color" value={element.style.color} onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.color = color; })} />
             <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontSize = fontSize; })} />
             <label>Font family<input value={element.style.fontFamily} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontFamily = event.target.value; })} /></label>
@@ -280,6 +289,7 @@ function InvalidDeck({ message }: { message: string }) { return <div className="
 function baseElement(z: number) { return { id: crypto.randomUUID(), morphKey: crypto.randomUUID(), x: 240, y: 240, width: 640, height: 360, rotation: 0, opacity: 1, z, locked: false, hidden: false } as const; }
 function defaultAnimation(targetElementId: string): AnimationStep { return { id: crypto.randomUUID(), targetElementId, phase: "entrance", effect: "fade", trigger: "onClick", delayMs: 0, durationMs: 500, easing: "ease-out" }; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
+function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
 function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string) => void, setInvalid: (message: string, uri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference, message.error); pendingAssets.delete(message.requestId); } }
 async function sendAsset(file: File): Promise<string | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (reference, error) => { if (error) alert(error); resolve(reference); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }

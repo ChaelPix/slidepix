@@ -47,6 +47,7 @@
     "generate-schema": "node ./scripts/generate-schema.mjs",
     "build": "pnpm generate-schema && node ./scripts/vendor-playwright.mjs && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\"",
     "dev": "pnpm build --watch",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "package": "vsce package --no-dependencies"
   },
@@ -65,7 +66,8 @@
     "@types/ws": "^8.18.1",
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.25.9",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   },
   "files": ["dist", "media", "schema", "vendor", "README.md", "CHANGELOG.md", "LICENSE", "package.json"]
 }

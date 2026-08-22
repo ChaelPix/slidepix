@@ -43,7 +43,7 @@ export function renderSlideMarkup(
 export function renderDeckDocument(
   deck: Deck,
   resolveAsset: AssetResolver = (value) => value,
-  options: { mode?: "print" | "present" | "contact"; selectedSlideIds?: string[]; columns?: number } = {}
+  options: { mode?: "print" | "present" | "contact" | "frame"; selectedSlideIds?: string[]; columns?: number } = {}
 ): string {
   const mode = options.mode ?? "print";
   const selected = options.selectedSlideIds?.length ? new Set(options.selectedSlideIds) : undefined;
@@ -53,7 +53,8 @@ export function renderDeckDocument(
     return renderSlideMarkup(deck, slide, visibleIndex, resolveAsset);
   }).join("");
   const columns = Math.max(1, options.columns ?? Math.ceil(Math.sqrt(slides.length)));
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles(deck, mode, columns)}</style></head><body class="mode-${mode}"><main>${markup}</main>${mode === "present" ? presentationScript(deck) : ""}</body></html>`;
+  const runtime = mode === "present" ? presentationScript(deck) : mode === "frame" ? frameScript(deck) : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles(deck, mode, columns)}</style></head><body class="mode-${mode}"><main>${markup}</main>${runtime}</body></html>`;
 }
 
 function renderElement(element: SlideElement, resolveAsset: AssetResolver): string {
@@ -114,9 +115,18 @@ main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.si
 .slidepix-page-number{position:absolute;right:32px;bottom:20px;z-index:2147483647}
 @page{size:${deck.size.width}px ${deck.size.height}px;margin:0}
 @media print{html,body{background:transparent}.slidepix-slide{margin:0}}
-body.mode-present{overflow:hidden}.mode-present main{width:100vw;height:100vh}.mode-present .slidepix-slide{display:none;transform-origin:top left}
-body.mode-present .slidepix-slide.active{display:block}
-`;
+	body.mode-present{overflow:hidden}.mode-present main{width:100vw;height:100vh}.mode-present .slidepix-slide{display:none;transform-origin:top left}
+	body.mode-present .slidepix-slide.active{display:block}
+	body.mode-frame{overflow:hidden}.mode-frame main{position:relative;width:100vw;height:100vh}.mode-frame .slidepix-slide{position:absolute;left:0;top:0;transform-origin:top left}
+	`;
+}
+
+function frameScript(deck: Deck): string {
+  return `<script>(function(){
+const slide=document.querySelector('.slidepix-slide');
+function fit(){if(!slide)return;const k=Math.min(innerWidth/${deck.size.width},innerHeight/${deck.size.height});slide.style.transform='scale('+k+')';slide.style.left=(innerWidth-${deck.size.width}*k)/2+'px';slide.style.top=(innerHeight-${deck.size.height}*k)/2+'px'}
+addEventListener('resize',fit);fit()
+})();</script>`;
 }
 
 function presentationScript(deck: Deck): string {
@@ -131,7 +141,7 @@ function morph(slide,from,transition){for(const e of slide.querySelectorAll('[da
 function reset(){step=0;const s=slides[index],line=timelines[index]||[];for(const a of line){const e=s?.querySelector('[data-element-id="'+CSS.escape(a.targetElementId)+'"]');if(e&&a.phase==='entrance')e.style.visibility='hidden';if(e&&a.phase==='exit')e.style.visibility='visible'}}
 function play(a,offset){const s=slides[index],e=s?.querySelector('[data-element-id="'+CSS.escape(a.targetElementId)+'"]');if(!e)return 0;const delay=(a.delayMs||0)+offset,duration=a.durationMs||0,fly=a.direction==='right'?['40px','0']:a.direction==='up'?['0','40px']:a.direction==='down'?['0','-40px']:['-40px','0'];setTimeout(()=>{if(a.phase==='entrance')e.style.visibility='visible';const from=a.effect==='appear'?{}:a.effect==='fly'?{opacity:0,translate:fly.join(' ')}:{opacity:0},to={opacity:a.phase==='exit'?0:1,translate:'0 0'};e.animate(a.phase==='exit'?[to,from]:[from,to],{duration,easing:a.easing||'ease-out',fill:'both'}).finished.then(()=>{if(a.phase==='exit')e.style.visibility='hidden'})},delay);return delay+duration}
 function advance(){const line=timelines[index]||[];if(step>=line.length)return false;let cursor=0;do{const a=line[step++];cursor=play(a,a.trigger==='withPrevious'?0:cursor)}while(step<line.length&&line[step].trigger!=='onClick');return true}
-function show(next){const bounded=Math.max(0,Math.min(slides.length-1,next)),before=snapshot(slides[index]?.classList.contains('active')?slides[index]:null);index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-')){const d=t.type.slice(6),v=d==='left'?'100%':d==='right'?'-100%':'0',w=d==='up'?'100%':d==='down'?'-100%':'0';s.animate([{transform:'translate('+v+','+w+') '+s.style.transform},{transform:s.style.transform}],{duration:t.durationMs,easing:t.easing})}reset();fit()}
+	function show(next){const bounded=Math.max(0,Math.min(slides.length-1,next));if(bounded===index&&slides[index]?.classList.contains('active')){fit();return}const before=snapshot(slides[index]?.classList.contains('active')?slides[index]:null);index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-')){const d=t.type.slice(6),v=d==='left'?'100%':d==='right'?'-100%':'0',w=d==='up'?'100%':d==='down'?'-100%':'0';s.animate([{transform:'translate('+v+','+w+') '+s.style.transform},{transform:s.style.transform}],{duration:t.durationMs,easing:t.easing})}reset();fit()}
 window.slidepixShow=show;window.slidepixAdvance=advance;addEventListener('resize',fit);addEventListener('keydown',e=>{if(e.key==='f')document.documentElement.requestFullscreen?.()});show(0)
 })();</script>`;
 }

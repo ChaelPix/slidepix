@@ -95,7 +95,7 @@ Edit source files, then regenerate outputs with the documented commands.
 | --- | --- |
 | `pnpm build` | Builds core, webview, MCP, and extension in dependency order; also generates schema and vendors Playwright Core. |
 | `pnpm dev` | Watches the webview and extension packages for local extension development. |
-| `pnpm test` | Runs core schema/security tests and MCP selection tests. |
+| `pnpm test` | Runs core schema/rendering tests, extension presentation-state tests, and MCP selection tests. |
 | `pnpm typecheck` | Type-checks every workspace package without emitting files. |
 | `pnpm docs:check` | Verifies local Markdown links and required agent-native files. |
 | `pnpm package` | Performs a full workspace build and creates the VSIX. |

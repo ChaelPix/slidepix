@@ -48,13 +48,17 @@ would break the editor's undo/autosave/external-change lifecycle.
   for HTTP and WebSocket access, and sends initial state.
 - `url(pathname)` returns a tokenized loopback URL.
 - `command(next|previous|first|last)` clamps visible-slide state and broadcasts
-  it.
+  only when the index changes, so boundary navigation cannot reset animations.
 - `dispose()` closes clients and the server.
 - Private routing serves `/audience`, `/print`, `/contact`, `/frame`, and safe
   `/asset/<reference>` resources through core rendering and asset resolution.
+  `/frame` uses core's viewport-fitting frame mode for presenter previews.
 
 Keep notes out of the audience document. New endpoints must retain token checks,
 `no-store`, MIME safety, and loopback-only binding.
+
+`src/presentation.test.ts` verifies that boundary navigation does not broadcast
+an unchanged slide index and therefore cannot restart a completed timeline.
 
 ## `src/renderer.ts`
 
@@ -74,4 +78,3 @@ is vendored into the VSIX; OS-specific Chromium is not.
 keybindings, bundled files, and VS Code engine compatibility. See the script
 table in root [architecture.md](../../architecture.md) before altering build
 outputs.
-

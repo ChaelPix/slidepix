@@ -39,8 +39,8 @@ Add security tests for path-handling changes.
 | Export | Contract |
 | --- | --- |
 | `renderMarkdown(source)` | Produces sanitized HTML from Markdown with KaTeX/MathML. Raw HTML is disabled; links receive safe attributes. |
-| `renderSlideMarkup(deck, slide, resolveAsset?, pageIndex?)` | Produces one positioned logical slide with all supported element types. |
-| `renderDeckDocument(deck, resolveAsset?, options?)` | Produces a standalone document for `present`, `print`, or `contact` mode, including shared CSS and presentation motion runtime. |
+| `renderSlideMarkup(deck, slide, visibleIndex, resolveAsset?)` | Produces one positioned logical slide with all supported element types. |
+| `renderDeckDocument(deck, resolveAsset?, options?)` | Produces a standalone document for `present`, `frame`, `print`, or `contact` mode, including shared CSS and the relevant viewport/motion runtime. |
 | `AssetResolver` | Maps a stored asset reference to a webview URL, loopback URL, or data URI without changing render logic. |
 
 The React canvas has a separate component tree because it needs interaction,
@@ -64,5 +64,7 @@ reach into `src`.
 ## Tests
 
 `src/schema.test.ts` covers deck creation, round-trip serialization, invalid
-JSON, future schema versions, morph-key duplication, and asset traversal. Put
-pure core regressions here before using slower integration tests.
+JSON, future schema versions, morph-key duplication, and asset traversal.
+`src/render.test.ts` covers presenter-frame selection/fitting and presentation
+boundary idempotence. Put pure core regressions here before using slower
+integration tests.
