@@ -283,6 +283,7 @@ function Toolbar({ slide, addText, addShape, addTable, chooseImage, chooseVideo,
       <RibbonButton icon="save" label="Save" onClick={() => postMessage({ type: "command", command: "save" })} />
       <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
       <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
+      <RibbonButton icon="globe" label="Web" onClick={() => postMessage({ type: "command", command: "exportWeb" })} />
       <RibbonButton icon="package" label="Embed all" disabled={!hasLinkedMedia} onClick={() => postMessage({ type: "embedMedia" })} />
       <RibbonButton icon="hubot" label="MCP" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
     </div></div>

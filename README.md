@@ -69,13 +69,29 @@ The screen is organized like a simple slide application:
 - Add entrance animations from the **animations** tab after selecting an item.
 - Use **Present** for one audience screen. Use **Presenter** for the audience
   window plus current/next slides, notes, and a timer in the editor.
-- Use **Export PDF** or **Export PNG**. On first use, approve the one-time
-  Chromium renderer download. Later exports work offline.
+- Use **Export PDF**, **Export PNG**, or **Export Web**. PDF/PNG asks you to
+  approve a one-time Chromium renderer download; Web export needs no download.
+  It creates a portable folder with `index.html` and copied media that works
+  offline in a modern browser.
 
 Save the deck normally with `Ctrl+S` or `Cmd+S`. Undo with `Ctrl+Z`/`Cmd+Z` and
 redo with `Ctrl+Y` or `Cmd+Shift+Z`; matching toolbar buttons are also present.
 VS Code/Cursor owns that history, autosave, backup, and recovery because the
 deck is a text document.
+
+## Put a presentation on a web server or Raspberry Pi
+
+Click **Web** beside **PDF**, choose a new folder name such as `my-talk-web`,
+and copy that complete folder to the target computer. Open `index.html`
+directly in Chromium, or point any static server such as nginx at the folder.
+Click or use the arrow keys, Space, and Page Up/Page Down to present; press `F`
+for fullscreen. Animations, transitions, images, video, and linked workspace
+media are included without needing SlidePix, Node.js, or an internet
+connection.
+
+Only visible audience content is exported: hidden slides, speaker notes, and
+the source deck are omitted. Fonts are not bundled, so a system font selected
+on the authoring computer may fall back to an available Raspberry Pi font.
 
 ## Move a presentation to another computer
 

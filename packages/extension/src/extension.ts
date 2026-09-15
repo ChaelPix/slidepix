@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { createDeck, parseDeckText, serializeDeck } from "@slidepix/core";
 import { SlidePixEditorProvider, VIEW_TYPE } from "./editor";
 import { exportPdf, exportPng, installRenderer } from "./renderer";
+import { exportWeb } from "./web-export-command";
 
 export function activate(context: vscode.ExtensionContext): void {
   const editor = new SlidePixEditorProvider(context);
@@ -10,6 +11,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("slidepix.createDeck", () => createDeckCommand()),
     vscode.commands.registerCommand("slidepix.exportPdf", () => withDeck(editor, (deck, document) => exportPdf(context, deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.exportPng", () => withDeck(editor, (deck, document) => exportPng(context, deck, document.uri.fsPath))),
+    vscode.commands.registerCommand("slidepix.exportWeb", () => withDeck(editor, (deck, document) => exportWeb(deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),
     vscode.commands.registerCommand("slidepix.presenter", () => editor.currentDocument() && editor.present(editor.currentDocument()!, true)),
     vscode.commands.registerCommand("slidepix.installRenderer", () => installRenderer(context)),

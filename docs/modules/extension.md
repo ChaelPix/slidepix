@@ -4,7 +4,7 @@ Package: `slidepix`
 
 Purpose: connect the shared deck model and React webview to VS Code/Cursor APIs,
 own assets and persistence, serve presentations, and manage deterministic
-exports.
+PDF, PNG, and standalone web exports.
 
 ## `src/extension.ts`
 
@@ -107,6 +107,21 @@ panel and out of audience HTML.
 
 Both exporters must close the browser and server in `finally`. Playwright Core
 is vendored into the VSIX; OS-specific Chromium is not.
+
+## `src/web-export.ts` and `src/web-export-command.ts`
+
+- `buildWebExport(deck, deckPath, destination, allowedLinkedRoots)` stages a
+  static `index.html` plus content-addressed media under `assets/`, then renames
+  the complete directory into place. Existing destinations are never merged or
+  replaced, and failed builds remove their private staging directory.
+- The bundle uses core's `present` document and adds only the offline
+  click/keyboard controller needed in place of the live server's WebSocket
+  bridge. Hidden slides, notes, source JSON, and unused media are excluded.
+- Embedded and linked media reads must pass through `resolveMediaPath`. Linked
+  files are limited to open file-workspace roots, while video posters retain
+  the renderer's embedded-storage contract.
+- `exportWeb(deck, deckPath)` owns the save dialog, collision retry, progress,
+  and user-facing completion/error messages. It does not install Chromium.
 
 ## Manifest and build scripts
 

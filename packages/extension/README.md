@@ -22,6 +22,9 @@ image border/crop controls. Undo and redo work from the toolbar or standard
 VS Code/Cursor shortcuts.
 
 PDF/PNG export asks once before downloading the optional Chromium renderer.
+**Web** creates an offline `index.html` folder with copied media and needs no
+renderer download; the folder can be opened directly or hosted by a static web
+server. System fonts are not bundled and may fall back on another computer.
 Run **SlidePix: Configure MCP** to preview configuration for the bundled
 read-only slide inspection and rendering tools.
 

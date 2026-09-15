@@ -28,6 +28,7 @@
       { "command": "slidepix.createDeck", "title": "SlidePix: Create Deck", "icon": "$(new-file)" },
       { "command": "slidepix.exportPdf", "title": "SlidePix: Export PDF", "icon": "$(file-pdf)" },
       { "command": "slidepix.exportPng", "title": "SlidePix: Export PNG", "icon": "$(file-media)" },
+      { "command": "slidepix.exportWeb", "title": "SlidePix: Export Web", "icon": "$(globe)" },
       { "command": "slidepix.present", "title": "SlidePix: Present", "icon": "$(play)" },
       { "command": "slidepix.presenter", "title": "SlidePix: Presenter View", "icon": "$(multiple-windows)" },
       { "command": "slidepix.installRenderer", "title": "SlidePix: Install Export Renderer" },
@@ -36,7 +37,8 @@
     "menus": {
       "editor/title": [
         { "command": "slidepix.present", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@1" },
-        { "command": "slidepix.exportPdf", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@2" }
+        { "command": "slidepix.exportPdf", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@2" },
+        { "command": "slidepix.exportWeb", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@3" }
       ]
     },
     "keybindings": [
