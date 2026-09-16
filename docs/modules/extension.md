@@ -4,7 +4,7 @@ Package: `slidepix`
 
 Purpose: connect the shared deck model and React webview to VS Code/Cursor APIs,
 own assets and persistence, serve presentations, and manage deterministic
-PDF, PNG, and standalone web exports.
+PDF, PNG, PowerPoint, and standalone web exports.
 
 ## `src/extension.ts`
 
@@ -126,6 +126,35 @@ panel and out of audience HTML.
 
 Both exporters must close the browser and server in `finally`. Playwright Core
 is vendored into the VSIX; OS-specific Chromium is not.
+
+## `src/pptx-export.ts` and `src/pptx-export-command.ts`
+
+- `exportPptx(context, deck, deckPath)` owns the save dialog, progress, and the
+  approximation report in the SlidePix PowerPoint Export output channel. It
+  does not install or launch Chromium.
+- `buildPptxExport(deck, deckPath, destination, allowedLinkedRoots)` validates
+  every visible media reference with `resolveMediaPath`, builds native objects,
+  writes a sibling temporary file, and replaces the selected `.pptx` only after
+  generation succeeds.
+- The extension generates OOXML directly with pinned PptxGenJS. LibreOffice is
+  useful as a compatibility oracle in development but is not a runtime
+  dependency or conversion step.
+- Rich Markdown and Highlight.js tokens become editable PowerPoint text runs.
+  Equations use native OfficeMath in an OOXML compatibility choice, with an
+  editable linear-math fallback for readers that do not implement OfficeMath;
+  unsupported conversions also retain editable linear LaTeX and emit a warning.
+  Shapes, tables, pictures, video, notes, and page numbers remain native objects.
+  There is no screenshot fallback.
+- `src/pptx-ooxml.ts` patches package XML for OfficeMath, picture crop/rounding/
+  soft-edge/border effects, fade/push/Morph transitions, stable `!!morphKey`
+  names, and appear/fade/fly animation timing.
+- Hidden slides and elements are omitted. System fonts are referenced rather
+  than embedded; unsupported CSS easing and browser-only details use the closest
+  native PowerPoint equivalent and produce structured warnings.
+
+`src/playwright.ts` is the VS Code-independent loader for the vendored
+Playwright Core package, allowing renderer-backed exporters to remain directly
+unit-testable.
 
 ## `src/web-export.ts` and `src/web-export-command.ts`
 

@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import katex from "katex";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import c from "highlight.js/lib/languages/c";
@@ -42,8 +43,197 @@ markdown.validateLink = (url) => /^(https?:|mailto:|#)/i.test(url);
 
 export type AssetResolver = (reference: string, storage: MediaStorage) => string;
 
+export type PresentationTextRun = {
+  kind: "text";
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  strike?: boolean;
+  code?: boolean;
+  href?: string;
+} | {
+  kind: "math";
+  latex: string;
+};
+
+export type PresentationCodeRun = {
+  text: string;
+  token?: string;
+};
+
+export type PresentationMarkdownBlock = {
+  type: "paragraph" | "heading" | "list-item";
+  runs: PresentationTextRun[];
+  level?: number;
+  ordered?: boolean;
+} | {
+  type: "code";
+  code: string;
+  language: string;
+  runs: PresentationCodeRun[];
+} | {
+  type: "math";
+  latex: string;
+} | {
+  type: "table";
+  rows: PresentationTextRun[][][];
+  headerRow: boolean;
+};
+
 export function renderMarkdown(source: string): string {
   return markdown.render(source);
+}
+
+export function renderPresentationMathMl(latex: string, displayMode = false): string {
+  return katex.renderToString(latex, { output: "mathml", throwOnError: true, displayMode });
+}
+
+/**
+ * Parses the same configured Markdown dialect used by renderMarkdown into a
+ * presentation-neutral structure. Non-HTML exporters consume this instead of
+ * maintaining a second Markdown interpretation.
+ */
+export function parsePresentationMarkdown(source: string): PresentationMarkdownBlock[] {
+  const tokens = markdown.parse(source, {});
+  const blocks: PresentationMarkdownBlock[] = [];
+  const lists: Array<{ ordered: boolean }> = [];
+  let headingLevel: number | undefined;
+  let inListItem = false;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (token.type === "heading_open") {
+      headingLevel = Number(token.tag.slice(1)) || 1;
+      continue;
+    }
+    if (token.type === "heading_close") {
+      headingLevel = undefined;
+      continue;
+    }
+    if (token.type === "bullet_list_open" || token.type === "ordered_list_open") {
+      lists.push({ ordered: token.type === "ordered_list_open" });
+      continue;
+    }
+    if (token.type === "bullet_list_close" || token.type === "ordered_list_close") {
+      lists.pop();
+      continue;
+    }
+    if (token.type === "list_item_open") {
+      inListItem = true;
+      continue;
+    }
+    if (token.type === "list_item_close") {
+      inListItem = false;
+      continue;
+    }
+    if (token.type === "table_open") {
+      const rows: PresentationTextRun[][][] = [];
+      let row: PresentationTextRun[][] | undefined;
+      let headerRow = false;
+      for (index += 1; index < tokens.length && tokens[index]!.type !== "table_close"; index += 1) {
+        const tableToken = tokens[index]!;
+        if (tableToken.type === "thead_open") headerRow = true;
+        else if (tableToken.type === "tr_open") row = [];
+        else if (tableToken.type === "tr_close" && row) {
+          rows.push(row);
+          row = undefined;
+        } else if (tableToken.type === "inline" && row) {
+          row.push(parseInlineRuns(tableToken.children ?? []));
+        }
+      }
+      blocks.push({ type: "table", rows, headerRow });
+      continue;
+    }
+    if (token.type === "inline") {
+      const runs = parseInlineRuns(token.children ?? []);
+      if (headingLevel !== undefined) blocks.push({ type: "heading", level: headingLevel, runs });
+      else if (inListItem && lists.length) blocks.push({ type: "list-item", level: lists.length - 1, ordered: lists.at(-1)!.ordered, runs });
+      else blocks.push({ type: "paragraph", runs });
+      continue;
+    }
+    if (token.type === "fence" || token.type === "code_block") {
+      const language = token.info.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+      blocks.push({ type: "code", code: token.content, language, runs: highlightCodeRuns(token.content, language) });
+      continue;
+    }
+    if (token.type === "math_block") blocks.push({ type: "math", latex: token.content.trim() });
+  }
+  return blocks;
+}
+
+function parseInlineRuns(tokens: Array<{ type: string; content: string; attrGet(name: string): string | null }>): PresentationTextRun[] {
+  const runs: PresentationTextRun[] = [];
+  const style = { bold: false, italic: false, strike: false, href: undefined as string | undefined };
+  for (const token of tokens) {
+    if (token.type === "strong_open") style.bold = true;
+    else if (token.type === "strong_close") style.bold = false;
+    else if (token.type === "em_open") style.italic = true;
+    else if (token.type === "em_close") style.italic = false;
+    else if (token.type === "s_open") style.strike = true;
+    else if (token.type === "s_close") style.strike = false;
+    else if (token.type === "link_open") style.href = token.attrGet("href") ?? undefined;
+    else if (token.type === "link_close") style.href = undefined;
+    else if (token.type === "math_inline") runs.push({ kind: "math", latex: token.content });
+    else if (token.type === "softbreak" || token.type === "hardbreak") pushTextRun(runs, "\n", style);
+    else if (token.type === "code_inline") pushTextRun(runs, token.content, { ...style, code: true });
+    else if (token.type === "text") pushTextRun(runs, token.content, style);
+    else if (token.type === "image") pushTextRun(runs, token.content, style);
+  }
+  return runs;
+}
+
+function pushTextRun(
+  runs: PresentationTextRun[],
+  text: string,
+  style: { bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean; href?: string }
+): void {
+  if (!text) return;
+  const next: Extract<PresentationTextRun, { kind: "text" }> = {
+    kind: "text",
+    text,
+    ...(style.bold ? { bold: true } : {}),
+    ...(style.italic ? { italic: true } : {}),
+    ...(style.strike ? { strike: true } : {}),
+    ...(style.code ? { code: true } : {}),
+    ...(style.href ? { href: style.href } : {})
+  };
+  const previous = runs.at(-1);
+  if (previous?.kind === "text" && sameRunStyle(previous, next)) previous.text += text;
+  else runs.push(next);
+}
+
+function sameRunStyle(left: Extract<PresentationTextRun, { kind: "text" }>, right: Extract<PresentationTextRun, { kind: "text" }>): boolean {
+  return left.bold === right.bold && left.italic === right.italic && left.strike === right.strike && left.code === right.code && left.href === right.href;
+}
+
+function highlightCodeRuns(code: string, requestedLanguage: string): PresentationCodeRun[] {
+  const selected = requestedLanguage && hljs.getLanguage(requestedLanguage) ? requestedLanguage : undefined;
+  const html = selected ? hljs.highlight(code, { language: selected }).value : hljs.highlightAuto(code).value;
+  const runs: PresentationCodeRun[] = [];
+  const classes: string[] = [];
+  for (const match of html.matchAll(/<span class="([^"]+)">|<\/span>|([^<]+)/g)) {
+    if (match[1]) classes.push(match[1].split(/\s+/).find((value) => value.startsWith("hljs-")) ?? "");
+    else if (match[0] === "</span>") classes.pop();
+    else if (match[2]) {
+      const text = decodeHtml(match[2]);
+      const token = [...classes].reverse().find(Boolean);
+      const previous = runs.at(-1);
+      if (previous && previous.token === token) previous.text += text;
+      else runs.push({ text, ...(token ? { token } : {}) });
+    }
+  }
+  return runs;
+}
+
+function decodeHtml(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_match, entity: string) => {
+    if (entity[0] === "#") {
+      const hexadecimal = entity[1]?.toLowerCase() === "x";
+      const code = Number.parseInt(entity.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+    }
+    return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" } as Record<string, string>)[entity.toLowerCase()] ?? "";
+  });
 }
 
 export function roundedEdgeFadeMask(width: number, height: number, borderRadius: number, edgeFade: number): string | undefined {

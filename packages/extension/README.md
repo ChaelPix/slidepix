@@ -22,6 +22,13 @@ image border/crop controls. Undo and redo work from the toolbar or standard
 VS Code/Cursor shortcuts.
 
 PDF/PNG export asks once before downloading the optional Chromium renderer.
+**PPTX** needs no renderer and creates native editable text, highlighted code,
+OfficeMath equations, shapes, tables, pictures, and embedded video. It also maps
+SlidePix transitions, Morph identity, and appear/fade/fly timeline steps to
+PowerPoint motion. The `.pptx` is generated directly; LibreOffice is not an
+export dependency. Browser-only details use the closest native PowerPoint
+equivalent and are listed in the export report; content is never replaced with
+slide or element screenshots. Fonts are referenced but not bundled.
 **Web** creates an offline `index.html` folder with copied media and needs no
 renderer download; the folder can be opened directly or hosted by a static web
 server. System fonts are not bundled and may fall back on another computer.

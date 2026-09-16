@@ -16,6 +16,7 @@ the task; this keeps context small while making ownership explicit.
 | Change commands or extension contributions | `packages/extension/src/extension.ts` and `packages/extension/package.json` | [Extension module](docs/modules/extension.md) |
 | Change presentation or presenter mode | `packages/extension/src/presentation.ts` | [Extension module](docs/modules/extension.md) |
 | Change PDF/PNG export or browser installation | `packages/extension/src/renderer.ts` | [Extension module](docs/modules/extension.md) |
+| Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change MCP tools or selection rules | `packages/mcp/src/server.ts` and `packages/mcp/src/tools.ts` | [MCP module](docs/modules/mcp.md) |
 | Change build/package/release work | root and package `package.json` files | [Development guide](docs/development.md) |
@@ -38,6 +39,7 @@ base / ours / theirs ── @slidepix/core semantic merge ── validated canon
        ├── editor canvas/thumbnails
        ├── audience and presenter server
        ├── PDF/PNG through pinned Chromium
+       ├── native editable PPTX through semantic OOXML conversion
        ├── standalone offline web folder
        └── read-only MCP inspection/rendering
 ```

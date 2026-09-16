@@ -50,7 +50,7 @@ extension bundle.
 | Git collaboration/merge driver | Previous checks plus the extension integration tests; manually configure, merge, resolve, stage, and remove in a temporary repository. |
 | Webview behavior | `pnpm typecheck`, `pnpm build`, manual Extension Development Host test |
 | Rendering/motion | previous checks plus `node scripts/render-smoke.mjs`; inspect the contact sheet, PDF, and `slides/` exact-size PNG frames |
-| Presentation/export | previous checks plus audience/presenter and PDF/PNG/Web manual smoke tests |
+| Presentation/export | previous checks plus audience/presenter and PDF/PNG/PPTX/Web manual smoke tests; inspect native PPTX object editability and motion in PowerPoint, with LibreOffice as an additional compatibility check |
 | MCP | `pnpm test`, `pnpm typecheck`, build, start bundled stdio server, and render one/many slides |
 | Release | all checks on the target OS, then `pnpm package` and install the produced VSIX |
 

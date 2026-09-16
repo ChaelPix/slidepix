@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderDeckDocument, renderMarkdown, roundedEdgeFadeMask } from "./render.js";
+import { parsePresentationMarkdown, renderDeckDocument, renderMarkdown, renderPresentationMathMl, roundedEdgeFadeMask } from "./render.js";
 import { createDeck, duplicateSlide, elementSchema } from "./schema.js";
 
 describe("shared document rendering", () => {
@@ -75,6 +75,22 @@ describe("shared document rendering", () => {
     expect(html).toContain('data-language="python"');
     expect(html).toContain("hljs-keyword");
     expect(html).toContain("hljs-title");
+  });
+
+  it("exposes the shared Markdown structure for semantic exporters", () => {
+    const blocks = parsePresentationMarkdown("# Title **bold** $x^2$\n\n- item\n\n```ts\nconst value = 2;\n```\n\n| A | B |\n| - | - |\n| 1 | 2 |");
+
+    expect(blocks[0]).toMatchObject({ type: "heading", level: 1 });
+    expect(blocks[0]?.type === "heading" && blocks[0].runs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "text", text: "bold", bold: true }),
+      expect.objectContaining({ kind: "math", latex: "x^2" })
+    ]));
+    expect(blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "list-item", level: 0 }),
+      expect.objectContaining({ type: "code", language: "ts", runs: expect.arrayContaining([expect.objectContaining({ token: "hljs-keyword" })]) }),
+      expect.objectContaining({ type: "table", headerRow: true })
+    ]));
+    expect(renderPresentationMathMl("\\frac{x}{y}", true)).toContain("<mfrac>");
   });
 
   it("renders four-sided image edge fading and passes media storage to the resolver", () => {

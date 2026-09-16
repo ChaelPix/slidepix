@@ -5,9 +5,7 @@
   "version": "0.1.0",
   "publisher": "slidepix",
   "license": "MIT",
-  "engines": {
-    "vscode": "^1.99.0"
-  },
+  "engines": { "vscode": "^1.99.0" },
   "categories": ["Visualization", "Education", "Other"],
   "keywords": ["slides", "presentation", "markdown", "latex", "visual"],
   "main": "./dist/extension.cjs",
@@ -28,6 +26,7 @@
       { "command": "slidepix.createDeck", "title": "SlidePix: Create Deck", "icon": "$(new-file)" },
       { "command": "slidepix.exportPdf", "title": "SlidePix: Export PDF", "icon": "$(file-pdf)" },
       { "command": "slidepix.exportPng", "title": "SlidePix: Export PNG", "icon": "$(file-media)" },
+      { "command": "slidepix.exportPptx", "title": "SlidePix: Export PowerPoint", "icon": "$(file)" },
       { "command": "slidepix.exportWeb", "title": "SlidePix: Export Web", "icon": "$(globe)" },
       { "command": "slidepix.present", "title": "SlidePix: Present", "icon": "$(play)" },
       { "command": "slidepix.presenter", "title": "SlidePix: Presenter View", "icon": "$(multiple-windows)" },
@@ -41,7 +40,8 @@
       "editor/title": [
         { "command": "slidepix.present", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@1" },
         { "command": "slidepix.exportPdf", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@2" },
-        { "command": "slidepix.exportWeb", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@3" }
+        { "command": "slidepix.exportPptx", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@3" },
+        { "command": "slidepix.exportWeb", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@4" }
       ]
     },
     "keybindings": [
@@ -59,7 +59,9 @@
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
     "@slidepix/core": "workspace:*",
+    "jszip": "3.10.2",
     "playwright-core": "1.62.1",
+    "pptxgenjs": "4.0.1",
     "ws": "^8.18.3",
     "zod": "^4.1.5"
   },

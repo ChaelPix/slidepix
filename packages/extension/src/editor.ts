@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { parseDeckText, serializeDeck, type Deck, type HostToWebviewMessage, type WebviewToHostMessage } from "@slidepix/core";
 import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
 import { exportPdf, exportPng } from "./renderer";
+import { exportPptx } from "./pptx-export-command";
 import { exportWeb } from "./web-export-command";
 import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
@@ -129,6 +130,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
       if (message.command === "exportPdf") return exportPdf(this.context, parsed.deck, document.uri.fsPath);
       if (message.command === "exportPng") return exportPng(this.context, parsed.deck, document.uri.fsPath, message.slideIds);
+      if (message.command === "exportPptx") return exportPptx(this.context, parsed.deck, document.uri.fsPath);
       if (message.command === "exportWeb") return exportWeb(parsed.deck, document.uri.fsPath);
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);

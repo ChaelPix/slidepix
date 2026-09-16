@@ -91,6 +91,9 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Toolbar Undo/Redo and Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, or Ctrl+Y delegate to the
   extension host, so history remains VS Code's `WorkspaceEdit` history. Native
   input/textarea undo is left untouched while typing.
+- The export ribbon orders PNG, PDF, PPTX, then Web. PPTX delegates destination
+  selection and native OOXML generation to the extension host and never reads
+  local media from the webview.
 - Properties starts with the editable element `name`; immutable IDs remain the
   timeline reference. Missing names display as `<type>-<id prefix>`.
 - Animation cards identify their target by element name, show click grouping,

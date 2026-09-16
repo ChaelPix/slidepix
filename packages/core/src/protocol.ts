@@ -17,4 +17,4 @@ export type WebviewToHostMessage =
   | { version: 2; type: "linkMedia"; requestId: string; kind: "image" | "video"; uri: string }
   | { version: 2; type: "embedMedia"; elementIds?: string[] }
   | { version: 2; type: "selectFont"; requestId: string; current: string }
-  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[] };
+  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[] };

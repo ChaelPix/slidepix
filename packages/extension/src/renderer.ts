@@ -2,15 +2,15 @@ import { access, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type * as Playwright from "playwright-core";
 import type { Deck } from "@slidepix/core";
 import { PresentationServer } from "./presentation";
+import { rendererPlaywright } from "./playwright";
 
 export async function installRenderer(context: vscode.ExtensionContext, forcePrompt = true): Promise<string | undefined> {
   const root = vscode.Uri.joinPath(context.globalStorageUri, "playwright").fsPath;
   await mkdir(root, { recursive: true });
   process.env.PLAYWRIGHT_BROWSERS_PATH = root;
-  const expected = playwright().chromium.executablePath();
+  const expected = rendererPlaywright().chromium.executablePath();
   try { await access(expected); return expected; } catch { /* install below */ }
   if (forcePrompt) {
     const answer = await vscode.window.showInformationMessage(
@@ -42,7 +42,7 @@ export async function exportPdf(context: vscode.ExtensionContext, deck: Deck, de
   if (!destination) return;
   const server = new PresentationServer(deck, deckPath, undefined, workspaceRoots(deckPath));
   await server.start();
-  const browser = await playwright().chromium.launch({ headless: true, executablePath });
+  const browser = await rendererPlaywright().chromium.launch({ headless: true, executablePath });
   try {
     const page = await browser.newPage();
     await page.goto(server.url("/print"), { waitUntil: "networkidle" });
@@ -66,7 +66,7 @@ export async function exportPng(context: vscode.ExtensionContext, deck: Deck, de
   if (!destination) return;
   const server = new PresentationServer(deck, deckPath, undefined, workspaceRoots(deckPath));
   await server.start();
-  const browser = await playwright().chromium.launch({ headless: true, executablePath });
+  const browser = await rendererPlaywright().chromium.launch({ headless: true, executablePath });
   try {
     const page = await browser.newPage({ viewport: { width: Math.max(800, deck.size.width), height: Math.max(600, deck.size.height) }, deviceScaleFactor: 1 });
     const query = slideIds?.length ? `&ids=${encodeURIComponent(slideIds.join(","))}` : "";
@@ -93,11 +93,7 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<v
   });
 }
 
-function playwright(): typeof Playwright {
-  return require(path.join(__dirname, "..", "vendor", "playwright-core")) as typeof Playwright;
-}
-
-function workspaceRoots(deckPath: string): string[] {
+export function workspaceRoots(deckPath: string): string[] {
   const roots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri).filter((uri) => uri.scheme === "file").map((uri) => uri.fsPath) ?? [];
   return roots.length ? roots : [path.dirname(deckPath)];
 }

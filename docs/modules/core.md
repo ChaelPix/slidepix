@@ -56,6 +56,8 @@ Add security tests for path-handling changes.
 | Export | Contract |
 | --- | --- |
 | `renderMarkdown(source)` | Produces sanitized HTML from Markdown with KaTeX/MathML and deterministic Highlight.js code tokens. Raw HTML is disabled; links receive safe attributes. |
+| `parsePresentationMarkdown(source)` | Produces presentation-neutral rich text, list, code, math, and table blocks from the same configured Markdown parser for semantic exporters. |
+| `renderPresentationMathMl(latex, displayMode?)` | Produces MathML for native equation exporters using the core KaTeX dependency. |
 | `renderSlideMarkup(deck, slide, visibleIndex, resolveAsset?)` | Produces one positioned logical slide with all supported element types. |
 | `renderDeckDocument(deck, resolveAsset?, options?)` | Produces a standalone document for `present`, `frame`, `print`, or `contact` mode, including shared CSS and the relevant viewport/motion runtime. |
 | `AssetResolver` | Maps `(reference, storage)` to a webview URL, loopback URL, or data URI without changing render logic. Never infer storage from the path string. |
@@ -93,6 +95,9 @@ only extension↔webview messages. Media import and native system-font selection
 use request IDs with typed host responses. Add a new union member for a new
 operation and handle it exhaustively on both sides. Bump the protocol only for
 an incompatible wire change, not for every new compatible message.
+
+Export commands include the compatible `exportPptx` member; adding it did not
+change protocol version 2.
 
 Deck messages carry an opaque exact-text revision. Replacement requests echo
 their base revision and receive an explicit accepted, stale, invalid, or failed

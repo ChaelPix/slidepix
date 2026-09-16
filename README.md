@@ -69,10 +69,15 @@ The screen is organized like a simple slide application:
 - Add entrance animations from the **animations** tab after selecting an item.
 - Use **Present** for one audience screen. Use **Presenter** for the audience
   window plus current/next slides, notes, and a timer in the editor.
-- Use **Export PDF**, **Export PNG**, or **Export Web**. PDF/PNG asks you to
-  approve a one-time Chromium renderer download; Web export needs no download.
-  It creates a portable folder with `index.html` and copied media that works
-  offline in a modern browser.
+- Use **Export PDF**, **Export PNG**, **Export PPTX**, or **Export Web**.
+  PDF/PNG asks you to approve a one-time Chromium renderer download; PPTX and
+  Web need no download. PPTX creates native editable text, code, equations,
+  shapes, tables, pictures, and video, plus PowerPoint transitions and common
+  animations. SlidePix writes `.pptx` directly; LibreOffice is not required.
+  PowerPoint and browser layout differ, so the export reports approximations
+  such as soft-edge image fading, media playback options, and missing fonts.
+  It never replaces text or shapes with screenshots. **Web** creates a portable
+  folder with `index.html` and copied media that works offline in a modern browser.
 
 Save the deck normally with `Ctrl+S` or `Cmd+S`. Undo with `Ctrl+Z`/`Cmd+Z` and
 redo with `Ctrl+Y` or `Cmd+Shift+Z`; matching toolbar buttons are also present.
@@ -138,7 +143,7 @@ independently; its name must match the deck.
   editor and resolve the markers manually.
 - If an image or video is missing, confirm the matching `.assets` folder was
   copied with the deck.
-- If export fails before producing a file, run
+- If PDF or PNG export fails before producing a file, run
   **SlidePix: Install Export Renderer** from the Command Palette and retry.
 - Browser video support depends on the operating system codec. MP4/H.264 and
   WebM are the safest choices.
