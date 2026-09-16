@@ -21,6 +21,8 @@ Private command helpers:
 - `configureMcp(context)` ensures the renderer exists and produces previewable
   VS Code/Cursor stdio configuration. It intentionally does not edit workspace
   agent configuration.
+- Git collaboration commands configure/remove only repository-local settings
+  for the active deck and resolve remaining conflicts from Git index stages.
 
 ## `src/editor.ts`
 
@@ -32,8 +34,8 @@ Private command helpers:
 | `resolveCustomTextEditor(document, panel)` | Configures safe webview roots/CSP, tracks panels, installs message handlers, and preserves multiple views per document. |
 | `currentDocument()` | Returns the most recently active SlidePix text document for commands. |
 | `present(document, presenter?)` | Validates, creates an authenticated loopback session, opens the audience browser, and optionally creates the presenter panel. |
-| `updatePanels` / `postDeck` | Reparse every document change and send either a valid deck or diagnostic while preserving the source text. |
-| `receive` | Validates protocol version and routes document replacement, host-owned undo/redo, import, save, export, presentation, and MCP commands. |
+| `updatePanels` / `postDeck` | Reparse every document change and send either a valid deck or diagnostic plus its exact-text revision. |
+| `receive` | Validates protocol/base revisions and deck text before applying a `WorkspaceEdit`, acknowledges the result, and routes host-owned commands. |
 | `importAsset` | Enforces the 100 MB limit and stores clipboard/browser file bytes as deduplicated embedded content. |
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
@@ -44,6 +46,23 @@ Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file write
 would break the editor's undo/autosave/external-change lifecycle.
 Undo/redo messages execute VS Code's built-in history commands rather than
 maintaining a competing history inside the webview.
+
+## `src/git-collaboration.ts` and `src/merge-driver.ts`
+
+- **Configure Git Collaboration** previews and then writes one managed
+  `.gitattributes` block plus repository-local `merge.slidepix` settings.
+- The bundled driver is copied to stable extension global storage and invoked
+  with the editor's Electron runtime in Node mode. It uses core `mergeDecks` and
+  falls back to `git merge-file` markers for invalid or ambiguous inputs.
+- **Resolve Git Conflict** reads stages 1/2/3 with argument-safe Git processes,
+  collects explicit choices, validates, writes through `WorkspaceEdit`, and
+  stages only after a separate action and successful save.
+- **Remove Git Collaboration** removes only the managed block and matching
+  configuration; customized settings are preserved with a warning.
+
+`src/git-collaboration.test.ts` verifies managed attributes and the bundled
+driver directly and through a temporary Git repository, including paths with
+spaces and marker fallback.
 
 ## `src/fonts.ts`
 
@@ -126,6 +145,7 @@ is vendored into the VSIX; OS-specific Chromium is not.
 ## Manifest and build scripts
 
 `package.json` owns custom editor selectors, JSON validation, commands, menus,
-keybindings, bundled files, and VS Code engine compatibility. See the script
-table in root [architecture.md](../../architecture.md) before altering build
-outputs.
+keybindings, bundled files, and VS Code engine compatibility. Its build emits
+the extension, MCP server, and standalone semantic merge-driver bundles. See
+the script table in root [architecture.md](../../architecture.md) before
+altering build outputs.

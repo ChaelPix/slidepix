@@ -3,6 +3,7 @@ import { createDeck, parseDeckText, serializeDeck } from "@slidepix/core";
 import { SlidePixEditorProvider, VIEW_TYPE } from "./editor";
 import { exportPdf, exportPng, installRenderer } from "./renderer";
 import { exportWeb } from "./web-export-command";
+import { configureGitCollaboration, removeGitCollaboration, resolveGitConflict } from "./git-collaboration";
 
 export function activate(context: vscode.ExtensionContext): void {
   const editor = new SlidePixEditorProvider(context);
@@ -15,11 +16,23 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),
     vscode.commands.registerCommand("slidepix.presenter", () => editor.currentDocument() && editor.present(editor.currentDocument()!, true)),
     vscode.commands.registerCommand("slidepix.installRenderer", () => installRenderer(context)),
-    vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context))
+    vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context)),
+    vscode.commands.registerCommand("slidepix.configureGitCollaboration", () => reportGitError("configure Git collaboration", () => configureGitCollaboration(context, editor.currentDocument()))),
+    vscode.commands.registerCommand("slidepix.removeGitCollaboration", () => reportGitError("remove Git collaboration", () => removeGitCollaboration(context, editor.currentDocument()))),
+    vscode.commands.registerCommand("slidepix.resolveGitConflict", () => reportGitError("resolve the Git conflict", () => resolveGitConflict(editor.currentDocument())))
   );
 }
 
 export function deactivate(): void {}
+
+async function reportGitError(action: string, operation: () => Promise<void>): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    void vscode.window.showErrorMessage(`SlidePix could not ${action}: ${detail}`);
+  }
+}
 
 async function createDeckCommand(): Promise<void> {
   let destination = await vscode.window.showSaveDialog({ filters: { "SlidePix deck": ["json"] }, defaultUri: vscode.Uri.file("untitled.slidepix.json") });

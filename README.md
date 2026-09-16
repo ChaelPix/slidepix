@@ -79,6 +79,27 @@ redo with `Ctrl+Y` or `Cmd+Shift+Z`; matching toolbar buttons are also present.
 VS Code/Cursor owns that history, autosave, backup, and recovery because the
 deck is a text document.
 
+## Work on a deck with Git
+
+Run **SlidePix: Configure Git Collaboration** while the deck is open. After a
+confirmation preview, SlidePix adds a managed rule to the repository's
+`.gitattributes` and configures a repository-local semantic merge driver. It
+does not change global Git settings.
+
+The driver understands stable slide, element, and animation IDs. It combines
+changes to different slides or properties and preserves concurrent additions.
+It stops for genuine ambiguity: both people changing the same value,
+delete-versus-edit, or incompatible slide/element/timeline reorders. For best
+results, let one person own deck-wide theme/layout changes and major slide
+ordering while other contributors work on separate slides.
+
+When a conflict remains, open the deck and choose **Resolve with SlidePix**, or
+run **SlidePix: Resolve Git Conflict**. SlidePix offers base/ours/theirs choices
+for each semantic conflict, validates the result, and writes it through the
+normal editor history. It stages the file only if you explicitly choose
+**Stage resolved file**. **SlidePix: Remove Git Collaboration** removes only the
+managed attributes block and matching repository-local configuration.
+
 ## Put a presentation on a web server or Raspberry Pi
 
 Click **Web** beside **PDF**, choose a new folder name such as `my-talk-web`,
@@ -112,6 +133,9 @@ independently; its name must match the deck.
 - If SlidePix reports invalid JSON, use **Reopen Editor With… → Text Editor**,
   fix the highlighted error, and save. SlidePix does not overwrite the invalid
   source while you repair it.
+- If Git conflict markers are present, choose **Resolve with SlidePix** in the
+  error screen. If Git does not provide all three merge stages, open the text
+  editor and resolve the markers manually.
 - If an image or video is missing, confirm the matching `.assets` folder was
   copied with the deck.
 - If export fails before producing a file, run

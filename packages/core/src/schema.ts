@@ -203,6 +203,40 @@ export const deckSchema = z.object({
     background: color.optional()
   })).default({}),
   slides: z.array(slideSchema).min(1)
+}).superRefine((deck, context) => {
+  const slideIds = new Set<string>();
+  const elementIds = new Set<string>();
+  const animationIds = new Set<string>();
+
+  deck.slides.forEach((slide, slideIndex) => {
+    if (slideIds.has(slide.id)) {
+      context.addIssue({ code: "custom", path: ["slides", slideIndex, "id"], message: `Duplicate slide id: ${slide.id}` });
+    }
+    slideIds.add(slide.id);
+
+    if (slide.layout && !Object.hasOwn(deck.layouts, slide.layout)) {
+      context.addIssue({ code: "custom", path: ["slides", slideIndex, "layout"], message: `Unknown layout: ${slide.layout}` });
+    }
+
+    const slideElementIds = new Set<string>();
+    slide.elements.forEach((element, elementIndex) => {
+      if (elementIds.has(element.id)) {
+        context.addIssue({ code: "custom", path: ["slides", slideIndex, "elements", elementIndex, "id"], message: `Duplicate element id: ${element.id}` });
+      }
+      elementIds.add(element.id);
+      slideElementIds.add(element.id);
+    });
+
+    slide.timeline.forEach((step, stepIndex) => {
+      if (animationIds.has(step.id)) {
+        context.addIssue({ code: "custom", path: ["slides", slideIndex, "timeline", stepIndex, "id"], message: `Duplicate animation id: ${step.id}` });
+      }
+      animationIds.add(step.id);
+      if (!slideElementIds.has(step.targetElementId)) {
+        context.addIssue({ code: "custom", path: ["slides", slideIndex, "timeline", stepIndex, "targetElementId"], message: `Unknown animation target: ${step.targetElementId}` });
+      }
+    });
+  });
 });
 
 export type Deck = z.infer<typeof deckSchema>;

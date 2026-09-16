@@ -53,6 +53,23 @@ saved. Invalid source is not overwritten by the webview.
 Serialization uses two-space JSON indentation and one final newline. All writes
 pass through the Zod schema, which also fills declared defaults.
 
+Validation also requires unique slide, element, and animation IDs. Every
+animation target must exist on its slide, and every slide layout reference must
+name a persisted layout.
+
+## Git merge semantics
+
+The optional SlidePix Git driver performs a three-way merge by stable entity
+ID. One-sided edits, identical edits, different properties, different table
+cells, and concurrent additions merge automatically. When both branches insert
+into the same ordered gap, each branch's order is retained and the current
+branch's additions come first.
+
+Delete-versus-edit, different values for the same property, and incompatible
+two-sided reorders remain conflicts. A one-sided reorder is accepted. Every
+clean or interactively resolved result is validated and serialized canonically;
+invalid inputs fall back to ordinary Git conflict markers.
+
 ## Top-level model
 
 - `metadata`: title, author, and description.

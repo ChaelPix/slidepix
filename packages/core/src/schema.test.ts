@@ -12,6 +12,34 @@ describe("deck schema", () => {
     if (parsed.ok) expect(parsed.deck.metadata.title).toBe("Product demo");
   });
 
+  it("rejects duplicate identities and dangling references", () => {
+    const duplicateSlides = createDeck();
+    duplicateSlides.slides.push(structuredClone(duplicateSlides.slides[0]!));
+    expect(parseDeckText(JSON.stringify(duplicateSlides))).toMatchObject({ ok: false });
+
+    const duplicateElements = createDeck();
+    duplicateElements.slides[0]!.elements.push(structuredClone(duplicateElements.slides[0]!.elements[0]!));
+    expect(parseDeckText(JSON.stringify(duplicateElements))).toMatchObject({ ok: false });
+
+    const danglingAnimation = createDeck();
+    danglingAnimation.slides[0]!.timeline.push({ id: "animation", targetElementId: "missing", phase: "entrance", effect: "fade", trigger: "onClick", delayMs: 0, durationMs: 500, easing: "ease-out" });
+    expect(parseDeckText(JSON.stringify(danglingAnimation))).toMatchObject({ ok: false });
+
+    const duplicateAnimations = createDeck();
+    const elementId = duplicateAnimations.slides[0]!.elements[0]!.id;
+    const step = { id: "animation", targetElementId: elementId, phase: "entrance" as const, effect: "fade" as const, trigger: "onClick" as const, delayMs: 0, durationMs: 500, easing: "ease-out" };
+    duplicateAnimations.slides[0]!.timeline.push(step, { ...step });
+    expect(parseDeckText(JSON.stringify(duplicateAnimations))).toMatchObject({ ok: false });
+  });
+
+  it("rejects unknown layouts", () => {
+    const deck = createDeck();
+    deck.slides[0]!.layout = "missing";
+    const result = parseDeckText(JSON.stringify(deck));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain("Unknown layout");
+  });
+
   it("creates a portable light deck by default", () => {
     const deck = createDeck();
     const title = deck.slides[0]!.elements[0];

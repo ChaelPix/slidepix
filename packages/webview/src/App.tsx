@@ -33,7 +33,7 @@ export default function App() {
   const [cropElementId, setCropElementId] = useState<string>();
   const [notesCollapsed, setNotesCollapsed] = useState(false);
 
-  useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid)), []);
+  useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
 
   const deck = store.deck;
@@ -54,7 +54,7 @@ export default function App() {
       if (accelerator && !textEntry && (key === "z" || key === "y")) {
         event.preventDefault();
         const redo = key === "y" || (key === "z" && event.shiftKey);
-        postMessage({ type: "command", command: redo ? "redo" : "undo" });
+        store.runCommand(redo ? "redo" : "undo");
         return;
       }
       if (event.key === "Escape" && cropElementId) {
@@ -83,7 +83,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", listener);
   }, [deck, slide, selected, editingTextId, cropElementId]);
 
-  if (store.error) return <InvalidDeck message={store.error} />;
+  if (store.error) return <InvalidDeck message={store.error} gitConflict={store.gitConflict} />;
   if (!deck || !slide) return <div className="loading">Opening SlidePix…</div>;
 
   const assetUrl = (reference: string, storage: MediaStorage) => {
@@ -252,12 +252,13 @@ export default function App() {
               <span className={`codicon codicon-chevron-${notesCollapsed ? "up" : "down"}`} />
             </button>
           </header>
-          {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; })} />}
+          {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
       </main>
       <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} commit={store.commit} selectElement={store.selectElement} editText={setEditingTextId} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
       <div className="zoom-control" title="Ctrl/Cmd + mouse wheel also zooms the canvas"><button aria-label="Zoom out" onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><input aria-label="Canvas zoom" type="range" min="10" max="150" step="5" value={Math.round(store.zoom * 100)} onChange={(event) => store.setZoom(Number(event.target.value) / 100)} /><span>{Math.round(store.zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
-      {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} mutate={store.mutate} close={() => setEditingTextId(undefined)} />}
+      {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setEditingTextId(undefined)} />}
+      {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
     </div>
   );
 }
@@ -265,11 +266,12 @@ export default function App() {
 function Toolbar({ slide, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia }: {
   slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; addTable(): void; chooseImage(): void; chooseVideo(): void; hasLinkedMedia: boolean;
 }) {
+  const runCommand = useDeckStore((state) => state.runCommand);
   return <header className="toolbar">
     <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
     <div className="ribbon-group history-actions"><div className="ribbon-actions">
-      <RibbonButton icon="discard" label="Undo" onClick={() => postMessage({ type: "command", command: "undo" })} />
-      <RibbonButton icon="redo" label="Redo" onClick={() => postMessage({ type: "command", command: "redo" })} />
+      <RibbonButton icon="discard" label="Undo" onClick={() => runCommand("undo")} />
+      <RibbonButton icon="redo" label="Redo" onClick={() => runCommand("redo")} />
     </div></div>
     <div className="ribbon-group"><span className="ribbon-label">Insert</span><div className="ribbon-actions">
       <RibbonButton icon="symbol-string" label="Text" onClick={addText} />
@@ -280,7 +282,7 @@ function Toolbar({ slide, addText, addShape, addTable, chooseImage, chooseVideo,
     </div></div>
     <span className="toolbar-spacer" />
     <div className="ribbon-group"><span className="ribbon-label">File &amp; export</span><div className="ribbon-actions">
-      <RibbonButton icon="save" label="Save" onClick={() => postMessage({ type: "command", command: "save" })} />
+      <RibbonButton icon="save" label="Save" onClick={() => runCommand("save")} />
       <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
       <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
       <RibbonButton icon="globe" label="Web" onClick={() => postMessage({ type: "command", command: "exportWeb" })} />
@@ -511,12 +513,13 @@ function AnimationRow({ step, index, flowLabel, element, selectElement, mutate, 
   </div>;
 }
 
-function TextEditor({ deck, slideId, elementId, mutate, close }: { deck: Deck; slideId: string; elementId: string; mutate(fn: (deck: Deck) => void): void; close(): void }) {
+function TextEditor({ deck, slideId, elementId, preview, scheduleCommit, commit, close }: { deck: Deck; slideId: string; elementId: string; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; close(): void }) {
   const element = findElement(deck, slideId, elementId);
   const slide = deck.slides.find((item) => item.id === slideId);
   if (element?.type !== "text") return null;
   const background = slide?.background ?? deck.layouts[slide?.layout ?? ""]?.background ?? deck.theme.background;
-  return <div className="modal-backdrop" onMouseDown={close}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={close}>Done</button></header><textarea autoFocus value={element.markdown} onChange={(event) => mutate((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; })} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks.</p></div></div>;
+  const finish = () => { commit(); close(); };
+  return <div className="modal-backdrop" onMouseDown={finish}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={finish}>Done</button></header><textarea autoFocus value={element.markdown} onChange={(event) => { preview((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; }); scheduleCommit(); }} onBlur={commit} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks.</p></div></div>;
 }
 
 const SYSTEM_FONT_STACK = "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
@@ -561,7 +564,14 @@ function ColorField({ label, value, allowTransparent = false, onChange }: { labe
   return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} disabled={transparent} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} />{allowTransparent && <button type="button" className={`transparent-toggle ${transparent ? "active" : ""}`} title={transparent ? "Use an opaque color" : "Make transparent"} aria-label={transparent ? `Disable transparent ${label}` : `Make ${label} transparent`} onClick={() => onChange(transparent ? "#000000" : "transparent")}>∅</button>}</span></label>;
 }
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
-function InvalidDeck({ message }: { message: string }) { return <div className="invalid"><h1>SlidePix could not open this deck</h1><pre>{message}</pre><p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p></div>; }
+function InvalidDeck({ message, gitConflict }: { message: string; gitConflict: boolean }) { return <div className="invalid"><h1>{gitConflict ? "This deck has an unresolved Git conflict" : "SlidePix could not open this deck"}</h1><pre>{message}</pre>{gitConflict ? <p><button onClick={() => postMessage({ type: "command", command: "resolveGitConflict" })}>Resolve with SlidePix</button> <button onClick={() => postMessage({ type: "command", command: "openTextEditor" })}>Open as text</button></p> : <p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p>}</div>; }
+
+function MergeConflictDialog({ conflict, resolve, useLatest }: { conflict?: import("@slidepix/core").DeckMergeConflict; resolve(id: string, resolution: import("@slidepix/core").DeckMergeResolution): void; useLatest(): void }) {
+  if (!conflict) return null;
+  const context = [conflict.slideId && `slide ${conflict.slideId}`, conflict.elementId && `element ${conflict.elementId}`, conflict.animationId && `animation ${conflict.animationId}`].filter(Boolean).join(" · ");
+  const show = (value: unknown) => value === undefined ? "(deleted)" : typeof value === "string" ? value : JSON.stringify(value);
+  return <div className="modal-backdrop"><div className="merge-conflict"><header><strong>Concurrent edit conflict</strong></header><p>{conflict.message}</p><p><code>{context || conflict.path}</code></p><div className="merge-values"><button onClick={() => resolve(conflict.id, "ours")}><strong>Keep mine</strong><span>{show(conflict.ours)}</span></button><button onClick={() => resolve(conflict.id, "theirs")}><strong>Use latest</strong><span>{show(conflict.theirs)}</span></button><button onClick={() => resolve(conflict.id, "base")}><strong>Use original</strong><span>{show(conflict.base)}</span></button></div><button className="danger-quiet" onClick={useLatest}>Discard all my pending changes</button></div></div>;
+}
 
 function baseElement(z: number, type: SlideElement["type"]) { const id = crypto.randomUUID(); return { id, name: `${type}-${id.slice(0, 4)}`, morphKey: crypto.randomUUID(), x: 240, y: 240, width: 640, height: 360, rotation: 0, opacity: 1, z, locked: false, hidden: false } as const; }
 function defaultAnimation(targetElementId: string): AnimationStep { return { id: crypto.randomUUID(), targetElementId, phase: "entrance", effect: "fade", trigger: "onClick", delayMs: 0, durationMs: 500, easing: "ease-out" }; }
@@ -576,7 +586,7 @@ function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): 
 function resizeTable(table: Extract<SlideElement, { type: "table" }>, rows: number, columns: number): void { table.rows = clamp(Math.round(rows), 1, 50); table.columns = clamp(Math.round(columns), 1, 20); table.cells = normalizedTableCells(table); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, uri: string, linkedUri: string) => void, setInvalid: (message: string, uri: string, linkedUri: string) => void) { if (message.type === "deck") setDeck(message.deck, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.uri, message.linkedUri); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) alert(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");

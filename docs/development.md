@@ -47,6 +47,7 @@ extension bundle.
 | --- | --- |
 | Documentation only | `pnpm docs:check` |
 | Schema/assets/protocol | `pnpm test`, `pnpm typecheck`, `pnpm build` |
+| Git collaboration/merge driver | Previous checks plus the extension integration tests; manually configure, merge, resolve, stage, and remove in a temporary repository. |
 | Webview behavior | `pnpm typecheck`, `pnpm build`, manual Extension Development Host test |
 | Rendering/motion | previous checks plus `node scripts/render-smoke.mjs`; inspect the contact sheet, PDF, and `slides/` exact-size PNG frames |
 | Presentation/export | previous checks plus audience/presenter and PDF/PNG/Web manual smoke tests |

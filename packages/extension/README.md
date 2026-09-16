@@ -28,6 +28,13 @@ server. System fonts are not bundled and may fall back on another computer.
 Run **SlidePix: Configure MCP** to preview configuration for the bundled
 read-only slide inspection and rendering tools.
 
+For teams using Git, run **SlidePix: Configure Git Collaboration** with a deck
+open. The explicitly confirmed, repository-local setup adds stable line endings
+and an ID-aware deck merge driver. Independent slide/element changes and
+concurrent additions merge automatically; true value, delete/edit, and order
+conflicts can be resolved with **SlidePix: Resolve Git Conflict**. Removal is
+available through **SlidePix: Remove Git Collaboration**.
+
 If a deck opens as text, choose **Reopen Editor With… → SlidePix Editor**.
 
 For full usage, troubleshooting, development, and architecture documentation,

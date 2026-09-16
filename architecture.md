@@ -30,6 +30,10 @@ talk.slidepix.json ── CustomTextEditorProvider ── versioned messages ─
        │                         └── WorkspaceEdit ← serialized deck         │
        └──────────────────────────────────────────────────────────────────────┘
 
+base / ours / theirs ── @slidepix/core semantic merge ── validated canonical deck
+          ├── live external-edit and multi-panel rebase
+          └── repository-local Git merge driver and conflict resolver
+
 @slidepix/core schema + renderer
        ├── editor canvas/thumbnails
        ├── audience and presenter server
@@ -80,6 +84,9 @@ Detailed ownership and method contracts:
    an unguessable per-session token.
 9. MCP v0.1 stays read-only. Its tools must not write a deck or its assets.
 10. Chromium is OS-specific, consented, pinned, and stored outside the VSIX.
+11. Every document replacement names its exact base revision. Stale edits are
+    semantically rebased or surfaced as conflicts; they are never applied
+    blindly over newer source.
 
 ## Source, generated, and packaged files
 
@@ -98,7 +105,7 @@ Edit source files, then regenerate outputs with the documented commands.
 
 | Command or script | Responsibility |
 | --- | --- |
-| `pnpm build` | Builds core, webview, MCP, and extension in dependency order; also generates schema and vendors Playwright Core. |
+| `pnpm build` | Builds core, webview, MCP, extension, and the standalone Git merge driver in dependency order; also generates schema and vendors Playwright Core. |
 | `pnpm dev` | Watches the webview and extension packages for local extension development. |
 | `pnpm test` | Runs core schema/rendering tests, extension presentation-state tests, and MCP selection tests. |
 | `pnpm typecheck` | Type-checks every workspace package without emitting files. |

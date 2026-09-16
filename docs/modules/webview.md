@@ -12,7 +12,7 @@ webview. The webview has no direct filesystem or Node access.
 | `src/main.tsx` | React entry point and stylesheet loading. |
 | `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, and command dispatch. |
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
-| `src/store.ts` | Zustand transient state, host-document synchronization, immutable mutation helper, selection, and zoom. |
+| `src/store.ts` | Zustand state, single-flight revisioned persistence, semantic external-edit rebasing, immutable mutation helpers, selection, and zoom. |
 | `src/vscode.ts` | Typed adapter around `acquireVsCodeApi`, version stamping, host listener, and browser fallback used during local development. |
 | `src/styles.css` / `src/fixes.css` | Layout and editor appearance. Keep logical slide geometry in element data, not CSS-only state. |
 | `vite.config.ts` | Builds the webview into the extension's `media` directory. |
@@ -34,6 +34,13 @@ webview. The webview has no direct filesystem or Node access.
   must commit on release/cancel rather than posting a `WorkspaceEdit` per pixel.
 - `useDeckStore.mutate(mutator)` performs a one-step preview and persistence for
   ordinary discrete edits. Do not mutate the existing store deck directly.
+- Only one replacement may be in flight. Later mutations remain optimistic and
+  coalesce behind it. Text and notes preview locally, debounce for 250 ms, and
+  flush on blur or Done.
+- A new host revision rebases pending local work through core `mergeDecks`.
+  Clean merges retry automatically; structured conflicts stop persistence and
+  require an explicit base/ours/theirs choice. Save/undo/redo wait for the
+  pending edit queue to settle.
 - `postMessage(message)` adds `PROTOCOL_VERSION`; `onHostMessage(handler)`
   filters mismatched host messages.
 
@@ -95,8 +102,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Numeric Properties fields use large decrement/increment targets, select their
   value on focus, support focused-wheel adjustment, and use Shift for ×10 or
   Alt for ×0.1 nudges. Range properties use a visible card and slider.
-- All persistent changes go through `mutate`; selections, zoom, open tabs, and
-  modal state stay transient.
+- All persistent changes go through `mutate` or the `preview`/`commit` queue;
+  selections, zoom, open tabs, and modal state stay transient.
 - App-wide canvas paste handling ignores inputs, textareas, selects, and
   content-editable targets, so pasting inside the Markdown editor or inspector
   edits that field instead of creating a new slide element.
@@ -109,3 +116,5 @@ the VS Code webview origin instead of appearing as missing-glyph squares.
 Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
+`src/store.test.ts` covers write serialization, debounce, rebasing, conflicts,
+failed edits, and deferred document commands.

@@ -32,7 +32,10 @@
       { "command": "slidepix.present", "title": "SlidePix: Present", "icon": "$(play)" },
       { "command": "slidepix.presenter", "title": "SlidePix: Presenter View", "icon": "$(multiple-windows)" },
       { "command": "slidepix.installRenderer", "title": "SlidePix: Install Export Renderer" },
-      { "command": "slidepix.configureMcp", "title": "SlidePix: Configure MCP" }
+      { "command": "slidepix.configureMcp", "title": "SlidePix: Configure MCP" },
+      { "command": "slidepix.configureGitCollaboration", "title": "SlidePix: Configure Git Collaboration" },
+      { "command": "slidepix.removeGitCollaboration", "title": "SlidePix: Remove Git Collaboration" },
+      { "command": "slidepix.resolveGitConflict", "title": "SlidePix: Resolve Git Conflict" }
     ],
     "menus": {
       "editor/title": [
@@ -47,7 +50,7 @@
   },
   "scripts": {
     "generate-schema": "node ./scripts/generate-schema.mjs",
-    "build": "pnpm generate-schema && node ./scripts/vendor-playwright.mjs && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\"",
+    "build": "pnpm generate-schema && node ./scripts/vendor-playwright.mjs && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap && esbuild src/merge-driver.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/merge-driver.cjs && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\"",
     "dev": "pnpm build --watch",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",

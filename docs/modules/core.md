@@ -23,6 +23,22 @@ serialization tests, rebuild the contributed JSON Schema, and update
 `docs/format.md`. Schema migrations are planned but not yet implemented; a
 version bump must include an explicit migration strategy.
 
+The deck refinement enforces unique slide, element, and animation IDs, local
+animation targets, and valid layout references. These checks protect manual and
+Git-merged documents as well as normal editor writes.
+
+### `src/merge.ts`
+
+| Export | Contract |
+| --- | --- |
+| `mergeDecks(base, ours, theirs, resolutions?)` | Pure ID-aware three-way deck merge with canonical output. It never reads Git or the filesystem. |
+| `DeckMergeResult` | Clean result with validated deck/text, or a partial validated deck plus structured conflicts. |
+| `DeckMergeConflict` | Stable conflict ID, kind, property path, entity IDs, values, and user-facing message. |
+| `DeckMergeResolution` | Explicit `base`, `ours`, or `theirs` choice used to rerun the deterministic merge. |
+
+The editor rebase path and bundled Git driver must both use this function. Do
+not create a second merge interpretation in the extension or webview.
+
 ### `src/assets.ts`
 
 | Export | Contract |
@@ -71,11 +87,16 @@ the deck theme background rather than a hard-coded dark color.
 
 ### `src/protocol.ts`
 
-`PROTOCOL_VERSION`, `HostToWebviewMessage`, and `WebviewToHostMessage` define the
+`PROTOCOL_VERSION` (currently 2), `HostToWebviewMessage`, and
+`WebviewToHostMessage` define the
 only extension↔webview messages. Media import and native system-font selection
 use request IDs with typed host responses. Add a new union member for a new
 operation and handle it exhaustively on both sides. Bump the protocol only for
 an incompatible wire change, not for every new compatible message.
+
+Deck messages carry an opaque exact-text revision. Replacement requests echo
+their base revision and receive an explicit accepted, stale, invalid, or failed
+response; a host must never apply a replacement against another revision.
 
 ### `src/index.ts`
 
@@ -86,7 +107,10 @@ reach into `src`.
 ## Tests
 
 `src/schema.test.ts` covers deck creation, round-trip serialization, invalid
-JSON, future schema versions, morph-key duplication, and asset traversal.
+JSON, future schema versions, identity/reference integrity, morph-key
+duplication, and asset traversal. `src/merge.test.ts` covers clean semantic
+merges, additions, cells, delete/edit and value conflicts, resolutions,
+ordering, and determinism.
 `src/render.test.ts` covers presenter-frame selection/fitting, presentation
 animation state and video lifecycle, negative layers, print pagination CSS,
 syntax highlighting, typography parity, transparent paint, shape shadows,
