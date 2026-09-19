@@ -19,6 +19,7 @@ the task; this keeps context small while making ownership explicit.
 | Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change MCP tools or selection rules | `packages/mcp/src/server.ts` and `packages/mcp/src/tools.ts` | [MCP module](docs/modules/mcp.md) |
+| Set up a Linux/macOS toolchain, compile, and install a local VSIX | [Install guide](docs/install.md) | [Development guide](docs/development.md) |
 | Change build/package/release work | root and package `package.json` files | [Development guide](docs/development.md) |
 
 ## System map
@@ -119,8 +120,10 @@ Edit source files, then regenerate outputs with the documented commands.
 | `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 
-See [docs/development.md](docs/development.md) for prerequisites, exact commands,
-debugging, verification levels, and packaging.
+See [docs/install.md](docs/install.md) for Linux/macOS (zsh) toolchain setup,
+first build, packaging, and local VSIX install. See
+[docs/development.md](docs/development.md) for exact commands, debugging,
+verification levels, and packaging.
 
 ## Change protocol
 

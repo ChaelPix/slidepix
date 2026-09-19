@@ -8,6 +8,7 @@ const documents = [
   "architecture.md",
   "AGENTS.md",
   "docs/development.md",
+  "docs/install.md",
   "docs/format.md",
   "docs/modules/core.md",
   "docs/modules/webview.md",

@@ -5,6 +5,12 @@ extension should follow the root [README](../README.md).
 
 ## Prerequisites
 
+Set up Git, Node.js 20, and the pinned pnpm on Ubuntu or macOS (zsh) with
+[docs/install.md](install.md). That guide also covers the first `pnpm install`,
+`pnpm build`, `pnpm package`, and installing the produced VSIX.
+
+Once the toolchain is present:
+
 - Node.js 20 or newer
 - pnpm 10.29.3 (the repository pins this version in `package.json`)
 - desktop VS Code for the Extension Development Host

@@ -164,6 +164,9 @@ Repository-native agent guidance is not kept in a loose MCP tutorial:
 
 ## Developers and coding agents
 
+To install Node.js, pnpm, compile the extension, and install the VSIX on
+Ubuntu or macOS (zsh), follow [docs/install.md](docs/install.md).
+
 Start with [architecture.md](architecture.md). It is the canonical map of
 modules, methods, scripts, runtime flows, invariants, tests, and known gaps.
 Repository-wide agent instructions live in [AGENTS.md](AGENTS.md).

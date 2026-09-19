@@ -2,6 +2,8 @@
 
 - Read `architecture.md` before changing code. Use its fast-routing table, then
   load only the relevant document under `docs/modules/`.
+- Set up Node.js, pnpm, a first build, and a local VSIX on Linux/macOS (zsh)
+  with `docs/install.md`.
 - Treat `packages/core/src/schema.ts` and `packages/core/src/render.ts` as the
   authoritative data and headless rendering definitions.
 - Preserve the invariants listed in `architecture.md`, especially text-document
