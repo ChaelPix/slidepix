@@ -41,6 +41,8 @@ export default function App() {
   const [advancedTextId, setAdvancedTextId] = useState<string>();
   const [cropElementId, setCropElementId] = useState<string>();
   const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const inlineTextEditor = useRef<InlineTextEditorHandle>(null);
   const pendingTextFormat = useRef<TextFormatCommand | undefined>(undefined);
   const moveableRef = useRef<Moveable | null>(null);
@@ -238,7 +240,7 @@ export default function App() {
   };
 
   return (
-    <div className="app" onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+    <div className={`app${railCollapsed ? " rail-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}`} onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
       event.preventDefault();
       const uri = droppedFileUri(event.dataTransfer);
       if (uri) {
@@ -302,7 +304,7 @@ export default function App() {
         }}
         deleteSelected={() => deleteElements(slide.id, selectedElements.map((item) => item.id), store.mutate, store.selectElement)}
       />
-      <SlideRail deck={deck} selectedId={slide.id} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
+      <SlideRail collapsed={railCollapsed} onToggleCollapse={() => setRailCollapsed((value) => !value)} deck={deck} selectedId={slide.id} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
       <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
         <div className="canvas-scroll" onWheel={(event) => {
           if (!event.ctrlKey && !event.metaKey) return;
@@ -437,9 +439,8 @@ export default function App() {
           </header>
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
-        <div className="zoom-control" aria-label="Canvas zoom" title={`Canvas zoom ${Math.round(store.zoom * 100)}% · Ctrl/Cmd + mouse wheel also zooms`}><IconButton icon="remove" label={`Zoom out from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom - 0.1)} /><IconButton icon="add" label={`Zoom in from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom + 0.1)} /></div>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
+      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
@@ -470,6 +471,9 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   deleteSelected(): void;
 }) {
   const runCommand = useDeckStore((state) => state.runCommand);
+  const zoom = useDeckStore((state) => state.zoom);
+  const setZoom = useDeckStore((state) => state.setZoom);
+  const zoomPercent = Math.round(zoom * 100);
   const updateStyle = (patch: Record<string, unknown>, continuous = false) => {
     if (!element || (element.type !== "text" && element.type !== "table")) return;
     const apply = (draft: Deck) => {
@@ -521,6 +525,7 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
       </div></div>
     </div>
     <div className="context-toolbar" aria-label="Selection formatting">
+      <div className="context-toolbar-main">
       {textLike ? <>
         <CompactFontPicker value={textLike.style.fontFamily} onChange={(fontFamily) => updateStyle({ fontFamily })} />
         <label className="context-number" title="Font size"><span>Size</span><input aria-label="Font size" type="number" min="1" value={textLike.style.fontSize} onChange={(event) => updateStyle({ fontSize: Math.max(1, Number(event.target.value)) }, true)} onBlur={commit} /></label>
@@ -543,6 +548,12 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         <ContextIcon icon={element.locked ? "lock" : "unlock"} label={element.locked ? "Unlock" : "Lock"} pressed={element.locked} onClick={() => updateElement((target) => { target.locked = !target.locked; })} />
         <ContextIcon icon="trash" label="Delete" danger onClick={deleteSelected} />
       </div>}
+      </div>
+      <div className="zoom-control" aria-label="Canvas zoom" title={`Canvas zoom ${zoomPercent}% · Ctrl/Cmd + mouse wheel also zooms`}>
+        <IconButton icon="zoom-out" label={`Zoom out from ${zoomPercent}%`} onClick={() => setZoom(zoom - 0.1)} />
+        <span className="zoom-value">{zoomPercent}%</span>
+        <IconButton icon="zoom-in" label={`Zoom in from ${zoomPercent}%`} onClick={() => setZoom(zoom + 0.1)} />
+      </div>
     </div>
   </header>;
 }
@@ -614,11 +625,16 @@ function AlignControls({ count, unlocked, align, distribute }: { count: number; 
   </div>;
 }
 
-function SlideRail({ deck, selectedId, select, mutate, resolveAsset }: { deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
+function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, mutate, resolveAsset }: { collapsed: boolean; onToggleCollapse(): void; deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
   const [transitionSlideId, setTransitionSlideId] = useState<string>();
   const addSlide = () => mutate((draft) => draft.slides.push({ id: crypto.randomUUID(), title: `Slide ${draft.slides.length + 1}`, notes: "", hidden: false, hidePageNumber: false, transition: { type: "none", durationMs: 500, easing: "ease-in-out" }, timeline: [], elements: [] }));
-  return <aside className="slide-rail">
-    <div className="rail-header"><strong>Slides</strong></div>
+  return <aside className={`slide-rail${collapsed ? " collapsed" : ""}`}>
+    <div className="rail-header">
+      <strong>Slides</strong>
+      <button type="button" className="icon-button panel-toggle" title={collapsed ? "Show slides" : "Collapse slides"} aria-label={collapsed ? "Show slides" : "Collapse slides"} aria-expanded={!collapsed} onClick={onToggleCollapse}>
+        <span className={`codicon codicon-chevron-${collapsed ? "right" : "left"}`} />
+      </button>
+    </div>
     <div className="rail-scroll">
       {deck.slides.map((slide, index) => <div key={slide.id} className="rail-entry">
         {index > 0 && <><button className={`transition-gap ${transitionSlideId === slide.id ? "active" : ""} ${slide.transition.type !== "none" ? "has-transition" : ""}`} title="Edit incoming transition" onClick={() => setTransitionSlideId((current) => current === slide.id ? undefined : slide.id)}><span className="codicon codicon-arrow-swap" /> <span>{slide.transition.type === "none" ? "Add transition" : transitionLabel(slide.transition.type)}</span></button>{transitionSlideId === slide.id && <TransitionEditor transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides[index]!.transition, patch))} close={() => setTransitionSlideId(undefined)} />}</>}
@@ -733,8 +749,8 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
   </div>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
+function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
+  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
   const selectedIds = useDeckStore((state) => state.selectedElementIds);
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
@@ -744,8 +760,13 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
     scheduleCommit();
   };
   const continuous = (fn: (draft: Deck) => void) => { preview(fn); scheduleCommit(); };
-  return <aside className="inspector">
-    <nav>{(["properties", "layers", "animations"] as const).map((value) => <button className={tab === value ? "active" : ""} onClick={() => setTab(value)} key={value}>{value}</button>)}</nav>
+  return <aside className={`inspector${collapsed ? " collapsed" : ""}`}>
+    <div className="inspector-header">
+      <button type="button" className="icon-button panel-toggle" title={collapsed ? "Show properties" : "Collapse properties"} aria-label={collapsed ? "Show properties" : "Collapse properties"} aria-expanded={!collapsed} onClick={onToggleCollapse}>
+        <span className={`codicon codicon-chevron-${collapsed ? "left" : "right"}`} />
+      </button>
+      <nav>{(["properties", "layers", "animations"] as const).map((value) => <button className={tab === value ? "active" : ""} onClick={() => setTab(value)} key={value}>{value}</button>)}</nav>
+    </div>
     <div className="inspector-body">
       {tab === "properties" && <>
         <h3>{selectedIds.length > 1 ? `${selectedIds.length} items` : element ? element.type : "Slide"}</h3>

@@ -113,16 +113,18 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   timeline reference. Missing names display as `<type>-<id prefix>`.
 - Animation cards identify their target by element name, show click grouping,
   and follow timeline array order from top to bottom.
-- Ctrl/Cmd plus mouse wheel and the docked lower-right −/+ buttons adjust canvas
-  zoom. Speaker notes can collapse to a compact header without changing
-  persisted notes.
+- Ctrl/Cmd plus mouse wheel and the docked zoom-in/zoom-out controls on the
+  right of the context toolbar adjust canvas zoom. Speaker notes can collapse
+  to a compact header without changing persisted notes. The slide rail and
+  inspector collapse independently from chevrons on their inner edges; both
+  collapsed states stay transient.
 - Checkbox fields use an explicit horizontal row so narrow inspectors do not
   separate the control from its label.
 - Numeric Properties fields use large decrement/increment targets, select their
   value on focus, support focused-wheel adjustment, and use Shift for ×10 or
   Alt for ×0.1 nudges. Range properties use a visible card and slider.
 - All persistent changes go through `mutate` or the `preview`/`commit` queue;
-  selections, zoom, open tabs, and modal state stay transient.
+  selections, zoom, open tabs, panel collapse, and modal state stay transient.
 - Drag and resize snap in logical slide units to visible peer left/center/right
   and top/middle/bottom edges and to the slide edges and center. The catch
   radius is 24 CSS pixels, divided by canvas zoom, so it stays easy to hit at
