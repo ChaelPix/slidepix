@@ -16,6 +16,7 @@ import {
 import { SlideView } from "./SlideView";
 import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
 import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
+import { peerBoxes, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
 import { useDeckStore } from "./store";
 import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
@@ -42,10 +43,10 @@ export default function App() {
   const [notesCollapsed, setNotesCollapsed] = useState(false);
   const inlineTextEditor = useRef<InlineTextEditorHandle>(null);
   const pendingTextFormat = useRef<TextFormatCommand | undefined>(undefined);
-  const canvasScaleRef = useRef<HTMLDivElement>(null);
   const moveableRef = useRef<Moveable | null>(null);
   const dragOrigins = useRef<{ id: string; x: number; y: number }[]>([]);
-  const [snapGuidelines, setSnapGuidelines] = useState<HTMLElement[]>([]);
+  const snapPeers = useRef<ReturnType<typeof peerBoxes>>([]);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
 
   useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult, store.handleHistoryResult)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
@@ -76,21 +77,6 @@ export default function App() {
     pendingTextFormat.current = undefined;
     requestAnimationFrame(() => inlineTextEditor.current?.format(command));
   }, [editingText?.id]);
-
-  useLayoutEffect(() => {
-    const root = canvasScaleRef.current;
-    if (!root || !slide) {
-      setSnapGuidelines([]);
-      return;
-    }
-    const page = root.querySelector<HTMLElement>(".slide");
-    const selectedIds = new Set(store.selectedElementIds);
-    const peers = slide.elements
-      .filter((item) => !item.hidden && !selectedIds.has(item.id))
-      .map((item) => root.querySelector<HTMLElement>(`#element-${item.id}`))
-      .filter((node): node is HTMLElement => Boolean(node));
-    setSnapGuidelines(page ? [page, ...peers] : peers);
-  }, [slide?.id, slide?.elements.map((item) => `${item.id}:${item.hidden}`).join(), store.selectedElementIds.join()]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -325,7 +311,6 @@ export default function App() {
         }}>
           <div className="canvas-frame" style={{ width: deck.size.width * store.zoom, height: deck.size.height * store.zoom }}>
             <div
-              ref={canvasScaleRef}
               className="canvas-scale"
               style={{ width: deck.size.width, height: deck.size.height, zoom: store.zoom }}
             >
@@ -348,17 +333,6 @@ export default function App() {
                   draggable
                   resizable={selectedElements.length === 1}
                   rotatable={selectedElements.length === 1}
-                  snappable
-                  snapContainer={canvasScaleRef}
-                  elementGuidelines={snapGuidelines}
-                  snapGap={false}
-                  isDisplaySnapDigit={false}
-                  isDisplayInnerSnapDigit={false}
-                  snapDirections={{ left: true, top: true, right: true, bottom: true, center: true, middle: true }}
-                  elementSnapDirections={{ left: true, top: true, right: true, bottom: true, center: true, middle: true }}
-                  snapHorizontalThreshold={8}
-                  snapVerticalThreshold={8}
-                  maxSnapElementGapDistance={0}
                   clickable
                   origin={false}
                   zoom={1 / store.zoom}
@@ -369,14 +343,22 @@ export default function App() {
                   }}
                   onDragStart={() => {
                     dragOrigins.current = selectedElements.filter((item) => !item.locked).map((item) => ({ id: item.id, x: item.x, y: item.y }));
+                    snapPeers.current = peerBoxes(slide.elements, store.selectedElementIds);
                   }}
                   onDrag={({ left, top, target: elementTarget }) => {
                     const origin = dragOrigins.current.find((item) => item.id === dragTarget.id);
                     if (!origin) return;
-                    const dx = left - origin.x;
-                    const dy = top - origin.y;
-                    elementTarget.style.left = `${left}px`;
-                    elementTarget.style.top = `${top}px`;
+                    const snapped = snapMove(
+                      { x: left, y: top, width: dragTarget.width, height: dragTarget.height },
+                      snapPeers.current,
+                      deck.size,
+                      snapThreshold(store.zoom),
+                    );
+                    const dx = snapped.x - origin.x;
+                    const dy = snapped.y - origin.y;
+                    elementTarget.style.left = `${snapped.x}px`;
+                    elementTarget.style.top = `${snapped.y}px`;
+                    setSnapGuides(snapped.guides);
                     store.preview((draft) => {
                       for (const start of dragOrigins.current) {
                         const element = findElement(draft, slide.id, start.id);
@@ -391,15 +373,38 @@ export default function App() {
                       }
                     });
                   }}
-                  onDragEnd={store.commit}
-                  onResize={({ width, height, drag, target: elementTarget }) => {
-                    elementTarget.style.width = `${width}px`;
-                    elementTarget.style.height = `${height}px`;
-                    elementTarget.style.left = `${drag.left}px`;
-                    elementTarget.style.top = `${drag.top}px`;
-                    store.preview((draft) => { const element = findElement(draft, slide.id, dragTarget.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
+                  onDragEnd={() => {
+                    setSnapGuides([]);
+                    store.commit();
                   }}
-                  onResizeEnd={store.commit}
+                  onResizeStart={() => {
+                    snapPeers.current = peerBoxes(slide.elements, store.selectedElementIds);
+                  }}
+                  onResize={({ width, height, drag, target: elementTarget }) => {
+                    const snapped = snapResize(
+                      { x: drag.left, y: drag.top, width, height },
+                      snapPeers.current,
+                      deck.size,
+                      snapThreshold(store.zoom),
+                    );
+                    elementTarget.style.width = `${snapped.width}px`;
+                    elementTarget.style.height = `${snapped.height}px`;
+                    elementTarget.style.left = `${snapped.x}px`;
+                    elementTarget.style.top = `${snapped.y}px`;
+                    setSnapGuides(snapped.guides);
+                    store.preview((draft) => {
+                      const element = findElement(draft, slide.id, dragTarget.id);
+                      if (!element) return;
+                      element.width = snapped.width;
+                      element.height = snapped.height;
+                      element.x = snapped.x;
+                      element.y = snapped.y;
+                    });
+                  }}
+                  onResizeEnd={() => {
+                    setSnapGuides([]);
+                    store.commit();
+                  }}
                   onRotate={({ rotation, target: elementTarget }) => {
                     elementTarget.style.transform = `rotate(${rotation}deg)`;
                     store.preview((draft) => { const element = findElement(draft, slide.id, dragTarget.id); if (element) element.rotation = rotation; });
@@ -410,6 +415,17 @@ export default function App() {
               {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} source={selected.type === "image" ? assetUrl(selected.src, selected.storage) : undefined} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCropElementId(undefined)} />}
               {editingText && <InlineTextEditor ref={inlineTextEditor} element={editingText} selectAll={selectAllOnEdit} preview={(markdown) => { store.preview((draft) => { const element = findElement(draft, slide.id, editingText.id); if (element?.type === "text") element.markdown = markdown; }); store.scheduleCommit(); }} finish={() => { store.commit(); setEditingTextId(undefined); }} />}
             </div>
+            {snapGuides.length > 0 && (
+              <div className="snap-overlay" aria-hidden="true">
+                {snapGuides.map((guide, index) => (
+                  <div
+                    key={`${guide.axis}-${guide.position}-${index}`}
+                    className={`snap-guide snap-guide-${guide.axis}`}
+                    style={guide.axis === "x" ? { left: guide.position * store.zoom } : { top: guide.position * store.zoom }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <section className="notes">

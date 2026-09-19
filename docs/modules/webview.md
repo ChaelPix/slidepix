@@ -13,6 +13,7 @@ webview. The webview has no direct filesystem or Node access.
 | `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, and command dispatch. |
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
 | `src/align.ts` | Page/selection alignment and equal-gap distribution of element boxes. |
+| `src/snap.ts` | Logical-space edge/center snapping against the page and peer boxes. |
 | `src/store.ts` | Zustand state, single-flight revisioned persistence, semantic external-edit rebasing, immutable mutation helpers, selection, and zoom. |
 | `src/vscode.ts` | Typed adapter around `acquireVsCodeApi`, version stamping, host listener, and browser fallback used during local development. |
 | `src/toasts.ts` | App-wide transient notification events and stack update helpers. |
@@ -122,10 +123,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   Alt for ×0.1 nudges. Range properties use a visible card and slider.
 - All persistent changes go through `mutate` or the `preview`/`commit` queue;
   selections, zoom, open tabs, and modal state stay transient.
-- Moveable snaps selected elements to visible peer element edges and centers
-  and to the slide edges and center. Guidelines are lines only (no distance
-  digits or equal-gap snaps), using the slide as the snap container so they
-  cannot pan the workspace. Shift-click adds items to the selection. The
+- Drag and resize snap in logical slide units to visible peer left/center/right
+  and top/middle/bottom edges and to the slide edges and center. The catch
+  radius is 24 CSS pixels, divided by canvas zoom, so it stays easy to hit at
+  any scale. Guidelines are overlay lines on the canvas frame (no distance
+  digits). Shift-click adds items to the selection. The
   contextual toolbar aligns left/center/right and top/middle/bottom to the
   page or the selection, centers on the page, and distributes three or more
   unlocked items by centers or equal gaps. Dragging one selected item moves
@@ -149,4 +151,5 @@ changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
 `src/store.test.ts` covers write serialization, debounce, rebasing, conflicts,
 failed edits, and deferred document commands. `src/align.test.ts` covers page
-and selection alignment plus distribution.
+and selection alignment plus distribution. `src/snap.test.ts` covers edge
+snapping and the zoom-aware catch radius.

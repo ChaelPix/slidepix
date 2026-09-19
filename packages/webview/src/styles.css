@@ -156,10 +156,10 @@ button:disabled { opacity: .45; cursor: default; }
 .align-controls { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--vscode-panel-border); }
 .align-relative { height: 28px; display: flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); font-size: 10px; }
 .align-relative select { height: 28px; max-width: 96px; padding: 2px 4px; }
-.moveable-snap-digit,
-.moveable-gap,
-.moveable-size-value { display: none !important; }
-.moveable-guideline { background: var(--vscode-focusBorder) !important; }
+.snap-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.snap-guide { position: absolute; background: var(--vscode-focusBorder); }
+.snap-guide-x { top: 0; bottom: 0; width: 2px; margin-left: -1px; }
+.snap-guide-y { left: 0; right: 0; height: 2px; margin-top: -1px; }
 .slide-element.editing .slidepix-text-content { visibility: hidden; }
 .inline-text-editor-shell { position: absolute; transform-origin: center center; }
 .inline-text-editor-badge {
