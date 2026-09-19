@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "id": "fbd82208-0c8d-4863-9201-6d5f4045e88a",
+  "metadata": {
+    "title": "Untitled deck",
+    "author": "",
+    "description": ""
+  },
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "theme": {
+    "background": "#ffffff",
+    "foreground": "#111827",
+    "accent": "#2563eb",
+    "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+  },
+  "pageNumbers": {
+    "enabled": true,
+    "color": "#64748b",
+    "fontSize": 24
+  },
+  "layouts": {},
+  "slides": [
+    {
+      "id": "f9cb3ff9-444b-41ad-ac0a-0d33b4df417c",
+      "title": "Title slide",
+      "notes": "",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "none",
+        "durationMs": 500,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "02606d5c-dd39-48b7-bb55-d8e4d4fbc666",
+          "morphKey": "c15a407a-9b8d-4453-9134-7d30d0c75ef0",
+          "x": 180,
+          "y": 360,
+          "width": 1560,
+          "height": 300,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 0,
+          "locked": false,
+          "hidden": false,
+          "type": "text",
+          "markdown": "# Untitled deck",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 72,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        }
+      ]
+    }
+  ]
+}

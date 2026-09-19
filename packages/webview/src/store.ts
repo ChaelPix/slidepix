@@ -38,6 +38,7 @@ export type DeckStore = {
   gitConflict: boolean;
   selectedSlideId?: string;
   selectedElementId?: string;
+  selectedElementIds: string[];
   zoom: number;
   dirty: boolean;
   pending?: PendingEdit;
@@ -52,7 +53,7 @@ export type DeckStore = {
   handleHistoryResult(message: Extract<HostToWebviewMessage, { type: "historyResult" }>): void;
   clearHistoryError(): void;
   selectSlide(id: string): void;
-  selectElement(id?: string): void;
+  selectElement(id?: string, additive?: boolean): void;
   setZoom(zoom: number): void;
   preview(mutator: (draft: Deck) => void): void;
   scheduleCommit(): void;
@@ -156,6 +157,7 @@ export const useDeckStore = create<DeckStore>((set, get) => {
     zoom: 0.5,
     dirty: false,
     gitConflict: false,
+    selectedElementIds: [],
     historyQueue: [],
     deferredCommands: [],
     setFromHost: (deck, revision, sourceUri, linkedSourceUri) => {
@@ -184,8 +186,15 @@ export const useDeckStore = create<DeckStore>((set, get) => {
       acceptHostDeck(message.deck, message.revision);
     },
     clearHistoryError: () => set({ historyError: undefined }),
-    selectSlide: (id) => set({ selectedSlideId: id, selectedElementId: undefined }),
-    selectElement: (id) => set({ selectedElementId: id }),
+    selectSlide: (id) => set({ selectedSlideId: id, selectedElementId: undefined, selectedElementIds: [] }),
+    selectElement: (id, additive = false) => set((state) => {
+      if (!id) return { selectedElementId: undefined, selectedElementIds: [] };
+      if (!additive) return { selectedElementId: id, selectedElementIds: [id] };
+      const selected = state.selectedElementIds.includes(id)
+        ? state.selectedElementIds.filter((item) => item !== id)
+        : [...state.selectedElementIds, id];
+      return { selectedElementId: selected.at(-1), selectedElementIds: selected };
+    }),
     setZoom: (zoom) => set({ zoom: Math.min(1.5, Math.max(0.1, zoom)) }),
     preview: (mutator) => {
       const deck = get().deck;
@@ -248,8 +257,8 @@ export const useDeckStore = create<DeckStore>((set, get) => {
 
 function selectionState(state: DeckStore, deck: Deck, patch: Partial<DeckStore>): Partial<DeckStore> {
   const selectedSlideId = deck.slides.some((slide) => slide.id === state.selectedSlideId) ? state.selectedSlideId : deck.slides[0]?.id;
-  const selectedElementId = deck.slides.find((slide) => slide.id === selectedSlideId)?.elements.some((element) => element.id === state.selectedElementId)
-    ? state.selectedElementId
-    : undefined;
-  return { ...patch, selectedSlideId, selectedElementId };
+  const slide = deck.slides.find((item) => item.id === selectedSlideId);
+  const selectedElementIds = (state.selectedElementIds ?? []).filter((id) => slide?.elements.some((element) => element.id === id));
+  const selectedElementId = selectedElementIds.includes(state.selectedElementId ?? "") ? state.selectedElementId : selectedElementIds.at(-1);
+  return { ...patch, selectedSlideId, selectedElementId, selectedElementIds };
 }

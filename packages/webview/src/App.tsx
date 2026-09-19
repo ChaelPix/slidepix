@@ -1,5 +1,6 @@
 import Moveable from "react-moveable";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { flushSync } from "react-dom";
 import {
   duplicateSlide,
   elementSchema,
@@ -14,6 +15,7 @@ import {
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
 import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
+import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
 import { useDeckStore } from "./store";
 import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
@@ -40,6 +42,10 @@ export default function App() {
   const [notesCollapsed, setNotesCollapsed] = useState(false);
   const inlineTextEditor = useRef<InlineTextEditorHandle>(null);
   const pendingTextFormat = useRef<TextFormatCommand | undefined>(undefined);
+  const canvasScaleRef = useRef<HTMLDivElement>(null);
+  const moveableRef = useRef<Moveable | null>(null);
+  const dragOrigins = useRef<{ id: string; x: number; y: number }[]>([]);
+  const [snapGuidelines, setSnapGuidelines] = useState<HTMLElement[]>([]);
 
   useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult, store.handleHistoryResult)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
@@ -51,9 +57,11 @@ export default function App() {
 
   const deck = store.deck;
   const slide = deck?.slides.find((item) => item.id === store.selectedSlideId) ?? deck?.slides[0];
-  const selected = slide?.elements.find((item) => item.id === store.selectedElementId);
+  const selectedElements = slide?.elements.filter((item) => store.selectedElementIds.includes(item.id)) ?? [];
+  const selected = selectedElements.find((item) => item.id === store.selectedElementId) ?? selectedElements[0];
   const editingText = slide?.elements.find((item): item is Extract<SlideElement, { type: "text" }> => item.id === editingTextId && item.type === "text");
-  const target = selected && !selected.locked ? document.getElementById(`element-${selected.id}`) : null;
+  const dragTarget = selectedElements.find((item) => !item.locked) ?? selected;
+  const target = dragTarget && !dragTarget.locked ? document.getElementById(`element-${dragTarget.id}`) : null;
   const cropActive = selected?.type === "image" && cropElementId === selected.id;
 
   useEffect(() => {
@@ -68,6 +76,21 @@ export default function App() {
     pendingTextFormat.current = undefined;
     requestAnimationFrame(() => inlineTextEditor.current?.format(command));
   }, [editingText?.id]);
+
+  useLayoutEffect(() => {
+    const root = canvasScaleRef.current;
+    if (!root || !slide) {
+      setSnapGuidelines([]);
+      return;
+    }
+    const page = root.querySelector<HTMLElement>(".slide");
+    const selectedIds = new Set(store.selectedElementIds);
+    const peers = slide.elements
+      .filter((item) => !item.hidden && !selectedIds.has(item.id))
+      .map((item) => root.querySelector<HTMLElement>(`#element-${item.id}`))
+      .filter((node): node is HTMLElement => Boolean(node));
+    setSnapGuidelines(page ? [page, ...peers] : peers);
+  }, [slide?.id, slide?.elements.map((item) => `${item.id}:${item.hidden}`).join(), store.selectedElementIds.join()]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -85,8 +108,8 @@ export default function App() {
         setCropElementId(undefined);
         return;
       }
-      if (!deck || !slide || !selected || editingTextId || textEntry) return;
-      if ((event.key === "Enter" || event.key === "F2") && selected.type === "text") {
+      if (!deck || !slide || !selectedElements.length || editingTextId || textEntry) return;
+      if ((event.key === "Enter" || event.key === "F2") && selected?.type === "text" && selectedElements.length === 1) {
         event.preventDefault();
         setSelectAllOnEdit(false);
         setEditingTextId(selected.id);
@@ -96,22 +119,26 @@ export default function App() {
       if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         event.preventDefault();
         store.preview((draft) => {
-          const element = findElement(draft, slide.id, selected.id);
-          if (!element) return;
-          if (event.key === "ArrowLeft") element.x -= delta;
-          if (event.key === "ArrowRight") element.x += delta;
-          if (event.key === "ArrowUp") element.y -= delta;
-          if (event.key === "ArrowDown") element.y += delta;
+          for (const current of selectedElements) {
+            if (current.locked) continue;
+            const element = findElement(draft, slide.id, current.id);
+            if (!element) continue;
+            if (event.key === "ArrowLeft") element.x -= delta;
+            if (event.key === "ArrowRight") element.x += delta;
+            if (event.key === "ArrowUp") element.y -= delta;
+            if (event.key === "ArrowDown") element.y += delta;
+          }
         });
         store.scheduleCommit();
+        requestAnimationFrame(() => moveableRef.current?.updateRect());
       } else if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
-        deleteElement(deck, slide.id, selected.id, store.mutate, store.selectElement);
+        deleteElements(slide.id, selectedElements.map((item) => item.id), store.mutate, store.selectElement);
       }
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [deck, slide, selected, editingTextId, cropElementId]);
+  }, [deck, slide, selected, selectedElements, editingTextId, cropElementId]);
 
   if (store.error) return <InvalidDeck message={store.error} gitConflict={store.gitConflict} />;
   if (!deck || !slide) return <div className="loading">Opening SlidePix…</div>;
@@ -191,12 +218,12 @@ export default function App() {
     style: { fontFamily: deck.theme.fontFamily, fontSize: 30, fontWeight: 400, color: deck.theme.foreground, headerFill: "#e0e7ff", cellFill: "#ffffff", borderColor: "#94a3b8", borderWidth: 2, textAlign: "left", verticalAlign: "middle", padding: 10 }
   }));
   const copyElement = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
-    if (!selected || isTextEntryTarget(event.target)) return;
+    if (!selectedElements.length || isTextEntryTarget(event.target)) return;
     event.preventDefault();
-    slidepixClipboard = { version: 1, token: crypto.randomUUID(), deckId: deck.id, sourceSlideId: slide.id, elements: [structuredClone(selected)] };
+    slidepixClipboard = { version: 1, token: crypto.randomUUID(), deckId: deck.id, sourceSlideId: slide.id, elements: selectedElements.map((item) => structuredClone(item)) };
     event.clipboardData.setData(SLIDEPIX_CLIPBOARD_TYPE, JSON.stringify(slidepixClipboard));
     event.clipboardData.setData("text/plain", `slidepix://clipboard/${slidepixClipboard.token}`);
-    if (cut) deleteElement(deck, slide.id, selected.id, store.mutate, store.selectElement);
+    if (cut) deleteElements(slide.id, selectedElements.map((item) => item.id), store.mutate, store.selectElement);
   };
   const paste = (event: ReactClipboardEvent<HTMLDivElement>) => {
     if (isTextEntryTarget(event.target)) return;
@@ -209,7 +236,9 @@ export default function App() {
       const preserveMorphKey = payload.sourceSlideId !== slide.id;
       const pasted = payload.elements.map((element) => cloneElementForPaste(element, preserveMorphKey));
       store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push(...pasted));
-      store.selectElement(pasted.at(-1)?.id);
+      const ids = pasted.map((item) => item.id);
+      store.selectElement(ids[0]);
+      ids.slice(1).forEach((id) => store.selectElement(id, true));
       return;
     }
     const text = event.clipboardData.getData("text/plain");
@@ -253,13 +282,39 @@ export default function App() {
         commit={store.commit}
         editAdvanced={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }}
         formatText={applyTextFormat}
-        duplicateElement={() => {
-          if (!selected) return;
-          const copy = cloneElementForPaste(selected, false);
-          store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push(copy));
-          store.selectElement(copy.id);
+        selectedElements={selectedElements}
+        align={(action, relativeTo) => {
+          const next = applyAlign(selectedElements, action, relativeTo, deck.size);
+          flushSync(() => {
+            store.mutate((draft) => {
+              for (const box of next) {
+                const element = findElement(draft, slide.id, box.id);
+                if (element) { element.x = box.x; element.y = box.y; }
+              }
+            });
+          });
+          moveableRef.current?.updateRect();
         }}
-        deleteSelected={() => selected && deleteElement(deck, slide.id, selected.id, store.mutate, store.selectElement)}
+        distribute={(action) => {
+          const next = applyDistribute(selectedElements, action);
+          flushSync(() => {
+            store.mutate((draft) => {
+              for (const box of next) {
+                const element = findElement(draft, slide.id, box.id);
+                if (element) { element.x = box.x; element.y = box.y; }
+              }
+            });
+          });
+          moveableRef.current?.updateRect();
+        }}
+        duplicateElement={() => {
+          if (!selectedElements.length) return;
+          const copies = selectedElements.map((item) => cloneElementForPaste(item, false));
+          store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push(...copies));
+          store.selectElement(copies[0]?.id);
+          copies.slice(1).forEach((item) => store.selectElement(item.id, true));
+        }}
+        deleteSelected={() => deleteElements(slide.id, selectedElements.map((item) => item.id), store.mutate, store.selectElement)}
       />
       <SlideRail deck={deck} selectedId={slide.id} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
       <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
@@ -270,6 +325,7 @@ export default function App() {
         }}>
           <div className="canvas-frame" style={{ width: deck.size.width * store.zoom, height: deck.size.height * store.zoom }}>
             <div
+              ref={canvasScaleRef}
               className="canvas-scale"
               style={{ width: deck.size.width, height: deck.size.height, zoom: store.zoom }}
             >
@@ -277,36 +333,63 @@ export default function App() {
                 deck={deck}
                 slide={slide}
                 interactive
-                selectedElementId={store.selectedElementId}
+                selectedElementIds={store.selectedElementIds}
                 editingElementId={editingTextId}
                 resolveAsset={assetUrl}
                 onSelectElement={store.selectElement}
                 onEditText={(id) => beginTextEditing(id)}
                 onEditImage={setCropElementId}
               />
-              {target && selected && !cropActive && editingTextId !== selected.id && (
+              {target && dragTarget && !cropActive && editingTextId !== dragTarget.id && (
                 <Moveable
+                  ref={moveableRef}
                   target={target}
+                  dragTarget={target}
                   draggable
-                  resizable
-                  rotatable
+                  resizable={selectedElements.length === 1}
+                  rotatable={selectedElements.length === 1}
                   snappable
-                  elementGuidelines={slide.elements.filter((item) => item.id !== selected.id && !item.hidden).map((item) => document.getElementById(`element-${item.id}`)).filter((item): item is HTMLElement => Boolean(item))}
-                  verticalGuidelines={[deck.size.width / 2]}
-                  horizontalGuidelines={[deck.size.height / 2]}
-                  snapThreshold={4}
+                  snapContainer={canvasScaleRef}
+                  elementGuidelines={snapGuidelines}
+                  snapGap={false}
+                  isDisplaySnapDigit={false}
+                  isDisplayInnerSnapDigit={false}
+                  snapDirections={{ left: true, top: true, right: true, bottom: true, center: true, middle: true }}
+                  elementSnapDirections={{ left: true, top: true, right: true, bottom: true, center: true, middle: true }}
+                  snapHorizontalThreshold={8}
+                  snapVerticalThreshold={8}
+                  maxSnapElementGapDistance={0}
                   clickable
                   origin={false}
                   zoom={1 / store.zoom}
                   onClick={({ isDouble }) => {
-                    if (!isDouble) return;
-                    if (selected.type === "text") beginTextEditing(selected.id);
-                    if (selected.type === "image") setCropElementId(selected.id);
+                    if (!isDouble || selectedElements.length !== 1) return;
+                    if (dragTarget.type === "text") beginTextEditing(dragTarget.id);
+                    if (dragTarget.type === "image") setCropElementId(dragTarget.id);
+                  }}
+                  onDragStart={() => {
+                    dragOrigins.current = selectedElements.filter((item) => !item.locked).map((item) => ({ id: item.id, x: item.x, y: item.y }));
                   }}
                   onDrag={({ left, top, target: elementTarget }) => {
+                    const origin = dragOrigins.current.find((item) => item.id === dragTarget.id);
+                    if (!origin) return;
+                    const dx = left - origin.x;
+                    const dy = top - origin.y;
                     elementTarget.style.left = `${left}px`;
                     elementTarget.style.top = `${top}px`;
-                    store.preview((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.x = left; element.y = top; } });
+                    store.preview((draft) => {
+                      for (const start of dragOrigins.current) {
+                        const element = findElement(draft, slide.id, start.id);
+                        if (!element) continue;
+                        element.x = start.x + dx;
+                        element.y = start.y + dy;
+                        const node = document.getElementById(`element-${start.id}`);
+                        if (node && start.id !== dragTarget.id) {
+                          node.style.left = `${element.x}px`;
+                          node.style.top = `${element.y}px`;
+                        }
+                      }
+                    });
                   }}
                   onDragEnd={store.commit}
                   onResize={({ width, height, drag, target: elementTarget }) => {
@@ -314,12 +397,12 @@ export default function App() {
                     elementTarget.style.height = `${height}px`;
                     elementTarget.style.left = `${drag.left}px`;
                     elementTarget.style.top = `${drag.top}px`;
-                    store.preview((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
+                    store.preview((draft) => { const element = findElement(draft, slide.id, dragTarget.id); if (element) { element.width = width; element.height = height; element.x = drag.left; element.y = drag.top; } });
                   }}
                   onResizeEnd={store.commit}
                   onRotate={({ rotation, target: elementTarget }) => {
                     elementTarget.style.transform = `rotate(${rotation}deg)`;
-                    store.preview((draft) => { const element = findElement(draft, slide.id, selected.id); if (element) element.rotation = rotation; });
+                    store.preview((draft) => { const element = findElement(draft, slide.id, dragTarget.id); if (element) element.rotation = rotation; });
                   }}
                   onRotateEnd={store.commit}
                 />
@@ -348,9 +431,10 @@ export default function App() {
   );
 }
 
-function Toolbar({ slide, element, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, duplicateElement, deleteSelected }: {
+function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
   slide: Slide;
   element?: SlideElement;
+  selectedElements: SlideElement[];
   addText(): void;
   addShape(shape: "rectangle" | "ellipse" | "triangle"): void;
   addTable(): void;
@@ -364,6 +448,8 @@ function Toolbar({ slide, element, addText, addShape, addTable, chooseImage, cho
   commit(): void;
   editAdvanced(id: string): void;
   formatText(command: TextFormatCommand): void;
+  align(action: AlignAction, relativeTo: AlignRelativeTo): void;
+  distribute(action: DistributeAction): void;
   duplicateElement(): void;
   deleteSelected(): void;
 }) {
@@ -432,7 +518,8 @@ function Toolbar({ slide, element, addText, addShape, addTable, chooseImage, cho
         <AlignmentButtons label="Horizontal alignment" value={textLike.style.textAlign} values={["left", "center", "right"]} onChange={(textAlign) => updateStyle({ textAlign })} />
         <AlignmentButtons label="Vertical alignment" value={textLike.style.verticalAlign} values={["top", "middle", "bottom"]} onChange={(verticalAlign) => updateStyle({ verticalAlign })} />
         {element?.type === "text" && <button className="context-action" onClick={() => editAdvanced(element.id)}><span className="codicon codicon-open-preview" /> Advanced editor</button>}
-      </> : <span className="context-hint">{element ? `${elementLabel(element)} selected` : "Select an element to format it"}</span>}
+      </> : <span className="context-hint">{selectedElements.length > 1 ? `${selectedElements.length} items selected` : element ? `${elementLabel(element)} selected` : "Select an element to format it"}</span>}
+      {selectedElements.length > 0 && <AlignControls count={selectedElements.length} unlocked={selectedElements.filter((item) => !item.locked).length} align={align} distribute={distribute} />}
       {element && <div className="context-arrange">
         <ContextIcon icon="copy" label="Duplicate" onClick={duplicateElement} />
         <ContextIcon icon="arrow-up" label="Bring forward" onClick={() => updateElement((target) => { target.z += 1; })} />
@@ -476,6 +563,39 @@ function IconButton({ icon, label, disabled, pressed, onClick }: { icon: string;
 function AlignmentButtons({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange(value: string): void }) {
   const icons: Record<string, string> = { left: "layout-panel-left", center: "layout-panel-center", right: "layout-panel-right", top: "arrow-up", middle: "layout-panel-center", bottom: "arrow-down" };
   return <div className="segmented-control" role="group" aria-label={label}>{values.map((item) => <button key={item} type="button" title={`${label}: ${item}`} aria-label={`${label}: ${item}`} aria-pressed={value === item} onPointerDown={(event) => event.preventDefault()} onClick={() => onChange(item)}><span className={`codicon codicon-${icons[item]}`} /></button>)}</div>;
+}
+
+function AlignControls({ count, unlocked, align, distribute }: { count: number; unlocked: number; align(action: AlignAction, relativeTo: AlignRelativeTo): void; distribute(action: DistributeAction): void }) {
+  const [relativeTo, setRelativeTo] = useState<AlignRelativeTo>("page");
+  const relative = count > 1 ? relativeTo : "page";
+  const canAlign = unlocked > 0;
+  const canDistribute = unlocked >= 3;
+  return <div className="align-controls">
+    <label className="align-relative" title="Align relative to the slide or the selected items">
+      <span>Align</span>
+      <select aria-label="Align relative to" value={relative} disabled={count < 2} onChange={(event) => setRelativeTo(event.target.value as AlignRelativeTo)}>
+        <option value="page">Page</option>
+        <option value="selection">Selection</option>
+      </select>
+    </label>
+    <div className="segmented-control" role="group" aria-label="Horizontal object alignment">
+      <ContextIcon icon="layout-sidebar-left" label={`Align left edges to ${relative}`} disabled={!canAlign} onClick={() => align("left", relative)} />
+      <ContextIcon icon="layout-centered" label={`Center horizontally on ${relative}`} disabled={!canAlign} onClick={() => align("center", relative)} />
+      <ContextIcon icon="layout-sidebar-right" label={`Align right edges to ${relative}`} disabled={!canAlign} onClick={() => align("right", relative)} />
+    </div>
+    <div className="segmented-control" role="group" aria-label="Vertical object alignment">
+      <ContextIcon icon="fold-up" label={`Align top edges to ${relative}`} disabled={!canAlign} onClick={() => align("top", relative)} />
+      <ContextIcon icon="layout-panel" label={`Center vertically on ${relative}`} disabled={!canAlign} onClick={() => align("middle", relative)} />
+      <ContextIcon icon="fold-down" label={`Align bottom edges to ${relative}`} disabled={!canAlign} onClick={() => align("bottom", relative)} />
+    </div>
+    <ContextIcon icon="target" label="Center on page" disabled={!canAlign} onClick={() => align("center-page", "page")} />
+    <div className="segmented-control" role="group" aria-label="Distribute">
+      <ContextIcon icon="split-horizontal" label="Distribute horizontal centers" disabled={!canDistribute} onClick={() => distribute("horizontal-centers")} />
+      <ContextIcon icon="layout-panel-justify" label="Equal horizontal gaps" disabled={!canDistribute} onClick={() => distribute("horizontal-gaps")} />
+      <ContextIcon icon="split-vertical" label="Distribute vertical centers" disabled={!canDistribute} onClick={() => distribute("vertical-centers")} />
+      <ContextIcon icon="three-bars" label="Equal vertical gaps" disabled={!canDistribute} onClick={() => distribute("vertical-gaps")} />
+    </div>
+  </div>;
 }
 
 function SlideRail({ deck, selectedId, select, mutate, resolveAsset }: { deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
@@ -598,8 +718,9 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
 }
 
 function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
+  const selectedIds = useDeckStore((state) => state.selectedElementIds);
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   const updateContinuous = (patch: Partial<SlideElement>) => {
     if (!element) return;
@@ -611,7 +732,7 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
     <nav>{(["properties", "layers", "animations"] as const).map((value) => <button className={tab === value ? "active" : ""} onClick={() => setTab(value)} key={value}>{value}</button>)}</nav>
     <div className="inspector-body">
       {tab === "properties" && <>
-        <h3>{element ? element.type : "Slide"}</h3>
+        <h3>{selectedIds.length > 1 ? `${selectedIds.length} items` : element ? element.type : "Slide"}</h3>
         {element ? <>
           <label>Element name<input autoComplete="off" value={element.name ?? ""} placeholder={elementLabel(element)} onChange={(event) => updateContinuous({ name: event.target.value.trimStart() || undefined })} onBlur={commit} /></label>
           <h4 className="property-heading">Geometry</h4>
@@ -694,7 +815,7 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
           <CheckboxField label="Hide page number" checked={slide.hidePageNumber} onChange={(hidePageNumber) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.hidePageNumber = hidePageNumber; })} />
         </>}
       </>}
-      {tab === "layers" && <><h3>Layers</h3>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${item.id === element?.id ? "active" : ""}`} key={item.id} onClick={() => selectElement(item.id)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button title={item.locked ? "Unlock" : "Lock"} aria-label={item.locked ? "Unlock" : "Lock"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}><span className={`codicon codicon-${item.locked ? "lock" : "unlock"}`} /></button><button title={item.hidden ? "Show" : "Hide"} aria-label={item.hidden ? "Show" : "Hide"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}><span className={`codicon codicon-${item.hidden ? "eye-closed" : "eye"}`} /></button><button title="Bring forward" aria-label="Bring forward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}><span className="codicon codicon-arrow-up" /></button><button title="Send backward" aria-label="Send backward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}><span className="codicon codicon-arrow-down" /></button></div>)}</>}
+      {tab === "layers" && <><h3>Layers</h3><p className="panel-help">Shift-click to add items to the selection for align and distribute.</p>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${selectedIds.includes(item.id) ? "active" : ""}`} key={item.id} onClick={(event) => selectElement(item.id, event.shiftKey)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button title={item.locked ? "Unlock" : "Lock"} aria-label={item.locked ? "Unlock" : "Lock"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}><span className={`codicon codicon-${item.locked ? "lock" : "unlock"}`} /></button><button title={item.hidden ? "Show" : "Hide"} aria-label={item.hidden ? "Show" : "Hide"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}><span className={`codicon codicon-${item.hidden ? "eye-closed" : "eye"}`} /></button><button title="Bring forward" aria-label="Bring forward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}><span className="codicon codicon-arrow-up" /></button><button title="Send backward" aria-label="Send backward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}><span className="codicon codicon-arrow-down" /></button></div>)}</>}
       {tab === "animations" && <><h3>Animation timeline</h3><p className="panel-help">Select an element, then add its entrance. The cards run from top to bottom.</p><button className="add-animation" disabled={!element} onClick={() => element && mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.push(defaultAnimation(element.id)))}><span className="codicon codicon-add" /> Add entrance{element ? ` for ${elementLabel(element)}` : ""}</button><div className="animation-list">{slide.timeline.map((step, index) => <AnimationRow key={step.id} step={step} index={index} flowLabel={animationFlowLabel(slide.timeline, index)} element={slide.elements.find((item) => item.id === step.targetElementId)} selectElement={selectElement} mutate={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.timeline[index]!, patch))} remove={() => mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.splice(index, 1))} />)}</div></>}
     </div>
   </aside>;
@@ -887,7 +1008,16 @@ function roundStep(value: number, step: number): number { const precision = Math
 function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): string[][] { return Array.from({ length: table.rows }, (_, row) => Array.from({ length: table.columns }, (_, column) => table.cells[row]?.[column] ?? "")); }
 function resizeTable(table: Extract<SlideElement, { type: "table" }>, rows: number, columns: number): void { table.rows = clamp(Math.round(rows), 1, 50); table.columns = clamp(Math.round(columns), 1, 20); table.cells = normalizedTableCells(table); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
-function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
+function deleteElements(slideId: string, elementIds: string[], mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) {
+  if (!elementIds.length) return;
+  const ids = new Set(elementIds);
+  mutate((draft) => {
+    const target = draft.slides.find((item) => item.id === slideId)!;
+    target.elements = target.elements.filter((item) => !ids.has(item.id));
+    target.timeline = target.timeline.filter((step) => !ids.has(step.targetElementId));
+  });
+  select();
+}
 function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message }); }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {

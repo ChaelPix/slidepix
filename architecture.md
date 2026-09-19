@@ -144,8 +144,7 @@ For any nontrivial change:
 
 Do not assume every planned feature is complete. Current known gaps include:
 
-- selection is single-item; grouping, alignment, distribution, and rich guides
-  are not implemented;
+- grouping is not implemented;
 - layouts exist in the schema but have no layout designer;
 - portable `.slidepix` archives, font importing, and embedded fonts are not
   implemented;

@@ -6,10 +6,10 @@ type Props = {
   slide: Slide;
   scale?: number;
   interactive?: boolean;
-  selectedElementId?: string;
+  selectedElementIds?: string[];
   editingElementId?: string;
   resolveAsset?: (source: string, storage: MediaStorage) => string;
-  onSelectElement?: (id?: string) => void;
+  onSelectElement?: (id?: string, additive?: boolean) => void;
   onEditText?: (id: string) => void;
   onEditImage?: (id: string) => void;
 };
@@ -19,7 +19,7 @@ export function SlideView({
   slide,
   scale = 1,
   interactive = false,
-  selectedElementId,
+  selectedElementIds = [],
   editingElementId,
   resolveAsset = (value) => value,
   onSelectElement,
@@ -33,7 +33,7 @@ export function SlideView({
   const stop = (event: MouseEvent, id: string) => {
     if (!interactive) return;
     event.stopPropagation();
-    onSelectElement?.(id);
+    onSelectElement?.(id, event.shiftKey);
   };
   return (
     <div
@@ -47,7 +47,7 @@ export function SlideView({
           key={element.id}
           element={element}
           interactive={interactive}
-          selected={selectedElementId === element.id}
+          selected={selectedElementIds.includes(element.id)}
           editing={editingElementId === element.id}
           resolveAsset={resolveAsset}
           onMouseDown={(event) => stop(event, element.id)}

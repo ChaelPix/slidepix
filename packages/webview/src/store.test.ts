@@ -29,6 +29,7 @@ beforeEach(() => {
     gitConflict: false,
     selectedSlideId: undefined,
     selectedElementId: undefined,
+    selectedElementIds: [],
     zoom: 0.5,
     dirty: false,
     pending: undefined,
@@ -179,6 +180,22 @@ describe("revision-safe persistence queue", () => {
     expect(useDeckStore.getState().deck).toEqual(base);
     expect(useDeckStore.getState().error).toBeUndefined();
     expect(useDeckStore.getState().historyError).toBe("History failed");
+  });
+});
+
+describe("element selection", () => {
+  it("replaces the selection by default and toggles with additive", () => {
+    const base = fixture();
+    useDeckStore.getState().setFromHost(base, "revision-0", "asset", "linked");
+    useDeckStore.getState().selectElement("element-a");
+    expect(useDeckStore.getState().selectedElementIds).toEqual(["element-a"]);
+    useDeckStore.getState().selectElement("element-b", true);
+    expect(useDeckStore.getState().selectedElementIds).toEqual(["element-a", "element-b"]);
+    expect(useDeckStore.getState().selectedElementId).toBe("element-b");
+    useDeckStore.getState().selectElement("element-a", true);
+    expect(useDeckStore.getState().selectedElementIds).toEqual(["element-b"]);
+    useDeckStore.getState().selectSlide("slide-b");
+    expect(useDeckStore.getState().selectedElementIds).toEqual([]);
   });
 });
 

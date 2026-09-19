@@ -64,6 +64,12 @@ The screen is organized like a simple slide application:
 - Add media with **Image** or **Video**, or drag a workspace file from the
   Explorer. Workspace media stays linked by a relative path by default; use
   **Embed in .assets** or **Embed all** when the deck must be portable.
+- Shift-click a second item (on the slide or in **Layers**) to multi-select.
+  The contextual **Align** controls snap items to the page or to the selection
+  (left/center/right, top/middle/bottom, or center on page). With three or more
+  unlocked items, distribute centers or equal gaps. Dragging one selected item
+  moves the whole unlocked selection. While dragging, snap lines appear against
+  other text, shapes, media, and the slide edges—no distance numbers.
 - Copy and paste selected SlidePix elements between slides. Cross-slide copies
   preserve their morph identity; plain text and clipboard images still create
   new elements.

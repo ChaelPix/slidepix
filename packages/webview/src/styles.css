@@ -153,6 +153,13 @@ button:disabled { opacity: .45; cursor: default; }
 .slide-element { position: absolute; transform-origin: center center; }
 .slide-element[data-element-id]:has(.slidepix-text-content) { cursor: text; }
 .slide-element.selected { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.align-controls { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--vscode-panel-border); }
+.align-relative { height: 28px; display: flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); font-size: 10px; }
+.align-relative select { height: 28px; max-width: 96px; padding: 2px 4px; }
+.moveable-snap-digit,
+.moveable-gap,
+.moveable-size-value { display: none !important; }
+.moveable-guideline { background: var(--vscode-focusBorder) !important; }
 .slide-element.editing .slidepix-text-content { visibility: hidden; }
 .inline-text-editor-shell { position: absolute; transform-origin: center center; }
 .inline-text-editor-badge {
