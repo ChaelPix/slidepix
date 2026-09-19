@@ -13,7 +13,7 @@ the task; this keeps context small while making ownership explicit.
 | Change editor UI or interactions | `packages/webview/src/App.tsx` | [Webview module](docs/modules/webview.md) |
 | Change canvas element rendering | `packages/webview/src/SlideView.tsx` and `packages/core/src/render.ts` | [Webview](docs/modules/webview.md), [Core](docs/modules/core.md) |
 | Change save/undo/external-edit behavior | `packages/extension/src/editor.ts` | [Extension module](docs/modules/extension.md) |
-| Change commands or extension contributions | `packages/extension/src/extension.ts` and `packages/extension/package.json` | [Extension module](docs/modules/extension.md) |
+| Change commands or extension contributions | `packages/extension/src/extension.ts` and `packages/extension/package.json` | [Extension module](docs/modules/extension.md), `packages/extension/src/create-deck.ts` |
 | Change presentation or presenter mode | `packages/extension/src/presentation.ts` | [Extension module](docs/modules/extension.md) |
 | Change PDF/PNG export or browser installation | `packages/extension/src/renderer.ts` | [Extension module](docs/modules/extension.md) |
 | Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |

@@ -153,6 +153,28 @@
             "type": "string",
             "minLength": 1
           },
+          "backgroundImage": {
+            "type": "object",
+            "properties": {
+              "src": {
+                "type": "string",
+                "minLength": 1
+              },
+              "storage": {
+                "default": "embedded",
+                "type": "string",
+                "enum": [
+                  "embedded",
+                  "linked"
+                ]
+              }
+            },
+            "required": [
+              "src",
+              "storage"
+            ],
+            "additionalProperties": false
+          },
           "notes": {
             "default": "",
             "type": "string"

@@ -8,7 +8,8 @@ export type HostToWebviewMessage =
   | { version: 2; type: "documentEditResult"; requestId: string; accepted: boolean; revision: string; text: string; deck?: Deck; reason?: "stale" | "invalid" | "applyFailed"; message?: string }
   | { version: 2; type: "historyResult"; requestId: string; command: "undo" | "redo"; ok: boolean; revision: string; text: string; deck?: Deck; error?: string }
   | { version: 2; type: "assetImported"; requestId: string; reference?: string; storage?: "embedded" | "linked"; error?: string }
-  | { version: 2; type: "fontSelected"; requestId: string; family?: string; error?: string };
+  | { version: 2; type: "fontSelected"; requestId: string; family?: string; error?: string }
+  | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string };
 
 export type WebviewToHostMessage =
   | { version: 2; type: "ready" }
@@ -19,4 +20,4 @@ export type WebviewToHostMessage =
   | { version: 2; type: "linkMedia"; requestId: string; kind: "image" | "video"; uri: string }
   | { version: 2; type: "embedMedia"; elementIds?: string[] }
   | { version: 2; type: "selectFont"; requestId: string; current: string }
-  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[] };
+  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[]; requestId?: string };

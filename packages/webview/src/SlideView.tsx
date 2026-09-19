@@ -27,6 +27,7 @@ export function SlideView({
   onEditImage
 }: Props) {
   const background = slide.background ?? deck.layouts[slide.layout ?? ""]?.background ?? deck.theme.background;
+  const backgroundImage = slide.backgroundImage ? `url("${resolveAsset(slide.backgroundImage.src, slide.backgroundImage.storage)}")` : undefined;
   const visibleSlides = deck.slides.filter((item) => !item.hidden);
   const pageIndex = visibleSlides.findIndex((item) => item.id === slide.id);
   const stop = (event: MouseEvent, id: string) => {
@@ -38,7 +39,7 @@ export function SlideView({
     <div
       className="slide"
       data-slide-id={slide.id}
-      style={{ width: deck.size.width, height: deck.size.height, background, transform: `scale(${scale})` }}
+      style={{ width: deck.size.width, height: deck.size.height, backgroundColor: background, backgroundImage, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat", transform: `scale(${scale})` }}
       onMouseDown={() => interactive && onSelectElement?.()}
     >
       {[...slide.elements].sort((a, b) => a.z - b.z).map((element) => (

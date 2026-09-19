@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { createDeck, parseDeckText, serializeDeck } from "@slidepix/core";
+import { uniqueDeckFilename } from "./create-deck";
 import { SlidePixEditorProvider, VIEW_TYPE } from "./editor";
 import { exportPdf, exportPng, installRenderer } from "./renderer";
 import { exportPptx } from "./pptx-export-command";
@@ -10,7 +11,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const editor = new SlidePixEditorProvider(context);
   context.subscriptions.push(
     editor.register(),
-    vscode.commands.registerCommand("slidepix.createDeck", () => createDeckCommand()),
+    vscode.commands.registerCommand("slidepix.createDeck", (selected?: vscode.Uri) => createDeckCommand(selected, editor)),
     vscode.commands.registerCommand("slidepix.exportPdf", () => withDeck(editor, (deck, document) => exportPdf(context, deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.exportPng", () => withDeck(editor, (deck, document) => exportPng(context, deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.exportPptx", () => withDeck(editor, (deck, document) => exportPptx(context, deck, document.uri.fsPath))),
@@ -36,16 +37,43 @@ async function reportGitError(action: string, operation: () => Promise<void>): P
   }
 }
 
-async function createDeckCommand(): Promise<void> {
-  let destination = await vscode.window.showSaveDialog({ filters: { "SlidePix deck": ["json"] }, defaultUri: vscode.Uri.file("untitled.slidepix.json") });
-  if (!destination) return;
-  if (!destination.fsPath.endsWith(".slidepix.json")) destination = vscode.Uri.file(`${destination.fsPath.replace(/\.json$/i, "")}.slidepix.json`);
-  const title = destination.path.split("/").pop()?.replace(/\.slidepix\.json$/i, "") || "Untitled deck";
-  await vscode.workspace.fs.writeFile(destination, Buffer.from(serializeDeck(createDeck(title)), "utf8"));
+async function createDeckCommand(selected: vscode.Uri | undefined, editor: SlidePixEditorProvider): Promise<void> {
+  const directory = await deckCreationDirectory(selected, editor);
+  if (!directory) return void vscode.window.showWarningMessage("Open a workspace folder before creating a SlidePix deck.");
+  const destination = await uniqueUntitledDeckUri(directory);
+  await vscode.workspace.fs.writeFile(destination, Buffer.from(serializeDeck(createDeck()), "utf8"));
   await vscode.commands.executeCommand("vscode.openWith", destination, VIEW_TYPE);
 }
 
-async function withDeck(editor: SlidePixEditorProvider, action: (deck: import("@slidepix/core").Deck, document: vscode.TextDocument) => Promise<void>): Promise<void> {
+async function uniqueUntitledDeckUri(directory: vscode.Uri): Promise<vscode.Uri> {
+  let names: string[] = [];
+  try { names = (await vscode.workspace.fs.readDirectory(directory)).map(([name]) => name); }
+  catch { /* An unreadable folder still gets untitled.slidepix.json. */ }
+  return vscode.Uri.joinPath(directory, uniqueDeckFilename(names));
+}
+
+async function deckCreationDirectory(selected: vscode.Uri | undefined, editor: SlidePixEditorProvider): Promise<vscode.Uri | undefined> {
+  const candidate = asFileUri(selected) ?? asFileUri(editor.currentDocument()?.uri) ?? asFileUri(activeEditorUri());
+  if (candidate) {
+    try {
+      const stat = await vscode.workspace.fs.stat(candidate);
+      return stat.type & vscode.FileType.Directory ? candidate : vscode.Uri.joinPath(candidate, "..");
+    } catch { /* Fall back to the workspace root. */ }
+  }
+  return vscode.workspace.workspaceFolders?.[0]?.uri;
+}
+
+function activeEditorUri(): vscode.Uri | undefined {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom || input instanceof vscode.TabInputNotebook) return input.uri;
+  return vscode.window.activeTextEditor?.document.uri;
+}
+
+function asFileUri(value: unknown): vscode.Uri | undefined {
+  return value instanceof vscode.Uri && value.scheme === "file" ? value : undefined;
+}
+
+async function withDeck(editor: SlidePixEditorProvider, action: (deck: import("@slidepix/core").Deck, document: vscode.TextDocument) => Promise<unknown>): Promise<void> {
   const document = editor.currentDocument();
   if (!document) return void vscode.window.showWarningMessage("Open a SlidePix deck first.");
   const parsed = parseDeckText(document.getText());

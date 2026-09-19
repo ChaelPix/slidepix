@@ -16,6 +16,7 @@ import { SlideView } from "./SlideView";
 import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
 import { useDeckStore } from "./store";
 import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
+import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
 
 type Tab = "properties" | "layers" | "animations";
@@ -44,7 +45,7 @@ export default function App() {
   useEffect(() => { postMessage({ type: "ready" }); }, []);
   useEffect(() => {
     if (!store.historyError) return;
-    alert(store.historyError);
+    showError(store.historyError);
     store.clearHistoryError();
   }, [store.historyError]);
 
@@ -136,13 +137,21 @@ export default function App() {
   const requestMedia = (kind: "image" | "video", uri?: string, elementId?: string) => {
     const requestId = crypto.randomUUID();
     pendingAssets.set(requestId, (result, error) => {
-      if (error) return void alert(error);
+      if (error) return void showError(error);
       if (result) addMedia(kind, result, undefined, elementId);
     });
     postMessage(uri ? { type: "linkMedia", requestId, kind, uri } : { type: "selectMedia", requestId, kind });
   };
+  const requestBackgroundImage = () => {
+    const requestId = crypto.randomUUID();
+    pendingAssets.set(requestId, (result, error) => {
+      if (error) return void showError(error);
+      if (result) store.mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.backgroundImage = { src: result.reference, storage: result.storage }; });
+    });
+    postMessage({ type: "selectMedia", requestId, kind: "image" });
+  };
   const importFile = async (file: File, kind: "image" | "video") => {
-    if (file.size > 100 * 1024 * 1024) return void alert("Media files are limited to 100 MB per import.");
+    if (file.size > 100 * 1024 * 1024) return void showError("Media files are limited to 100 MB per import.");
     const result = await sendAsset(file);
     if (result) addMedia(kind, result, file.name);
   };
@@ -196,7 +205,7 @@ export default function App() {
     const payload = readSlidePixClipboard(event.clipboardData);
     if (payload) {
       event.preventDefault();
-      if (payload.deckId !== deck.id) return void alert("Copying elements between different deck files is not supported yet. Embed and re-add the media instead.");
+      if (payload.deckId !== deck.id) return void showError("Copying elements between different deck files is not supported yet. Embed and re-add the media instead.");
       const preserveMorphKey = payload.sourceSlideId !== slide.id;
       const pasted = payload.elements.map((element) => cloneElementForPaste(element, preserveMorphKey));
       store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push(...pasted));
@@ -220,7 +229,7 @@ export default function App() {
       if (uri) {
         const kind = mediaKindFromPath(uri);
         if (kind) requestMedia(kind, uri);
-        else alert("Drop an image or video file from the Explorer.");
+        else showError("Drop an image or video file from the Explorer.");
         return;
       }
       const file = event.dataTransfer.files[0];
@@ -236,7 +245,7 @@ export default function App() {
         addTable={addTable}
         chooseImage={() => requestMedia("image")}
         chooseVideo={() => requestMedia("video")}
-        hasLinkedMedia={deck.slides.some((item) => item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
+        hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
         historyBusy={Boolean(store.historyPending)}
         mutate={store.mutate}
         preview={store.preview}
@@ -282,6 +291,10 @@ export default function App() {
                   resizable
                   rotatable
                   snappable
+                  elementGuidelines={slide.elements.filter((item) => item.id !== selected.id && !item.hidden).map((item) => document.getElementById(`element-${item.id}`)).filter((item): item is HTMLElement => Boolean(item))}
+                  verticalGuidelines={[deck.size.width / 2]}
+                  horizontalGuidelines={[deck.size.height / 2]}
+                  snapThreshold={4}
                   clickable
                   origin={false}
                   zoom={1 / store.zoom}
@@ -325,11 +338,12 @@ export default function App() {
           </header>
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
-        <div className="zoom-control" aria-label="Canvas zoom" title={`Canvas zoom ${Math.round(store.zoom * 100)}% · Ctrl/Cmd + mouse wheel also zooms`}><button aria-label={`Zoom out from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><button aria-label={`Zoom in from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom + 0.1)}>＋</button></div>
+        <div className="zoom-control" aria-label="Canvas zoom" title={`Canvas zoom ${Math.round(store.zoom * 100)}% · Ctrl/Cmd + mouse wheel also zooms`}><IconButton icon="remove" label={`Zoom out from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom - 0.1)} /><IconButton icon="add" label={`Zoom in from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom + 0.1)} /></div>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
+      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
+      <ToastStack />
     </div>
   );
 }
@@ -364,29 +378,40 @@ function Toolbar({ slide, element, addText, addShape, addTable, chooseImage, cho
   };
   const updateElement = (fn: (target: SlideElement) => void) => element && mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target) fn(target); });
   const textLike = element?.type === "text" || element?.type === "table" ? element : undefined;
+  const exportDeck = (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb", label: string, slideIds?: string[]) => {
+    const requestId = crypto.randomUUID();
+    notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
+    postMessage({ type: "command", command, requestId, slideIds });
+  };
   return <header className="toolbar-shell">
     <div className="toolbar toolbar-primary">
-      <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
+      <div className="ribbon-group"><div className="ribbon-actions">
+        <RibbonButton icon="package" label="Embed all media" disabled={!hasLinkedMedia} onClick={() => postMessage({ type: "embedMedia" })} />
+        <RibbonButton icon="save" label="Save" onClick={() => runCommand("save")} />
+        <RibbonMenu icon="export" label="Export" items={[
+          { icon: "file-media", label: "PNG", onClick: () => exportDeck("exportPng", "PNG", [slide.id]) },
+          { icon: "file-pdf", label: "PDF", onClick: () => exportDeck("exportPdf", "PDF") },
+          { icon: "file", label: "PowerPoint", onClick: () => exportDeck("exportPptx", "PowerPoint") },
+          { icon: "globe", label: "Web", onClick: () => exportDeck("exportWeb", "web presentation") }
+        ]} />
+      </div></div>
       <div className="ribbon-group history-actions"><div className="ribbon-actions">
         <RibbonButton icon="discard" label="Undo" disabled={historyBusy} onClick={() => runCommand("undo")} />
         <RibbonButton icon="redo" label="Redo" disabled={historyBusy} onClick={() => runCommand("redo")} />
+      </div></div>
+      <div className="ribbon-group"><div className="ribbon-actions">
+        <RibbonButton icon="sparkle" label="AI" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
       </div></div>
       <div className="ribbon-group"><span className="ribbon-label">Insert</span><div className="ribbon-actions">
         <RibbonButton icon="symbol-string" label="Text" onClick={addText} />
         <RibbonButton icon="file-media" label="Image" onClick={chooseImage} />
         <RibbonButton icon="device-camera-video" label="Video" onClick={chooseVideo} />
         <RibbonButton icon="table" label="Table" onClick={addTable} />
-        <label className="ribbon-select"><span className="codicon codicon-symbol-structure" /><select aria-label="Add shape" defaultValue="" onChange={(event) => { if (event.target.value) addShape(event.target.value as "rectangle" | "ellipse" | "triangle"); event.target.value = ""; }}><option value="" disabled>Shape</option><option value="rectangle">Rectangle</option><option value="ellipse">Circle</option><option value="triangle">Triangle</option></select></label>
-      </div></div>
-      <span className="toolbar-spacer" />
-      <div className="ribbon-group"><span className="ribbon-label">File &amp; export</span><div className="ribbon-actions">
-        <RibbonButton icon="save" label="Save" onClick={() => runCommand("save")} />
-        <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
-        <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
-        <RibbonButton icon="file" label="PPTX" onClick={() => postMessage({ type: "command", command: "exportPptx" })} />
-        <RibbonButton icon="globe" label="Web" onClick={() => postMessage({ type: "command", command: "exportWeb" })} />
-        <RibbonButton icon="package" label="Embed all" disabled={!hasLinkedMedia} onClick={() => postMessage({ type: "embedMedia" })} />
-        <RibbonButton icon="hubot" label="MCP" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
+        <RibbonMenu icon="symbol-structure" label="Shape" items={[
+          { icon: "symbol-structure", label: "Rectangle", onClick: () => addShape("rectangle") },
+          { icon: "circle-large-outline", label: "Circle", onClick: () => addShape("ellipse") },
+          { icon: "triangle-up", label: "Triangle", onClick: () => addShape("triangle") }
+        ]} />
       </div></div>
       <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
         <RibbonButton icon="play" label="Present" primary onClick={() => postMessage({ type: "command", command: "present" })} />
@@ -423,8 +448,29 @@ function RibbonButton({ icon, label, primary, disabled, onClick }: { icon: strin
   return <button className={`ribbon-button ${primary ? "primary" : ""}`} title={label} disabled={disabled} onClick={onClick}><span className={`codicon codicon-${icon}`} /><span>{label}</span></button>;
 }
 
+function RibbonMenu({ icon, label, items }: { icon: string; label: string; items: { icon: string; label: string; onClick(): void }[] }) {
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node)) setOpen(false); };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  return <div className="ribbon-menu-control" ref={menu}>
+    <button type="button" className="ribbon-button" aria-haspopup="menu" aria-expanded={open} aria-label={label} onClick={() => setOpen((value) => !value)}><span className={`codicon codicon-${icon}`} /><span>{label}</span><span className="codicon codicon-chevron-down" /></button>
+    {open && <div className="ribbon-menu" role="menu">
+      {items.map((item) => <button key={item.label} type="button" role="menuitem" onClick={() => { setOpen(false); item.onClick(); }}><span className={`codicon codicon-${item.icon}`} /> {item.label}</button>)}
+    </div>}
+  </div>;
+}
+
 function ContextIcon({ icon, label, disabled, pressed, danger, onClick }: { icon: string; label: string; disabled?: boolean; pressed?: boolean; danger?: boolean; onClick(): void }) {
   return <button type="button" className={`context-icon ${danger ? "danger" : ""}`} title={label} aria-label={label} aria-pressed={pressed} disabled={disabled} onPointerDown={(event) => event.preventDefault()} onClick={onClick}><span className={`codicon codicon-${icon}`} /></button>;
+}
+
+function IconButton({ icon, label, disabled, pressed, onClick }: { icon: string; label: string; disabled?: boolean; pressed?: boolean; onClick(): void }) {
+  return <button type="button" title={label} aria-label={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}><span className={`codicon codicon-${icon}`} /></button>;
 }
 
 function AlignmentButtons({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange(value: string): void }) {
@@ -436,7 +482,7 @@ function SlideRail({ deck, selectedId, select, mutate, resolveAsset }: { deck: D
   const [transitionSlideId, setTransitionSlideId] = useState<string>();
   const addSlide = () => mutate((draft) => draft.slides.push({ id: crypto.randomUUID(), title: `Slide ${draft.slides.length + 1}`, notes: "", hidden: false, hidePageNumber: false, transition: { type: "none", durationMs: 500, easing: "ease-in-out" }, timeline: [], elements: [] }));
   return <aside className="slide-rail">
-    <div className="rail-header"><strong>Slides</strong><button title="Add slide" onClick={addSlide}>＋</button></div>
+    <div className="rail-header"><strong>Slides</strong></div>
     <div className="rail-scroll">
       {deck.slides.map((slide, index) => <div key={slide.id} className="rail-entry">
         {index > 0 && <><button className={`transition-gap ${transitionSlideId === slide.id ? "active" : ""} ${slide.transition.type !== "none" ? "has-transition" : ""}`} title="Edit incoming transition" onClick={() => setTransitionSlideId((current) => current === slide.id ? undefined : slide.id)}><span className="codicon codicon-arrow-swap" /> <span>{slide.transition.type === "none" ? "Add transition" : transitionLabel(slide.transition.type)}</span></button>{transitionSlideId === slide.id && <TransitionEditor transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides[index]!.transition, patch))} close={() => setTransitionSlideId(undefined)} />}</>}
@@ -446,20 +492,27 @@ function SlideRail({ deck, selectedId, select, mutate, resolveAsset }: { deck: D
           <span className="slide-title">{slide.title}{slide.hidden ? " (hidden)" : ""}</span>
         </button>
         <div className="rail-actions">
-          <button title="Duplicate" onClick={() => mutate((draft) => draft.slides.splice(index + 1, 0, duplicateSlide(draft.slides[index]!)))}>⧉</button>
-          <button title="Move up" disabled={index === 0} onClick={() => mutate((draft) => { const [item] = draft.slides.splice(index, 1); if (item) draft.slides.splice(index - 1, 0, item); })}>↑</button>
-          <button title="Move down" disabled={index === deck.slides.length - 1} onClick={() => mutate((draft) => { const [item] = draft.slides.splice(index, 1); if (item) draft.slides.splice(index + 1, 0, item); })}>↓</button>
-          <button title="Hide" onClick={() => mutate((draft) => { draft.slides[index]!.hidden = !draft.slides[index]!.hidden; })}>◉</button>
-          <button title="Delete" disabled={deck.slides.length === 1} onClick={() => mutate((draft) => draft.slides.splice(index, 1))}>×</button>
+          <IconButton icon="copy" label="Duplicate" onClick={() => mutate((draft) => draft.slides.splice(index + 1, 0, duplicateSlide(draft.slides[index]!)))} />
+          <IconButton icon="arrow-up" label="Move up" disabled={index === 0} onClick={() => mutate((draft) => { const [item] = draft.slides.splice(index, 1); if (item) draft.slides.splice(index - 1, 0, item); })} />
+          <IconButton icon="arrow-down" label="Move down" disabled={index === deck.slides.length - 1} onClick={() => mutate((draft) => { const [item] = draft.slides.splice(index, 1); if (item) draft.slides.splice(index + 1, 0, item); })} />
+          <IconButton icon={slide.hidden ? "eye-closed" : "eye"} label={slide.hidden ? "Show slide" : "Hide slide"} pressed={slide.hidden} onClick={() => mutate((draft) => { draft.slides[index]!.hidden = !draft.slides[index]!.hidden; })} />
+          <IconButton icon="trash" label="Delete" disabled={deck.slides.length === 1} onClick={() => mutate((draft) => draft.slides.splice(index, 1))} />
         </div>
       </div>)}
+      <button className="add-slide-tile" onClick={addSlide}><span className="codicon codicon-add" /><span>Add slide</span></button>
     </div>
   </aside>;
 }
 
 function TransitionEditor({ transition, update, close }: { transition: Transition; update(patch: Partial<Transition>): void; close(): void }) {
   return <div className="transition-editor" onClick={(event) => event.stopPropagation()}>
-    <header><strong>Incoming transition</strong><button className="icon-button" aria-label="Close transition editor" onClick={close}>×</button></header>
+    <header><strong>Incoming transition</strong><button className="icon-button" aria-label="Close transition editor" onClick={close}><span className="codicon codicon-close" /></button></header>
+    <TransitionControls transition={transition} update={update} />
+  </div>;
+}
+
+function TransitionControls({ transition, update }: { transition: Transition; update(patch: Partial<Transition>): void }) {
+  return <div className="transition-controls">
     <div className="transition-options">{transitionTypes.map((type) => <button key={type} className={transition.type === type ? "active" : ""} title={transitionLabel(type)} onClick={() => update({ type })}><span className={`codicon codicon-${transitionIcon(type)}`} /><span>{transitionLabel(type)}</span></button>)}</div>
     <label>Duration <span>{transition.durationMs} ms</span><input type="range" min="0" max="3000" step="100" value={transition.durationMs} onChange={(event) => update({ durationMs: Number(event.target.value) })} /></label>
   </div>;
@@ -526,10 +579,10 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
       <div className="crop-surface" onPointerDown={panCrop} onWheel={wheelCrop}>
         <div className="crop-toolbar" style={{ fontSize: 12 / zoom, top: 12 / zoom, gap: 5 / zoom, padding: `${5 / zoom}px ${7 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()}>
           <span>Drag to move · ratio locked</span>
-          <button title="Zoom out" onClick={() => updateCrop(scaleCrop(element.crop, 1.2))}>−</button>
+          <IconButton icon="remove" label="Zoom out" onClick={() => updateCrop(scaleCrop(element.crop, 1.2))} />
           <input className="crop-zoom-slider" aria-label="Crop zoom" type="range" min="100" max="1000" step="5" value={cropZoomPercent(element.crop)} style={{ width: 130 / zoom }} onChange={(event) => preview({ crop: setCropZoom(element.crop, Number(event.target.value)) })} onPointerUp={commit} onPointerCancel={commit} onKeyUp={commit} onBlur={commit} />
           <output>{cropZoomPercent(element.crop)}%</output>
-          <button title="Zoom in" onClick={() => updateCrop(scaleCrop(element.crop, 1 / 1.2))}>＋</button>
+          <IconButton icon="add" label="Zoom in" onClick={() => updateCrop(scaleCrop(element.crop, 1 / 1.2))} />
           <button title="Reset crop" onClick={() => updateCrop({ x: 0, y: 0, width: 1, height: 1 })}>Reset</button>
           <button className="crop-done" onClick={finishCrop}>Done</button>
         </div>
@@ -544,8 +597,8 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
   </div>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
+function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   const updateContinuous = (patch: Partial<SlideElement>) => {
@@ -592,10 +645,10 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
           </>}
           {element.type === "table" && <>
             <div className="table-size-actions">
-              <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows + 1, target.columns); })}>＋ Row</button>
-              <button disabled={element.rows <= 1} onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows - 1, target.columns); })}>− Row</button>
-              <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows, target.columns + 1); })}>＋ Column</button>
-              <button disabled={element.columns <= 1} onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows, target.columns - 1); })}>− Column</button>
+              <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows + 1, target.columns); })}><span className="codicon codicon-add" /> Row</button>
+              <button disabled={element.rows <= 1} onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows - 1, target.columns); })}><span className="codicon codicon-remove" /> Row</button>
+              <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows, target.columns + 1); })}><span className="codicon codicon-add" /> Column</button>
+              <button disabled={element.columns <= 1} onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows, target.columns - 1); })}><span className="codicon codicon-remove" /> Column</button>
             </div>
             <CheckboxField label="Header row" checked={element.headerRow} onChange={(headerRow) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.headerRow = headerRow; })} />
             <div className="table-cell-editor" style={{ gridTemplateColumns: `repeat(${element.columns}, minmax(86px, 1fr))` }}>
@@ -634,11 +687,15 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
         </> : <>
           <label>Slide title<input value={slide.title} onChange={(event) => { preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.title = event.target.value; }); scheduleCommit(); }} onBlur={commit} /></label>
           <ColorField label="Background" value={slide.background ?? deck.theme.background} onChange={(background) => continuous((draft) => { draft.slides.find((item) => item.id === slide.id)!.background = background; })} onCommit={commit} />
+          <h4 className="property-heading">Background image</h4>
+          {slide.backgroundImage ? <div className="media-source-card"><span className={`storage-badge ${slide.backgroundImage.storage}`}>{slide.backgroundImage.storage}</span><code title={slide.backgroundImage.src}>{slide.backgroundImage.src}</code><div><button onClick={chooseBackgroundImage}>Replace image…</button><button className="danger-quiet" onClick={() => mutate((draft) => { delete draft.slides.find((item) => item.id === slide.id)!.backgroundImage; })}>Remove</button></div></div> : <button className="edit-text-button" onClick={chooseBackgroundImage}><span className="codicon codicon-file-media" /> Choose background image…</button>}
+          <h4 className="property-heading">Transition</h4>
+          <TransitionControls transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.transition, patch))} />
           <CheckboxField label="Hide page number" checked={slide.hidePageNumber} onChange={(hidePageNumber) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.hidePageNumber = hidePageNumber; })} />
         </>}
       </>}
-      {tab === "layers" && <><h3>Layers</h3>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${item.id === element?.id ? "active" : ""}`} key={item.id} onClick={() => selectElement(item.id)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}>{item.locked ? "🔒" : "🔓"}</button><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}>{item.hidden ? "○" : "●"}</button><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}>↑</button><button onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}>↓</button></div>)}</>}
-      {tab === "animations" && <><h3>Animation timeline</h3><p className="panel-help">Select an element, then add its entrance. The cards run from top to bottom.</p><button className="add-animation" disabled={!element} onClick={() => element && mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.push(defaultAnimation(element.id)))}>＋ Add entrance{element ? ` for ${elementLabel(element)}` : ""}</button><div className="animation-list">{slide.timeline.map((step, index) => <AnimationRow key={step.id} step={step} index={index} flowLabel={animationFlowLabel(slide.timeline, index)} element={slide.elements.find((item) => item.id === step.targetElementId)} selectElement={selectElement} mutate={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.timeline[index]!, patch))} remove={() => mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.splice(index, 1))} />)}</div></>}
+      {tab === "layers" && <><h3>Layers</h3>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${item.id === element?.id ? "active" : ""}`} key={item.id} onClick={() => selectElement(item.id)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button title={item.locked ? "Unlock" : "Lock"} aria-label={item.locked ? "Unlock" : "Lock"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}><span className={`codicon codicon-${item.locked ? "lock" : "unlock"}`} /></button><button title={item.hidden ? "Show" : "Hide"} aria-label={item.hidden ? "Show" : "Hide"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}><span className={`codicon codicon-${item.hidden ? "eye-closed" : "eye"}`} /></button><button title="Bring forward" aria-label="Bring forward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}><span className="codicon codicon-arrow-up" /></button><button title="Send backward" aria-label="Send backward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}><span className="codicon codicon-arrow-down" /></button></div>)}</>}
+      {tab === "animations" && <><h3>Animation timeline</h3><p className="panel-help">Select an element, then add its entrance. The cards run from top to bottom.</p><button className="add-animation" disabled={!element} onClick={() => element && mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.push(defaultAnimation(element.id)))}><span className="codicon codicon-add" /> Add entrance{element ? ` for ${elementLabel(element)}` : ""}</button><div className="animation-list">{slide.timeline.map((step, index) => <AnimationRow key={step.id} step={step} index={index} flowLabel={animationFlowLabel(slide.timeline, index)} element={slide.elements.find((item) => item.id === step.targetElementId)} selectElement={selectElement} mutate={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.timeline[index]!, patch))} remove={() => mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.timeline.splice(index, 1))} />)}</div></>}
     </div>
   </aside>;
 }
@@ -706,14 +763,16 @@ const InlineTextEditor = forwardRef<InlineTextEditorHandle, {
       finish();
     }
   };
-  const style: CSSProperties = {
+  const shellStyle: CSSProperties = {
     left: element.x,
     top: element.y,
     width: element.width,
     height: element.height,
     transform: `rotate(${element.rotation}deg)`,
     opacity: element.opacity,
-    zIndex: 2147482000,
+    zIndex: 2147482000
+  };
+  const style: CSSProperties = {
     fontFamily: element.style.fontFamily,
     fontSize: element.style.fontSize,
     fontWeight: element.style.fontWeight,
@@ -722,7 +781,10 @@ const InlineTextEditor = forwardRef<InlineTextEditorHandle, {
     lineHeight: element.style.lineHeight,
     padding: element.style.padding
   };
-  return <textarea ref={textarea} className="inline-text-editor" aria-label="Edit text box Markdown" title="Markdown text · Ctrl/Cmd+Enter or Escape to finish" value={element.markdown} style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onKeyDown={keyDown} onChange={(event) => preview(event.target.value)} onBlur={finish} />;
+  return <div className="inline-text-editor-shell" style={shellStyle}>
+    <span className="inline-text-editor-badge" aria-live="polite">editing...</span>
+    <textarea ref={textarea} className="inline-text-editor" aria-label="Edit text box Markdown" title="Markdown text · Ctrl/Cmd+Enter or Escape to finish" value={element.markdown} style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onKeyDown={keyDown} onChange={(event) => preview(event.target.value)} onBlur={finish} />
+  </div>;
 });
 
 const SYSTEM_FONT_STACK = "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
@@ -747,7 +809,7 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange(value: 
     const requestId = crypto.randomUUID();
     pendingFonts.set(requestId, (family, error) => {
       pendingFonts.delete(requestId);
-      if (error) alert(`Could not list system fonts: ${error}`);
+      if (error) showError(`Could not list system fonts: ${error}`);
       else if (family) onChange(family);
     });
     postMessage({ type: "selectFont", requestId, current: value });
@@ -762,7 +824,7 @@ function CompactFontPicker({ value, onChange }: { value: string; onChange(value:
     const requestId = crypto.randomUUID();
     pendingFonts.set(requestId, (family, error) => {
       pendingFonts.delete(requestId);
-      if (error) alert(`Could not list system fonts: ${error}`);
+      if (error) showError(`Could not list system fonts: ${error}`);
       else if (family) onChange(family);
     });
     postMessage({ type: "selectFont", requestId, current: value });
@@ -774,14 +836,36 @@ function NumberField({ label, value, step = 1, min, max, onChange, onCommit }: {
   const safeValue = Number.isFinite(value) ? value : 0;
   const update = (next: number) => onChange(roundStep(clampOptional(next, min, max), step));
   const nudge = (direction: -1 | 1, event: { shiftKey: boolean; altKey: boolean }) => update(safeValue + direction * step * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1));
-  return <label className="number-field"><span>{label}</span><span className="number-control"><button type="button" tabIndex={-1} title={`Decrease ${label} · Shift for ×10`} aria-label={`Decrease ${label}`} onClick={(event) => { nudge(-1, event); onCommit?.(); }}>−</button><input type="number" value={safeValue} step={step} min={min} max={max} onFocus={(event) => event.currentTarget.select()} onWheel={(event) => { if (document.activeElement !== event.currentTarget) return; event.preventDefault(); nudge(event.deltaY > 0 ? -1 : 1, event); }} onChange={(event) => update(Number(event.target.value))} onBlur={onCommit} /><button type="button" tabIndex={-1} title={`Increase ${label} · Shift for ×10`} aria-label={`Increase ${label}`} onClick={(event) => { nudge(1, event); onCommit?.(); }}>＋</button></span></label>;
+  return <label className="number-field"><span>{label}</span><span className="number-control"><button type="button" tabIndex={-1} title={`Decrease ${label} · Shift for ×10`} aria-label={`Decrease ${label}`} onClick={(event) => { nudge(-1, event); onCommit?.(); }}><span className="codicon codicon-remove" /></button><input type="number" value={safeValue} step={step} min={min} max={max} onFocus={(event) => event.currentTarget.select()} onWheel={(event) => { if (document.activeElement !== event.currentTarget) return; event.preventDefault(); nudge(event.deltaY > 0 ? -1 : 1, event); }} onChange={(event) => update(Number(event.target.value))} onBlur={onCommit} /><button type="button" tabIndex={-1} title={`Increase ${label} · Shift for ×10`} aria-label={`Increase ${label}`} onClick={(event) => { nudge(1, event); onCommit?.(); }}><span className="codicon codicon-add" /></button></span></label>;
 }
 function RangeField({ label, value, min, max, onChange, onCommit, suffix = " px" }: { label: string; value: number; min: number; max: number; onChange(value: number): void; onCommit?(): void; suffix?: string }) { return <label className="range-field"><span>{label}<output>{Math.round(value)}{suffix}</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onCommit} onPointerCancel={onCommit} onKeyUp={onCommit} onBlur={onCommit} /></label>; }
 function ColorField({ label, value, allowTransparent = false, onChange, onCommit }: { label: string; value: string; allowTransparent?: boolean; onChange(value: string): void; onCommit?(): void }) {
   const transparent = value.trim().toLowerCase() === "transparent";
-  return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} disabled={transparent} onChange={(event) => onChange(event.target.value)} onBlur={onCommit} /><input value={value} onChange={(event) => onChange(event.target.value)} onBlur={onCommit} />{allowTransparent && <button type="button" className={`transparent-toggle ${transparent ? "active" : ""}`} title={transparent ? "Use an opaque color" : "Make transparent"} aria-label={transparent ? `Disable transparent ${label}` : `Make ${label} transparent`} onClick={() => { onChange(transparent ? "#000000" : "transparent"); onCommit?.(); }}>∅</button>}</span></label>;
+  return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} disabled={transparent} onChange={(event) => onChange(event.target.value)} onBlur={onCommit} /><input value={value} onChange={(event) => onChange(event.target.value)} onBlur={onCommit} />{allowTransparent && <button type="button" className={`transparent-toggle ${transparent ? "active" : ""}`} title={transparent ? "Use an opaque color" : "Make transparent"} aria-label={transparent ? `Disable transparent ${label}` : `Make ${label} transparent`} onClick={() => { onChange(transparent ? "#000000" : "transparent"); onCommit?.(); }}><span className="codicon codicon-circle-slash" /></button>}</span></label>;
 }
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
+
+function ToastStack() {
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  useEffect(() => onToast((toast) => {
+    setToasts((current) => updateToasts(current, toast));
+  }), []);
+  useEffect(() => {
+    const timers = toasts.filter((toast) => toast.kind === "success").map((toast) => window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== toast.id));
+    }, 2500));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [toasts]);
+  if (!toasts.length) return null;
+  return <div className="toast-stack" role="region" aria-label="Notifications">{toasts.map((toast) => <div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} key={toast.id}>
+    <span className={`codicon codicon-${toast.kind === "progress" ? "loading codicon-modifier-spin" : toast.kind === "success" ? "check" : "error"}`} />
+    <span>{toast.message}</span>
+    {toast.kind === "error" && <button title="Dismiss" aria-label="Dismiss notification" onClick={() => notifyToast({ id: toast.id, kind: "dismiss" })}><span className="codicon codicon-close" /></button>}
+  </div>)}</div>;
+}
+
+function showError(message: string): void { notifyToast({ id: crypto.randomUUID(), kind: "error", message }); }
+
 function InvalidDeck({ message, gitConflict }: { message: string; gitConflict: boolean }) { return <div className="invalid"><h1>{gitConflict ? "This deck has an unresolved Git conflict" : "SlidePix could not open this deck"}</h1><pre>{message}</pre>{gitConflict ? <p><button onClick={() => postMessage({ type: "command", command: "resolveGitConflict" })}>Resolve with SlidePix</button> <button onClick={() => postMessage({ type: "command", command: "openTextEditor" })}>Open as text</button></p> : <p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p>}</div>; }
 
 function MergeConflictDialog({ conflict, resolve, useLatest }: { conflict?: import("@slidepix/core").DeckMergeConflict; resolve(id: string, resolution: import("@slidepix/core").DeckMergeResolution): void; useLatest(): void }) {
@@ -804,8 +888,8 @@ function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): 
 function resizeTable(table: Extract<SlideElement, { type: "table" }>, rows: number, columns: number): void { table.rows = clamp(Math.round(rows), 1, 50); table.columns = clamp(Math.round(columns), 1, 20); table.cells = normalizedTableCells(table); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); }
-async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) alert(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message }); }
+async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");
   const direct = parseDroppedValues(uriList).find((value) => value.startsWith("file:"));

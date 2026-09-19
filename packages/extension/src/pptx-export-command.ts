@@ -3,17 +3,18 @@ import * as vscode from "vscode";
 import type { Deck } from "@slidepix/core";
 import { buildPptxExport } from "./pptx-export";
 import { workspaceRoots } from "./renderer";
+import type { ExportResult } from "./export-result";
 
 let reportChannel: vscode.OutputChannel | undefined;
 
-export async function exportPptx(context: vscode.ExtensionContext, deck: Deck, deckPath: string): Promise<void> {
+export async function exportPptx(context: vscode.ExtensionContext, deck: Deck, deckPath: string): Promise<ExportResult> {
   let destination = await vscode.window.showSaveDialog({
     title: "Export SlidePix PowerPoint",
     filters: { PowerPoint: ["pptx"] },
     defaultUri: vscode.Uri.file(deckPath.replace(/\.slidepix\.json$/i, ".pptx")),
     saveLabel: "Export"
   });
-  if (!destination) return;
+  if (!destination) return { status: "cancelled" };
   if (!destination.fsPath.toLowerCase().endsWith(".pptx")) destination = vscode.Uri.file(`${destination.fsPath}.pptx`);
 
   try {
@@ -24,7 +25,7 @@ export async function exportPptx(context: vscode.ExtensionContext, deck: Deck, d
     const summary = `Exported ${path.basename(destination.fsPath)} with ${result.nativeObjectCount} native editable object${result.nativeObjectCount === 1 ? "" : "s"}.`;
     if (!result.warnings.length) {
       void vscode.window.showInformationMessage(summary);
-      return;
+      return { status: "success", message: summary };
     }
     const channel = powerPointReportChannel(context);
     channel.clear();
@@ -37,9 +38,11 @@ export async function exportPptx(context: vscode.ExtensionContext, deck: Deck, d
     }
     const action = await vscode.window.showWarningMessage(`${summary} ${result.warnings.length} approximation warning${result.warnings.length === 1 ? "" : "s"}.`, "Show Details");
     if (action === "Show Details") channel.show(true);
+    return { status: "success", message: summary };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown export error";
     void vscode.window.showErrorMessage(`Could not export PowerPoint: ${message}`);
+    return { status: "error", message: `PowerPoint export failed: ${message}` };
   }
 }
 

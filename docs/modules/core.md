@@ -23,6 +23,9 @@ serialization tests, rebuild the contributed JSON Schema, and update
 `docs/format.md`. Schema migrations are planned but not yet implemented; a
 version bump must include an explicit migration strategy.
 
+Slides may declare a storage-aware `backgroundImage`. It is resolved through
+the same asset resolver as image elements and paints beneath every element.
+
 The deck refinement enforces unique slide, element, and animation IDs, local
 animation targets, and valid layout references. These checks protect manual and
 Git-merged documents as well as normal editor writes.
@@ -100,6 +103,10 @@ change, not for every new compatible message.
 
 Export commands include the compatible `exportPptx` member; adding it did not
 change protocol version 2.
+
+Host `notify` messages update a webview toast by stable notification ID. Export
+commands may include a request ID so host completion or failure replaces the
+progress toast without changing protocol version 2.
 
 Deck messages carry an opaque exact-text revision. Replacement requests echo
 their base revision and receive an explicit accepted, stale, invalid, or failed

@@ -14,6 +14,7 @@ webview. The webview has no direct filesystem or Node access.
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
 | `src/store.ts` | Zustand state, single-flight revisioned persistence, semantic external-edit rebasing, immutable mutation helpers, selection, and zoom. |
 | `src/vscode.ts` | Typed adapter around `acquireVsCodeApi`, version stamping, host listener, and browser fallback used during local development. |
+| `src/toasts.ts` | App-wide transient notification events and stack update helpers. |
 | `src/styles.css` / `src/fixes.css` | Layout and editor appearance. Keep logical slide geometry in element data, not CSS-only state. |
 | `vite.config.ts` | Builds the webview into the extension's `media` directory. |
 
@@ -77,9 +78,10 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   morph keys only when copying to a different slide in the same deck.
 - Double-clicking a text element, pressing `Enter`/`F2`, or inserting a new
   text box opens an in-place Markdown textarea at the element's logical
-  geometry. Moveable forwards its intercepted double-click before pausing while
-  editing is active. `Escape` and `Ctrl/Cmd+Enter` finish; the optional
-  **Advanced editor** retains the larger source and live shared-renderer
+  geometry. A small **editing...** badge marks inline Markdown editing versus
+  the rendered slide. Moveable forwards its intercepted double-click before
+  pausing while editing is active. `Escape` and `Ctrl/Cmd+Enter` finish; the
+  optional **Advanced editor** retains the larger source and live shared-renderer
   preview for LaTeX and code.
 - The stable second toolbar row is contextual. Text and table selections expose
   compact typography plus icon-button horizontal/vertical alignment. During
@@ -90,7 +92,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   picker. The extension scans platform font directories and returns the chosen
   CSS family through a typed request/response message, avoiding the unreliable
   Local Font Access API inside VS Code/Cursor webviews.
-- The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,
+- The Insert ribbon's Shape control uses the same themed dropdown as Export.
+  The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,
   add/remove row and column actions, a header toggle, typography, and
   transparent header/cell/border colors. Limits match the core schema.
 - Shape Properties provides explicit transparent fill/border toggles and an
@@ -118,6 +121,14 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   Alt for ×0.1 nudges. Range properties use a visible card and slider.
 - All persistent changes go through `mutate` or the `preview`/`commit` queue;
   selections, zoom, open tabs, and modal state stay transient.
+- Moveable snaps selected elements to visible peer element edges and centers,
+  plus the slide center lines, using a small screen-space threshold. It does not
+  add bounds/guides at the canvas edges that expand the scrollable workspace.
+- Slide Properties exposes the same incoming transition controls as the rail
+  and can choose, replace, or remove a storage-aware background image.
+- Blocking browser alerts are not used. Success toasts auto-dismiss after 2.5
+  seconds, errors remain dismissible, and host-owned exports update a progress
+  toast through the versioned protocol.
 - App-wide canvas paste handling ignores inputs, textareas, selects, and
   content-editable targets, so pasting inside the Markdown editor or inspector
   edits that field instead of creating a new slide element.

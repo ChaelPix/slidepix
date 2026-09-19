@@ -37,6 +37,9 @@
       { "command": "slidepix.resolveGitConflict", "title": "SlidePix: Resolve Git Conflict" }
     ],
     "menus": {
+      "explorer/context": [
+        { "command": "slidepix.createDeck", "group": "navigation@50" }
+      ],
       "editor/title": [
         { "command": "slidepix.present", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@1" },
         { "command": "slidepix.exportPdf", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@2" },

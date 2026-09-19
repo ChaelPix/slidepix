@@ -80,9 +80,11 @@ invalid inputs fall back to ordinary Git conflict markers.
   implemented.
 - `slides`: at least one ordered slide.
 
-A slide contains its title, optional layout/background, speaker notes, hidden
-state, page-number override, incoming transition, animation timeline, and
-ordered elements.
+A slide contains its title, optional layout/background color, optional
+`backgroundImage` (`src` plus explicit linked/embedded storage), speaker notes,
+hidden state, page-number override, incoming transition, animation timeline,
+and ordered elements. Background images stretch to the exact logical slide
+rectangle in every renderer and export.
 
 Element types are `text`, `image`, `video`, `shape`, and `table`. Shared geometry fields
 are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior

@@ -109,6 +109,17 @@ describe("shared document rendering", () => {
     expect(html).toContain("mask-size:100% 100%");
   });
 
+  it("renders a storage-aware full-slide background image", () => {
+    const deck = createDeck("Background");
+    deck.slides[0]!.backgroundImage = { src: "media/background image.png", storage: "linked" };
+    const calls: string[] = [];
+    const html = renderDeckDocument(deck, (reference, storage) => { calls.push(`${storage}:${reference}`); return `resolved/${reference}`; });
+
+    expect(calls).toContain("linked:media/background image.png");
+    expect(html).toContain("background-image:url(&#039;resolved/media/background%20image.png&#039;)");
+    expect(html).toContain("background-size:100% 100%");
+  });
+
   it("builds a rounded edge-fade mask from element geometry", () => {
     const mask = roundedEdgeFadeMask(600, 400, 80, 50);
 

@@ -14,8 +14,12 @@ and webview command union members.
 
 Private command helpers:
 
-- `createDeckCommand()` asks for a path, normalizes the suffix, writes a valid
-  default deck, and opens it with the custom editor.
+- `createDeckCommand()` writes `untitled.slidepix.json` beside the selected
+  Explorer file/folder (falling back to the active SlidePix document, the
+  active editor tab, or the workspace root) and opens it with `writeFile`.
+  Existing untitled decks increment to `untitled-2.slidepix.json`. Unique names
+  come from `uniqueDeckFilename()` in `src/create-deck.ts`. Command Palette and
+  Explorer both skip the save dialog and filename prompt.
 - `withDeck(editor, action)` requires an active deck, validates current text,
   and only invokes the action for a valid document.
 - `configureMcp(context)` ensures the renderer exists and produces previewable
@@ -41,6 +45,11 @@ Private command helpers:
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
 | `selectFont` | Scans platform font directories, opens a native searchable quick picker, and returns the selected CSS family through the versioned protocol. |
 | `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP. |
+
+Webview-triggered exports carry an optional request ID. The provider reports
+completion or failure through a typed `notify` message so the editor can replace
+its non-blocking progress toast; command-palette exports keep their native VS
+Code notifications.
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's undo/autosave/external-change lifecycle.
@@ -138,6 +147,8 @@ is vendored into the VSIX; OS-specific Chromium is not.
   every visible media reference with `resolveMediaPath`, builds native objects,
   writes a sibling temporary file, and replaces the selected `.pptx` only after
   generation succeeds.
+- A slide background image is resolved with the same storage-aware path rules
+  and exported as the bottommost full-slide native picture.
 - The extension generates OOXML directly with pinned PptxGenJS. LibreOffice is
   useful as a compatibility oracle in development but is not a runtime
   dependency or conversion step.
@@ -180,3 +191,7 @@ keybindings, bundled files, and VS Code engine compatibility. Its build emits
 the extension, MCP server, and standalone semantic merge-driver bundles. See
 the script table in root [architecture.md](../../architecture.md) before
 altering build outputs.
+
+The Explorer context menu contributes **SlidePix: Create Deck** so the selected
+file or folder URI can be used as the creation location without opening a
+filesystem-wide save dialog or filename prompt.

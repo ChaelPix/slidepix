@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import type { Deck } from "@slidepix/core";
 import { PresentationServer } from "./presentation";
 import { rendererPlaywright } from "./playwright";
+import type { ExportResult } from "./export-result";
 
 export async function installRenderer(context: vscode.ExtensionContext, forcePrompt = true): Promise<string | undefined> {
   const root = vscode.Uri.joinPath(context.globalStorageUri, "playwright").fsPath;
@@ -32,14 +33,14 @@ export async function installRenderer(context: vscode.ExtensionContext, forcePro
   });
 }
 
-export async function exportPdf(context: vscode.ExtensionContext, deck: Deck, deckPath: string): Promise<void> {
+export async function exportPdf(context: vscode.ExtensionContext, deck: Deck, deckPath: string): Promise<ExportResult> {
   const executablePath = await installRenderer(context);
-  if (!executablePath) return;
+  if (!executablePath) return { status: "cancelled" };
   const destination = await vscode.window.showSaveDialog({
     filters: { PDF: ["pdf"] },
     defaultUri: vscode.Uri.file(deckPath.replace(/\.slidepix\.json$/i, ".pdf"))
   });
-  if (!destination) return;
+  if (!destination) return { status: "cancelled" };
   const server = new PresentationServer(deck, deckPath, undefined, workspaceRoots(deckPath));
   await server.start();
   const browser = await rendererPlaywright().chromium.launch({ headless: true, executablePath });
@@ -49,21 +50,23 @@ export async function exportPdf(context: vscode.ExtensionContext, deck: Deck, de
     await page.emulateMedia({ media: "screen" });
     const visibleSlideCount = Math.max(1, deck.slides.filter((slide) => !slide.hidden).length);
     await page.pdf({ path: destination.fsPath, width: `${deck.size.width}px`, height: `${deck.size.height}px`, pageRanges: `1-${visibleSlideCount}`, printBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
-    void vscode.window.showInformationMessage(`Exported ${path.basename(destination.fsPath)}`);
+    const message = `Exported ${path.basename(destination.fsPath)}`;
+    void vscode.window.showInformationMessage(message);
+    return { status: "success", message };
   } finally {
     await browser.close();
     server.dispose();
   }
 }
 
-export async function exportPng(context: vscode.ExtensionContext, deck: Deck, deckPath: string, slideIds?: string[]): Promise<void> {
+export async function exportPng(context: vscode.ExtensionContext, deck: Deck, deckPath: string, slideIds?: string[]): Promise<ExportResult> {
   const executablePath = await installRenderer(context);
-  if (!executablePath) return;
+  if (!executablePath) return { status: "cancelled" };
   const destination = await vscode.window.showSaveDialog({
     filters: { PNG: ["png"] },
     defaultUri: vscode.Uri.file(deckPath.replace(/\.slidepix\.json$/i, slideIds?.length === 1 ? `-${slideIds[0]!.slice(0, 6)}.png` : ".png"))
   });
-  if (!destination) return;
+  if (!destination) return { status: "cancelled" };
   const server = new PresentationServer(deck, deckPath, undefined, workspaceRoots(deckPath));
   await server.start();
   const browser = await rendererPlaywright().chromium.launch({ headless: true, executablePath });
@@ -76,7 +79,9 @@ export async function exportPng(context: vscode.ExtensionContext, deck: Deck, de
     } else {
       await page.screenshot({ path: destination.fsPath, fullPage: true, type: "png" });
     }
-    void vscode.window.showInformationMessage(`Exported ${path.basename(destination.fsPath)}`);
+    const message = `Exported ${path.basename(destination.fsPath)}`;
+    void vscode.window.showInformationMessage(message);
+    return { status: "success", message };
   } finally {
     await browser.close();
     server.dispose();

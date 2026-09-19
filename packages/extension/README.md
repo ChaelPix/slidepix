@@ -8,7 +8,8 @@ VS Code and Cursor.
 1. Open the Command Palette with `Ctrl+Shift+P` on Windows/Linux or
    `Cmd+Shift+P` on macOS.
 2. Run **SlidePix: Create Deck**.
-3. Choose a filename and folder.
+3. The editor opens `untitled.slidepix.json` next to the selected Explorer
+   item, or in the workspace folder.
 4. Use the left rail for slides, the center canvas for editing, the top toolbar
    for content/export/presentation, and the right panel for properties, layers,
    and animations.

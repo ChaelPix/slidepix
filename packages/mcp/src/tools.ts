@@ -56,9 +56,12 @@ export async function renderSlidesToPng(
 
 async function collectAssets(deckPath: string, slides: Slide[]): Promise<Map<string, string>> {
   const references = new Map<string, { reference: string; storage: MediaStorage }>();
-  for (const slide of slides) for (const element of slide.elements) {
-    if (element.type === "image" || element.type === "video") references.set(mediaKey(element.src, element.storage), { reference: element.src, storage: element.storage });
-    if (element.type === "video" && element.poster) references.set(mediaKey(element.poster, "embedded"), { reference: element.poster, storage: "embedded" });
+  for (const slide of slides) {
+    if (slide.backgroundImage) references.set(mediaKey(slide.backgroundImage.src, slide.backgroundImage.storage), { reference: slide.backgroundImage.src, storage: slide.backgroundImage.storage });
+    for (const element of slide.elements) {
+      if (element.type === "image" || element.type === "video") references.set(mediaKey(element.src, element.storage), { reference: element.src, storage: element.storage });
+      if (element.type === "video" && element.poster) references.set(mediaKey(element.poster, "embedded"), { reference: element.poster, storage: "embedded" });
+    }
   }
   const result = new Map<string, string>();
   await Promise.all([...references].map(async ([key, { reference, storage }]) => {

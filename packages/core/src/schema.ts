@@ -75,6 +75,11 @@ export const shadowSchema = z.object({
 
 export const mediaStorageSchema = z.enum(["embedded", "linked"]);
 
+export const slideBackgroundImageSchema = z.object({
+  src: z.string().min(1),
+  storage: mediaStorageSchema.default("embedded")
+});
+
 export const imageElementSchema = baseElementSchema.extend({
   type: z.literal("image"),
   src: z.string().min(1),
@@ -167,6 +172,7 @@ export const slideSchema = z.object({
   title: z.string().default("Untitled slide"),
   layout: z.string().optional(),
   background: color.optional(),
+  backgroundImage: slideBackgroundImageSchema.optional(),
   notes: z.string().default(""),
   hidden: z.boolean().default(false),
   hidePageNumber: z.boolean().default(false),
@@ -250,6 +256,7 @@ export type TableElement = z.infer<typeof tableElementSchema>;
 export type MediaStorage = z.infer<typeof mediaStorageSchema>;
 export type AnimationStep = z.infer<typeof animationStepSchema>;
 export type Transition = z.infer<typeof transitionSchema>;
+export type SlideBackgroundImage = z.infer<typeof slideBackgroundImageSchema>;
 
 export type ParseDeckResult =
   | { ok: true; deck: Deck }

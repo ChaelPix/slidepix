@@ -28,6 +28,7 @@ describe("standalone web export", () => {
 
     const deck = createDeck("Portable deck");
     deck.slides[0]!.notes = "private speaker notes";
+    deck.slides[0]!.backgroundImage = { src: "picture.png", storage: "embedded" };
     deck.slides[0]!.elements.push(
       elementSchema.parse({ id: "embedded-image", morphKey: "embedded-image", type: "image", src: "picture.png", storage: "embedded", x: 0, y: 0, width: 100, height: 100, z: 1 }),
       elementSchema.parse({ id: "linked-image", morphKey: "linked-image", type: "image", src: "workspace-media/duplicate.png", storage: "linked", x: 100, y: 0, width: 100, height: 100, z: 2 }),
@@ -56,6 +57,7 @@ describe("standalone web export", () => {
     expect(html).toContain("window.slidepixShow?.(index,'final')");
     expect(html).toContain("requestFullscreen?.()");
     expect(html).toContain(`assets/${sha256("same-image-bytes")}.png`);
+    expect(html).toContain("background-image:url");
     expect(html).toContain(`assets/${sha256("poster-bytes")}.png`);
     expect(html).toContain(`assets/${sha256("video-bytes")}.mp4`);
     expect(html).not.toContain("workspace-media");

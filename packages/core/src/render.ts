@@ -261,10 +261,13 @@ export function renderSlideMarkup(
     .map((element) => renderElement(element, resolveAsset))
     .join("");
   const background = slide.background ?? deck.layouts[slide.layout ?? ""]?.background ?? deck.theme.background;
+  const backgroundImage = slide.backgroundImage
+    ? `;background-image:url('${cssUrl(resolveAsset(slide.backgroundImage.src, slide.backgroundImage.storage))}');background-size:100% 100%;background-repeat:no-repeat`
+    : "";
   const pageNumber = deck.pageNumbers.enabled && !slide.hidePageNumber
     ? `<div class="slidepix-page-number" style="${attr(`color:${css(deck.pageNumbers.color)};font-size:${deck.pageNumbers.fontSize}px`)}">${visibleIndex + 1}</div>`
     : "";
-  return `<section class="slidepix-slide" data-slide-id="${attr(slide.id)}" style="${attr(`width:${deck.size.width}px;height:${deck.size.height}px;background:${css(background)}`)}">${elements}${pageNumber}</section>`;
+  return `<section class="slidepix-slide" data-slide-id="${attr(slide.id)}" style="${attr(`width:${deck.size.width}px;height:${deck.size.height}px;background-color:${css(background)}${backgroundImage}`)}">${elements}${pageNumber}</section>`;
 }
 
 export function renderDeckDocument(
@@ -408,6 +411,10 @@ function escapeHtml(value: string): string {
 const attr = escapeHtml;
 function css(value: string): string {
   return value.replace(/[;{}]/g, "");
+}
+
+function cssUrl(value: string): string {
+  return encodeURI(value).replaceAll("'", "%27").replaceAll("(", "%28").replaceAll(")", "%29");
 }
 
 function token(value: number): string {

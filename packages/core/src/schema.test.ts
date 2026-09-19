@@ -91,6 +91,15 @@ describe("deck schema", () => {
     if (parsed.ok) expect(parsed.deck.slides[0]!.elements[0]).toMatchObject({ storage: "embedded" });
   });
 
+  it("treats slide background images without a storage field as embedded", () => {
+    const raw = JSON.parse(serializeDeck(createDeck()));
+    raw.slides[0].backgroundImage = { src: "background.png" };
+    const parsed = parseDeckText(JSON.stringify(raw));
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.deck.slides[0]!.backgroundImage).toEqual({ src: "background.png", storage: "embedded" });
+  });
+
   it("adds a disabled shadow to shapes from older decks", () => {
     const deck = createDeck();
     const raw = JSON.parse(serializeDeck(deck));

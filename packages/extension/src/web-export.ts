@@ -74,6 +74,7 @@ function collectMediaReferences(deck: Deck): Map<string, MediaReference> {
   const references = new Map<string, MediaReference>();
   for (const slide of deck.slides) {
     if (slide.hidden) continue;
+    if (slide.backgroundImage) references.set(mediaKey(slide.backgroundImage.src, slide.backgroundImage.storage), { reference: slide.backgroundImage.src, storage: slide.backgroundImage.storage });
     for (const element of slide.elements) {
       if (element.hidden || (element.type !== "image" && element.type !== "video")) continue;
       references.set(mediaKey(element.src, element.storage), { reference: element.src, storage: element.storage });

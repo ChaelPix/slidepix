@@ -57,6 +57,15 @@ export async function buildPptxExport(
     const sourceSlide = visibleSlides[visibleIndex]!;
     const slide = pptx.addSlide();
     slide.background = background(sourceSlide, deck, context.warnings);
+    if (sourceSlide.backgroundImage) {
+      slide.addImage({
+        path: resolveMediaPath(deckPath, sourceSlide.backgroundImage.src, sourceSlide.backgroundImage.storage, allowedLinkedRoots),
+        x: 0,
+        y: 0,
+        w: inches(deck.size.width),
+        h: inches(deck.size.height)
+      });
+    }
     if (sourceSlide.notes) slide.addNotes(sourceSlide.notes);
     const patch: PptxSlidePatch = { slide: sourceSlide, math: [], pictures: [], animationTargets: new Map() };
     const morphCounts = countMorphKeys(sourceSlide);
@@ -339,6 +348,7 @@ function addFontWarnings(context: BuildContext): void {
 async function validateMedia(deck: Deck, deckPath: string, allowedLinkedRoots: string[]): Promise<void> {
   for (const slide of deck.slides) {
     if (slide.hidden) continue;
+    if (slide.backgroundImage) await access(resolveMediaPath(deckPath, slide.backgroundImage.src, slide.backgroundImage.storage, allowedLinkedRoots));
     for (const element of slide.elements) {
       if (element.hidden || (element.type !== "image" && element.type !== "video")) continue;
       await access(resolveMediaPath(deckPath, element.src, element.storage, allowedLinkedRoots));

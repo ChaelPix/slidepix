@@ -10,6 +10,7 @@ import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
 import { cssFontFamily, discoverSystemFontFamilies } from "./fonts";
 import { revisionForText } from "./document-revision";
+import type { ExportResult } from "./export-result";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -161,12 +162,33 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (message.command === "openTextEditor") return void vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
       const parsed = parseDeckText(document.getText());
       if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
-      if (message.command === "exportPdf") return exportPdf(this.context, parsed.deck, document.uri.fsPath);
-      if (message.command === "exportPng") return exportPng(this.context, parsed.deck, document.uri.fsPath, message.slideIds);
-      if (message.command === "exportPptx") return exportPptx(this.context, parsed.deck, document.uri.fsPath);
-      if (message.command === "exportWeb") return exportWeb(parsed.deck, document.uri.fsPath);
+      if (message.command === "exportPdf") return this.runExport(panel, message.requestId, "PDF export", () => exportPdf(this.context, parsed.deck, document.uri.fsPath));
+      if (message.command === "exportPng") return this.runExport(panel, message.requestId, "PNG export", () => exportPng(this.context, parsed.deck, document.uri.fsPath, message.slideIds));
+      if (message.command === "exportPptx") return this.runExport(panel, message.requestId, "PowerPoint export", () => exportPptx(this.context, parsed.deck, document.uri.fsPath));
+      if (message.command === "exportWeb") return this.runExport(panel, message.requestId, "Web export", () => exportWeb(parsed.deck, document.uri.fsPath));
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);
+    }
+  }
+
+  private async runExport(panel: vscode.WebviewPanel, requestId: string | undefined, label: string, exportAction: () => Promise<ExportResult>): Promise<void> {
+    try {
+      const result = await exportAction();
+      if (!requestId) return;
+      await panel.webview.postMessage({
+        version: 2,
+        type: "notify",
+        notificationId: requestId,
+        status: result.status === "cancelled" ? "dismiss" : result.status,
+        message: result.status === "cancelled" ? undefined : result.message
+      } satisfies HostToWebviewMessage);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (requestId) {
+        await panel.webview.postMessage({ version: 2, type: "notify", notificationId: requestId, status: "error", message: `${label} failed: ${detail}` } satisfies HostToWebviewMessage);
+        return;
+      }
+      throw error;
     }
   }
 
@@ -244,13 +266,22 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       const wanted = elementIds?.length ? new Set(elementIds) : undefined;
       const roots = linkedRoots(document);
       let count = 0;
-      for (const slide of parsed.deck.slides) for (const element of slide.elements) {
-        if ((element.type !== "image" && element.type !== "video") || element.storage !== "linked" || (wanted && !wanted.has(element.id))) continue;
-        const source = resolveMediaPath(document.uri.fsPath, element.src, "linked", roots);
-        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(source));
-        element.src = await storeEmbeddedBytes(document.uri.fsPath, bytes, path.basename(source), "");
-        element.storage = "embedded";
-        count += 1;
+      for (const slide of parsed.deck.slides) {
+        if (!wanted && slide.backgroundImage?.storage === "linked") {
+          const source = resolveMediaPath(document.uri.fsPath, slide.backgroundImage.src, "linked", roots);
+          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(source));
+          slide.backgroundImage.src = await storeEmbeddedBytes(document.uri.fsPath, bytes, path.basename(source), "");
+          slide.backgroundImage.storage = "embedded";
+          count += 1;
+        }
+        for (const element of slide.elements) {
+          if ((element.type !== "image" && element.type !== "video") || element.storage !== "linked" || (wanted && !wanted.has(element.id))) continue;
+          const source = resolveMediaPath(document.uri.fsPath, element.src, "linked", roots);
+          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(source));
+          element.src = await storeEmbeddedBytes(document.uri.fsPath, bytes, path.basename(source), "");
+          element.storage = "embedded";
+          count += 1;
+        }
       }
       if (!count) return void vscode.window.showInformationMessage("No linked media needed embedding.");
       if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {

@@ -35,9 +35,11 @@ it.
    - Windows/Linux: `Ctrl+Shift+P`
    - macOS: `Cmd+Shift+P`
 2. Type **SlidePix: Create Deck** and press Enter.
-3. Choose a folder and a name. Keep the automatically added
-   `.slidepix.json` ending.
-4. The visual editor opens automatically.
+3. SlidePix creates `untitled.slidepix.json` next to the file selected in
+   Explorer, or in the workspace folder. If that name is taken, it uses
+   `untitled-2.slidepix.json`, and so on.
+4. The visual editor opens automatically. Move the file in Explorer if you
+   want it somewhere else.
 
 The screen is organized like a simple slide application:
 
@@ -54,10 +56,11 @@ The screen is organized like a simple slide application:
 
 - Add text with **Text** and type immediately. Double-click an existing text
   box (or select it and press `Enter`/`F2`) to edit Markdown directly on the
-  slide. Use the contextual Bold, Italic, list, alignment, font, size, and
-  color controls; **Advanced editor** opens the larger source-and-preview view
-  for LaTeX such as `$x^2$` and fenced code. Press `Escape` or
-  `Ctrl/Cmd+Enter` to finish.
+  slide. An **editing...** label appears on the box so you can tell quick edit
+  apart from the rendered slide. Use the contextual Bold, Italic, list,
+  alignment, font, size, and color controls; **Advanced editor** opens the
+  larger source-and-preview view for LaTeX such as `$x^2$` and fenced code.
+  Press `Escape` or `Ctrl/Cmd+Enter` to finish.
 - Add media with **Image** or **Video**, or drag a workspace file from the
   Explorer. Workspace media stays linked by a relative path by default; use
   **Embed in .assets** or **Embed all** when the deck must be portable.

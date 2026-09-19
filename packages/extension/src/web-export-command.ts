@@ -2,15 +2,16 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Deck } from "@slidepix/core";
 import { buildWebExport, pathExists, WebExportDestinationExistsError } from "./web-export";
+import type { ExportResult } from "./export-result";
 
-export async function exportWeb(deck: Deck, deckPath: string): Promise<void> {
+export async function exportWeb(deck: Deck, deckPath: string): Promise<ExportResult> {
   while (true) {
     const destination = await vscode.window.showSaveDialog({
       title: "Export SlidePix web folder",
       defaultUri: vscode.Uri.file(deckPath.replace(/\.slidepix\.json$/i, "-web")),
       saveLabel: "Export"
     });
-    if (!destination) return;
+    if (!destination) return { status: "cancelled" };
     if (await pathExists(destination.fsPath)) {
       await vscode.window.showWarningMessage("That web export folder already exists. Choose another folder name.");
       continue;
@@ -21,8 +22,9 @@ export async function exportWeb(deck: Deck, deckPath: string): Promise<void> {
         { location: vscode.ProgressLocation.Notification, title: "Exporting SlidePix web folder", cancellable: false },
         () => buildWebExport(deck, deckPath, destination.fsPath, workspaceRoots(deckPath))
       );
-      void vscode.window.showInformationMessage(`Exported ${path.basename(destination.fsPath)} with ${result.assetCount} asset${result.assetCount === 1 ? "" : "s"}.`);
-      return;
+      const message = `Exported ${path.basename(destination.fsPath)} with ${result.assetCount} asset${result.assetCount === 1 ? "" : "s"}.`;
+      void vscode.window.showInformationMessage(message);
+      return { status: "success", message };
     } catch (error) {
       if (error instanceof WebExportDestinationExistsError) {
         await vscode.window.showWarningMessage("That web export folder was created while exporting. Choose another folder name.");
@@ -30,7 +32,7 @@ export async function exportWeb(deck: Deck, deckPath: string): Promise<void> {
       }
       const message = error instanceof Error ? error.message : "Unknown export error";
       void vscode.window.showErrorMessage(`Could not export web presentation: ${message}`);
-      return;
+      return { status: "error", message: `Web export failed: ${message}` };
     }
   }
 }
