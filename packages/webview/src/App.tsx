@@ -264,6 +264,8 @@ export default function App() {
         chooseVideo={() => requestMedia("video")}
         hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
         historyBusy={Boolean(store.historyPending)}
+        canUndo={store.canUndo || store.dirty}
+        canRedo={store.canRedo}
         mutate={store.mutate}
         preview={store.preview}
         scheduleCommit={store.scheduleCommit}
@@ -448,7 +450,7 @@ export default function App() {
   );
 }
 
-function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
+function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
   slide: Slide;
   element?: SlideElement;
   selectedElements: SlideElement[];
@@ -459,6 +461,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   chooseVideo(): void;
   hasLinkedMedia: boolean;
   historyBusy: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   mutate(fn: (deck: Deck) => void): void;
   preview(fn: (deck: Deck) => void): void;
   scheduleCommit(): void;
@@ -502,8 +506,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         ]} />
       </div></div>
       <div className="ribbon-group history-actions"><div className="ribbon-actions">
-        <RibbonButton icon="discard" label="Undo" disabled={historyBusy} onClick={() => runCommand("undo")} />
-        <RibbonButton icon="redo" label="Redo" disabled={historyBusy} onClick={() => runCommand("redo")} />
+        <RibbonButton icon="discard" label="Undo" disabled={historyBusy || !canUndo} onClick={() => runCommand("undo")} />
+        <RibbonButton icon="redo" label="Redo" disabled={historyBusy || !canRedo} onClick={() => runCommand("redo")} />
       </div></div>
       <div className="ribbon-group"><div className="ribbon-actions">
         <RibbonButton icon="sparkle" label="AI" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
@@ -1055,7 +1059,7 @@ function deleteElements(slideId: string, elementIds: string[], mutate: (fn: (dec
   });
   select();
 }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message }); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string, history?: { canUndo?: boolean; canRedo?: boolean }) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri, { canUndo: message.canUndo, canRedo: message.canRedo }); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message }); }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");

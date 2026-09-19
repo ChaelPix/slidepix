@@ -37,7 +37,9 @@ beforeEach(() => {
     historyPending: undefined,
     historyQueue: [],
     deferredCommands: [],
-    historyError: undefined
+    historyError: undefined,
+    canUndo: false,
+    canRedo: false
   });
 });
 
@@ -180,6 +182,18 @@ describe("revision-safe persistence queue", () => {
     expect(useDeckStore.getState().deck).toEqual(base);
     expect(useDeckStore.getState().error).toBeUndefined();
     expect(useDeckStore.getState().historyError).toBe("History failed");
+  });
+
+  it("tracks host undo availability after a persisted edit", () => {
+    const base = fixture();
+    useDeckStore.getState().setFromHost(base, "revision-0", "asset", "linked");
+    useDeckStore.getState().mutate((deck) => { deck.slides[0]!.elements = []; });
+    const request = firstEdit();
+    const submitted = parseDeckText(request.text);
+    if (!submitted.ok) return;
+    useDeckStore.getState().handleEditResult({ ...accepted(request.requestId, submitted.deck, "revision-1"), canUndo: true, canRedo: false });
+    expect(useDeckStore.getState().canUndo).toBe(true);
+    expect(useDeckStore.getState().canRedo).toBe(false);
   });
 });
 

@@ -102,10 +102,10 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   optional silhouette-aware shadow with color, offsets, and blur. Image borders
   use the same transparent toggle.
 - Toolbar Undo/Redo and Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, or Ctrl+Y flush previews,
-  then enter one request-ID-based queue. The extension acknowledges each
-  completed command with the authoritative revision before the next history
-  command runs, so history remains VS Code's `WorkspaceEdit` history even when
-  a SlidePix-owned input or textarea has focus.
+  then enter one request-ID-based queue. The host keeps a snapshot stack of
+  committed decks and restores the previous or next snapshot through
+  `WorkspaceEdit`, so delete/add/move undo works while the webview has focus.
+  The host reports `canUndo`/`canRedo` on deck and history acknowledgements.
 - The export ribbon orders PNG, PDF, PPTX, then Web. PPTX delegates destination
   selection and native OOXML generation to the extension host and never reads
   local media from the webview.
@@ -152,6 +152,6 @@ Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
 `src/store.test.ts` covers write serialization, debounce, rebasing, conflicts,
-failed edits, and deferred document commands. `src/align.test.ts` covers page
+failed edits, deferred document commands, and host undo availability. `src/align.test.ts` covers page
 and selection alignment plus distribution. `src/snap.test.ts` covers edge
 snapping and the zoom-aware catch radius.

@@ -97,7 +97,8 @@ the deck theme background rather than a hard-coded dark color.
 only extension↔webview messages. Media import, native system-font selection,
 and serialized history use request IDs with typed host responses. History
 results include the authoritative post-command revision before another
-undo/redo runs. Add a new union member for a new operation and handle it
+undo/redo runs. Optional `canUndo`/`canRedo` flags on deck, edit, and history
+messages reflect the host snapshot stack. Add a new union member for a new operation and handle it
 exhaustively on both sides. Bump the protocol only for an incompatible wire
 change, not for every new compatible message.
 

@@ -3,10 +3,10 @@ import type { Deck } from "./schema.js";
 export const PROTOCOL_VERSION = 2 as const;
 
 export type HostToWebviewMessage =
-  | { version: 2; type: "deck"; text: string; deck: Deck; revision: string; uri: string; linkedUri: string }
+  | { version: 2; type: "deck"; text: string; deck: Deck; revision: string; uri: string; linkedUri: string; canUndo?: boolean; canRedo?: boolean }
   | { version: 2; type: "invalidDeck"; text: string; revision: string; message: string; gitConflict: boolean; uri: string; linkedUri: string }
-  | { version: 2; type: "documentEditResult"; requestId: string; accepted: boolean; revision: string; text: string; deck?: Deck; reason?: "stale" | "invalid" | "applyFailed"; message?: string }
-  | { version: 2; type: "historyResult"; requestId: string; command: "undo" | "redo"; ok: boolean; revision: string; text: string; deck?: Deck; error?: string }
+  | { version: 2; type: "documentEditResult"; requestId: string; accepted: boolean; revision: string; text: string; deck?: Deck; reason?: "stale" | "invalid" | "applyFailed"; message?: string; canUndo?: boolean; canRedo?: boolean }
+  | { version: 2; type: "historyResult"; requestId: string; command: "undo" | "redo"; ok: boolean; revision: string; text: string; deck?: Deck; error?: string; canUndo?: boolean; canRedo?: boolean }
   | { version: 2; type: "assetImported"; requestId: string; reference?: string; storage?: "embedded" | "linked"; error?: string }
   | { version: 2; type: "fontSelected"; requestId: string; family?: string; error?: string }
   | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string };

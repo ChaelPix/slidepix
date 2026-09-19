@@ -10,6 +10,7 @@ import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
 import { cssFontFamily, discoverSystemFontFamilies } from "./fonts";
 import { revisionForText } from "./document-revision";
+import { emptyDocumentHistory, historyFlags, recordDocumentEdit, redoDocument, undoDocument, type DocumentHistory } from "./document-history";
 import type { ExportResult } from "./export-result";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
@@ -17,6 +18,7 @@ export const VIEW_TYPE = "slidepix.deckEditor";
 export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly panels = new Map<string, Set<vscode.WebviewPanel>>();
   private readonly sessions = new Map<string, PresentationServer>();
+  private readonly histories = new Map<string, DocumentHistory>();
   private activeDocument?: vscode.TextDocument;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
@@ -43,7 +45,13 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     };
     panel.webview.html = this.webviewHtml(panel.webview);
     panel.onDidChangeViewState(() => { if (panel.active) this.activeDocument = document; });
-    panel.onDidDispose(() => { set.delete(panel); if (!set.size) this.panels.delete(key); });
+    panel.onDidDispose(() => {
+      set.delete(panel);
+      if (!set.size) {
+        this.panels.delete(key);
+        this.histories.delete(key);
+      }
+    });
     panel.webview.onDidReceiveMessage((message: WebviewToHostMessage) => void this.receive(document, panel, message));
   }
 
@@ -84,8 +92,9 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     const revision = revisionForText(text);
     const assetUri = panel.webview.asWebviewUri(vscode.Uri.file(deckAssetDirectory(document.uri.fsPath))).toString();
     const linkedUri = panel.webview.asWebviewUri(vscode.Uri.file(path.dirname(document.uri.fsPath))).toString();
+    const flags = this.historyState(document.uri);
     const message: HostToWebviewMessage = parsed.ok
-      ? { version: 2, type: "deck", text, deck: parsed.deck, revision, uri: assetUri, linkedUri }
+      ? { version: 2, type: "deck", text, deck: parsed.deck, revision, uri: assetUri, linkedUri, ...flags }
       : { version: 2, type: "invalidDeck", text, revision, message: parsed.message, gitConflict: hasGitConflictMarkers(text), uri: assetUri, linkedUri };
     void panel.webview.postMessage(message);
   }
@@ -100,53 +109,22 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       const currentText = document.getText();
       const currentRevision = revisionForText(currentText);
       if (message.baseRevision !== currentRevision) {
-        await panel.webview.postMessage(editResult(message.requestId, false, currentText, "stale", "The deck changed before this edit could be applied."));
+        await panel.webview.postMessage(editResult(message.requestId, false, currentText, "stale", "The deck changed before this edit could be applied.", this.historyState(document.uri)));
         return;
       }
       const incoming = parseDeckText(message.text);
       if (!incoming.ok) {
-        await panel.webview.postMessage(editResult(message.requestId, false, currentText, "invalid", incoming.message));
+        await panel.webview.postMessage(editResult(message.requestId, false, currentText, "invalid", incoming.message, this.historyState(document.uri)));
         return;
       }
-      const edit = new vscode.WorkspaceEdit();
-      const end = document.lineAt(Math.max(0, document.lineCount - 1)).range.end;
-      edit.replace(document.uri, new vscode.Range(new vscode.Position(0, 0), end), message.text);
-      const applied = await vscode.workspace.applyEdit(edit);
+      const applied = await replaceDocument(document, message.text, currentRevision);
       const nextText = document.getText();
-      await panel.webview.postMessage(editResult(message.requestId, applied, nextText, applied ? undefined : "applyFailed", applied ? undefined : "VS Code rejected the document edit."));
+      if (applied) this.recordHistory(document.uri, currentText, nextText);
+      await panel.webview.postMessage(editResult(message.requestId, applied, nextText, applied ? undefined : "applyFailed", applied ? undefined : "VS Code rejected the document edit.", this.historyState(document.uri)));
       return;
     }
     if (message.type === "history") {
-      try {
-        await vscode.commands.executeCommand(message.command);
-        const text = document.getText();
-        const parsed = parseDeckText(text);
-        await panel.webview.postMessage({
-          version: 2,
-          type: "historyResult",
-          requestId: message.requestId,
-          command: message.command,
-          ok: parsed.ok,
-          revision: revisionForText(text),
-          text,
-          deck: parsed.ok ? parsed.deck : undefined,
-          error: parsed.ok ? undefined : parsed.message
-        } satisfies HostToWebviewMessage);
-      } catch (error) {
-        const text = document.getText();
-        const parsed = parseDeckText(text);
-        await panel.webview.postMessage({
-          version: 2,
-          type: "historyResult",
-          requestId: message.requestId,
-          command: message.command,
-          ok: false,
-          revision: revisionForText(text),
-          text,
-          deck: parsed.ok ? parsed.deck : undefined,
-          error: error instanceof Error ? error.message : `Could not ${message.command}.`
-        } satisfies HostToWebviewMessage);
-      }
+      await this.applyHistory(document, panel, message.command, message.requestId);
       return;
     }
     if (message.type === "importAsset") return this.importAsset(document, panel, message);
@@ -155,7 +133,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "embedMedia") return this.embedMedia(document, message.elementIds);
     if (message.type === "selectFont") return this.selectFont(panel, message);
     if (message.type === "command") {
-      if (message.command === "undo" || message.command === "redo") return void vscode.commands.executeCommand(message.command);
+      if (message.command === "undo" || message.command === "redo") return this.applyHistory(document, panel, message.command);
       if (message.command === "save") return void document.save();
       if (message.command === "configureMcp") return void vscode.commands.executeCommand("slidepix.configureMcp");
       if (message.command === "resolveGitConflict") return void vscode.commands.executeCommand("slidepix.resolveGitConflict");
@@ -190,6 +168,55 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       }
       throw error;
     }
+  }
+
+  private async applyHistory(document: vscode.TextDocument, panel: vscode.WebviewPanel, command: "undo" | "redo", requestId?: string): Promise<void> {
+    const currentText = document.getText();
+    const step = command === "undo"
+      ? undoDocument(this.historyFor(document.uri), currentText)
+      : redoDocument(this.historyFor(document.uri), currentText);
+    let error: string | undefined;
+    if (step) {
+      const previous = this.historyFor(document.uri);
+      this.setHistory(document.uri, step.history);
+      const applied = await replaceDocument(document, step.text, revisionForText(currentText));
+      if (!applied) {
+        this.setHistory(document.uri, previous);
+        error = "VS Code rejected the document edit.";
+      }
+    }
+    const text = document.getText();
+    const parsed = parseDeckText(text);
+    const flags = this.historyState(document.uri);
+    if (!requestId) return;
+    await panel.webview.postMessage({
+      version: 2,
+      type: "historyResult",
+      requestId,
+      command,
+      ok: !error && parsed.ok,
+      revision: revisionForText(text),
+      text,
+      deck: parsed.ok ? parsed.deck : undefined,
+      error: error ?? (parsed.ok ? undefined : parsed.message),
+      ...flags
+    } satisfies HostToWebviewMessage);
+  }
+
+  private historyFor(uri: vscode.Uri): DocumentHistory {
+    return this.histories.get(uri.toString()) ?? emptyDocumentHistory();
+  }
+
+  private setHistory(uri: vscode.Uri, history: DocumentHistory): void {
+    this.histories.set(uri.toString(), history);
+  }
+
+  private recordHistory(uri: vscode.Uri, previousText: string, nextText: string): void {
+    this.setHistory(uri, recordDocumentEdit(this.historyFor(uri), previousText, nextText));
+  }
+
+  private historyState(uri: vscode.Uri): { canUndo: boolean; canRedo: boolean } {
+    return historyFlags(this.historyFor(uri));
   }
 
   private async selectFont(panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectFont" }>): Promise<void> {
@@ -287,6 +314,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
         return void vscode.window.showWarningMessage("The deck changed while media was being embedded. No document changes were applied; retry Embed after reviewing the latest deck.");
       }
+      this.recordHistory(document.uri, baseText, document.getText());
       void vscode.window.showInformationMessage(`Embedded ${count} media element${count === 1 ? "" : "s"} in ${path.basename(deckAssetDirectory(document.uri.fsPath))}.`);
     } catch (error) {
       void vscode.window.showErrorMessage(error instanceof Error ? `Could not embed media: ${error.message}` : "Could not embed media.");
@@ -357,7 +385,8 @@ function editResult(
   accepted: boolean,
   text: string,
   reason?: "stale" | "invalid" | "applyFailed",
-  message?: string
+  message?: string,
+  flags?: { canUndo: boolean; canRedo: boolean }
 ): Extract<HostToWebviewMessage, { type: "documentEditResult" }> {
   const parsed = parseDeckText(text);
   return {
@@ -369,6 +398,7 @@ function editResult(
     text,
     deck: parsed.ok ? parsed.deck : undefined,
     reason,
-    message: parsed.ok ? message : message ?? parsed.message
+    message: parsed.ok ? message : message ?? parsed.message,
+    ...flags
   };
 }

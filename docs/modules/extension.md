@@ -39,12 +39,15 @@ Private command helpers:
 | `currentDocument()` | Returns the most recently active SlidePix text document for commands. |
 | `present(document, presenter?)` | Validates, creates an authenticated loopback session, opens the audience browser, and optionally creates the presenter panel. |
 | `updatePanels` / `postDeck` | Reparse every document change and send either a valid deck or diagnostic plus its exact-text revision. |
-| `receive` | Validates protocol/base revisions and deck text before applying a `WorkspaceEdit`, acknowledges the result, and routes host-owned commands. |
+| `receive` | Validates protocol/base revisions and deck text before applying a `WorkspaceEdit`, records a snapshot, acknowledges the result, and routes host-owned commands. |
+| `applyHistory` | Restores the previous or next recorded snapshot through `WorkspaceEdit`. |
 | `importAsset` | Enforces the 100 MB limit and stores clipboard/browser file bytes as deduplicated embedded content. |
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
 | `selectFont` | Scans platform font directories, opens a native searchable quick picker, and returns the selected CSS family through the versioned protocol. |
 | `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP. |
+
+`src/document-history.ts` owns the capped snapshot stack used by undo/redo.
 
 Webview-triggered exports carry an optional request ID. The provider reports
 completion or failure through a typed `notify` message so the editor can replace
@@ -52,11 +55,12 @@ its non-blocking progress toast; command-palette exports keep their native VS
 Code notifications.
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
-would break the editor's undo/autosave/external-change lifecycle.
-Acknowledged history messages await VS Code's built-in undo/redo command and
-return the resulting exact revision and parsed deck. The webview serializes
-these acknowledgements, so it never maintains a competing history or races a
-pending replacement.
+would break the editor's autosave/external-change lifecycle.
+Each successful replacement records the previous document text on a per-document
+snapshot stack (capped). Acknowledged history messages restore the previous or
+next snapshot through `WorkspaceEdit` instead of `executeCommand("undo")`, which
+is a no-op while the custom-editor webview has focus. The webview serializes
+these acknowledgements, so it never races a pending replacement.
 
 ## `src/git-collaboration.ts` and `src/merge-driver.ts`
 
@@ -73,7 +77,8 @@ pending replacement.
 
 `src/git-collaboration.test.ts` verifies managed attributes and the bundled
 driver directly and through a temporary Git repository, including paths with
-spaces and marker fallback.
+spaces and marker fallback. `src/document-history.test.ts` covers snapshot
+undo/redo, redo invalidation, and the history cap.
 
 ## `src/fonts.ts`
 

@@ -47,7 +47,9 @@ export type DeckStore = {
   historyQueue: HistoryCommand[];
   deferredCommands: DeferredCommand[];
   historyError?: string;
-  setFromHost(deck: Deck, revision: string, sourceUri: string, linkedSourceUri: string): void;
+  canUndo: boolean;
+  canRedo: boolean;
+  setFromHost(deck: Deck, revision: string, sourceUri: string, linkedSourceUri: string, history?: { canUndo?: boolean; canRedo?: boolean }): void;
   setInvalid(message: string, gitConflict: boolean, sourceUri: string, linkedSourceUri: string): void;
   handleEditResult(message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>): void;
   handleHistoryResult(message: Extract<HostToWebviewMessage, { type: "historyResult" }>): void;
@@ -160,14 +162,24 @@ export const useDeckStore = create<DeckStore>((set, get) => {
     selectedElementIds: [],
     historyQueue: [],
     deferredCommands: [],
-    setFromHost: (deck, revision, sourceUri, linkedSourceUri) => {
-      set({ sourceUri, linkedSourceUri });
+    canUndo: false,
+    canRedo: false,
+    setFromHost: (deck, revision, sourceUri, linkedSourceUri, history) => {
+      set({
+        sourceUri,
+        linkedSourceUri,
+        canUndo: history?.canUndo ?? get().canUndo,
+        canRedo: history?.canRedo ?? get().canRedo
+      });
       acceptHostDeck(deck, revision);
     },
     setInvalid: (message, gitConflict, sourceUri, linkedSourceUri) => set({ error: message, gitConflict, sourceUri, linkedSourceUri, pending: undefined }),
     handleEditResult: (message) => {
       const state = get();
       if (state.pending && state.pending.requestId !== message.requestId) return;
+      if (message.canUndo !== undefined || message.canRedo !== undefined) {
+        set({ canUndo: message.canUndo ?? false, canRedo: message.canRedo ?? false });
+      }
       if ((message.accepted || message.reason === "stale") && message.deck) {
         acceptHostDeck(message.deck, message.revision);
         return;
@@ -177,7 +189,11 @@ export const useDeckStore = create<DeckStore>((set, get) => {
     handleHistoryResult: (message) => {
       const state = get();
       if (state.historyPending?.requestId !== message.requestId) return;
-      set({ historyPending: undefined });
+      set({
+        historyPending: undefined,
+        canUndo: message.canUndo ?? state.canUndo,
+        canRedo: message.canRedo ?? state.canRedo
+      });
       if (!message.ok || !message.deck) {
         set({ historyError: message.error ?? `SlidePix could not ${message.command}.` });
         drainCommands(get());
