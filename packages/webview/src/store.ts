@@ -26,6 +26,7 @@ type MergeState = {
 };
 
 type DeferredCommand = Extract<WebviewToHostMessage, { type: "command" }>;
+type HistoryCommand = "undo" | "redo";
 
 export type DeckStore = {
   deck?: Deck;
@@ -41,9 +42,15 @@ export type DeckStore = {
   dirty: boolean;
   pending?: PendingEdit;
   mergeState?: MergeState;
+  historyPending?: { requestId: string; command: HistoryCommand };
+  historyQueue: HistoryCommand[];
+  deferredCommands: DeferredCommand[];
+  historyError?: string;
   setFromHost(deck: Deck, revision: string, sourceUri: string, linkedSourceUri: string): void;
   setInvalid(message: string, gitConflict: boolean, sourceUri: string, linkedSourceUri: string): void;
   handleEditResult(message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>): void;
+  handleHistoryResult(message: Extract<HostToWebviewMessage, { type: "historyResult" }>): void;
+  clearHistoryError(): void;
   selectSlide(id: string): void;
   selectElement(id?: string): void;
   setZoom(zoom: number): void;
@@ -57,12 +64,23 @@ export type DeckStore = {
 };
 
 let commitTimer: ReturnType<typeof setTimeout> | undefined;
-const deferredCommands: DeferredCommand[] = [];
 
 export const useDeckStore = create<DeckStore>((set, get) => {
   const drainCommands = (state: DeckStore) => {
-    if (state.pending || state.dirty || state.mergeState || state.error) return;
-    while (deferredCommands.length) postMessage(deferredCommands.shift()!);
+    if (state.pending || state.dirty || state.mergeState || state.error || state.historyPending) return;
+    const history = state.historyQueue[0];
+    if (history) {
+      const requestId = crypto.randomUUID();
+      set({ historyPending: { requestId, command: history }, historyQueue: state.historyQueue.slice(1) });
+      postMessage({ type: "history", requestId, command: history });
+      return;
+    }
+    if (state.deferredCommands.length) {
+      const [command, ...remaining] = state.deferredCommands;
+      set({ deferredCommands: remaining });
+      if (command) postMessage(command);
+      drainCommands(get());
+    }
   };
 
   const flush = () => {
@@ -138,6 +156,8 @@ export const useDeckStore = create<DeckStore>((set, get) => {
     zoom: 0.5,
     dirty: false,
     gitConflict: false,
+    historyQueue: [],
+    deferredCommands: [],
     setFromHost: (deck, revision, sourceUri, linkedSourceUri) => {
       set({ sourceUri, linkedSourceUri });
       acceptHostDeck(deck, revision);
@@ -152,6 +172,18 @@ export const useDeckStore = create<DeckStore>((set, get) => {
       }
       set({ pending: undefined, error: message.message ?? "SlidePix could not apply the document edit." });
     },
+    handleHistoryResult: (message) => {
+      const state = get();
+      if (state.historyPending?.requestId !== message.requestId) return;
+      set({ historyPending: undefined });
+      if (!message.ok || !message.deck) {
+        set({ historyError: message.error ?? `SlidePix could not ${message.command}.` });
+        drainCommands(get());
+        return;
+      }
+      acceptHostDeck(message.deck, message.revision);
+    },
+    clearHistoryError: () => set({ historyError: undefined }),
     selectSlide: (id) => set({ selectedSlideId: id, selectedElementId: undefined }),
     selectElement: (id) => set({ selectedElementId: id }),
     setZoom: (zoom) => set({ zoom: Math.min(1.5, Math.max(0.1, zoom)) }),
@@ -164,7 +196,7 @@ export const useDeckStore = create<DeckStore>((set, get) => {
     },
     scheduleCommit: () => {
       if (commitTimer) clearTimeout(commitTimer);
-      commitTimer = setTimeout(flush, 250);
+      commitTimer = setTimeout(flush, 600);
     },
     commit: () => {
       if (commitTimer) clearTimeout(commitTimer);
@@ -180,9 +212,11 @@ export const useDeckStore = create<DeckStore>((set, get) => {
       flush();
     },
     runCommand: (command, slideIds) => {
-      deferredCommands.push({ version: 2, type: "command", command, slideIds });
-      if (get().dirty) flush();
-      else drainCommands(get());
+      if (command === "undo" || command === "redo") set((state) => ({ historyQueue: [...state.historyQueue, command] }));
+      else set((state) => ({ deferredCommands: [...state.deferredCommands, { version: 2, type: "command", command, slideIds }] }));
+      if (commitTimer) clearTimeout(commitTimer);
+      commitTimer = undefined;
+      if (get().dirty) flush(); else drainCommands(get());
     },
     resolveMergeConflict: (id, resolution) => {
       const mergeState = get().mergeState;

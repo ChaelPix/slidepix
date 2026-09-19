@@ -35,8 +35,8 @@ webview. The webview has no direct filesystem or Node access.
 - `useDeckStore.mutate(mutator)` performs a one-step preview and persistence for
   ordinary discrete edits. Do not mutate the existing store deck directly.
 - Only one replacement may be in flight. Later mutations remain optimistic and
-  coalesce behind it. Text and notes preview locally, debounce for 250 ms, and
-  flush on blur or Done.
+  coalesce behind it. Continuous text, numeric, color, notes, and keyboard
+  nudging preview locally, debounce for 600 ms, and flush on blur or Done.
 - A new host revision rebases pending local work through core `mergeDecks`.
   Clean merges retry automatically; structured conflicts stop persistence and
   require an explicit base/ours/theirs choice. Save/undo/redo wait for the
@@ -75,9 +75,17 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Copy/cut writes a typed SlidePix clipboard payload plus a private marker.
   Paste checks it before plain text, assigns new element IDs, and preserves
   morph keys only when copying to a different slide in the same deck.
-- Text editing is available by double-clicking a text element or using
-  **Edit Markdown · LaTeX · Code…** in Properties. The editor includes a live
-  rendered preview using the shared core Markdown renderer.
+- Double-clicking a text element, pressing `Enter`/`F2`, or inserting a new
+  text box opens an in-place Markdown textarea at the element's logical
+  geometry. Moveable forwards its intercepted double-click before pausing while
+  editing is active. `Escape` and `Ctrl/Cmd+Enter` finish; the optional
+  **Advanced editor** retains the larger source and live shared-renderer
+  preview for LaTeX and code.
+- The stable second toolbar row is contextual. Text and table selections expose
+  compact typography plus icon-button horizontal/vertical alignment. During
+  inline text editing, Bold, Italic, and list actions transform the active
+  Markdown selection without losing its caret. Element arrange, lock,
+  duplicate, and delete actions remain available in the same row.
 - Font family uses a portable select plus a host-native **System fonts…** quick
   picker. The extension scans platform font directories and returns the chosen
   CSS family through a typed request/response message, avoiding the unreliable
@@ -88,9 +96,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Shape Properties provides explicit transparent fill/border toggles and an
   optional silhouette-aware shadow with color, offsets, and blur. Image borders
   use the same transparent toggle.
-- Toolbar Undo/Redo and Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, or Ctrl+Y delegate to the
-  extension host, so history remains VS Code's `WorkspaceEdit` history. Native
-  input/textarea undo is left untouched while typing.
+- Toolbar Undo/Redo and Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, or Ctrl+Y flush previews,
+  then enter one request-ID-based queue. The extension acknowledges each
+  completed command with the authoritative revision before the next history
+  command runs, so history remains VS Code's `WorkspaceEdit` history even when
+  a SlidePix-owned input or textarea has focus.
 - The export ribbon orders PNG, PDF, PPTX, then Web. PPTX delegates destination
   selection and native OOXML generation to the extension host and never reads
   local media from the webview.
@@ -98,8 +108,9 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   timeline reference. Missing names display as `<type>-<id prefix>`.
 - Animation cards identify their target by element name, show click grouping,
   and follow timeline array order from top to bottom.
-- Ctrl/Cmd plus mouse wheel and the top-right slider adjust canvas zoom. Speaker
-  notes can collapse to a compact header without changing persisted notes.
+- Ctrl/Cmd plus mouse wheel and the docked lower-right −/+ buttons adjust canvas
+  zoom. Speaker notes can collapse to a compact header without changing
+  persisted notes.
 - Checkbox fields use an explicit horizontal row so narrow inspectors do not
   separate the control from its label.
 - Numeric Properties fields use large decrement/increment targets, select their

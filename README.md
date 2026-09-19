@@ -44,15 +44,20 @@ The screen is organized like a simple slide application:
 - **left:** slides, previews, duplicate/reorder/hide/delete buttons, and the
   transition control between slides;
 - **center:** the current slide; click an item to move, resize, or rotate it;
-- **top:** add text, images, videos, shapes, and editable tables; save, export,
+- **top:** add text, images, videos, shapes, and editable tables; use the
+  contextual second row to format or arrange the current item; save, export,
   or present;
 - **right:** item properties, layer order, visibility/locking, and animations;
 - **bottom:** speaker notes and zoom.
 
 ## Everyday actions
 
-- Add text with **Text**, then double-click the text box to write Markdown,
-  LaTeX such as `$x^2$`, or fenced code.
+- Add text with **Text** and type immediately. Double-click an existing text
+  box (or select it and press `Enter`/`F2`) to edit Markdown directly on the
+  slide. Use the contextual Bold, Italic, list, alignment, font, size, and
+  color controls; **Advanced editor** opens the larger source-and-preview view
+  for LaTeX such as `$x^2$` and fenced code. Press `Escape` or
+  `Ctrl/Cmd+Enter` to finish.
 - Add media with **Image** or **Video**, or drag a workspace file from the
   Explorer. Workspace media stays linked by a relative path by default; use
   **Embed in .assets** or **Embed all** when the deck must be portable.
@@ -80,9 +85,10 @@ The screen is organized like a simple slide application:
   folder with `index.html` and copied media that works offline in a modern browser.
 
 Save the deck normally with `Ctrl+S` or `Cmd+S`. Undo with `Ctrl+Z`/`Cmd+Z` and
-redo with `Ctrl+Y` or `Cmd+Shift+Z`; matching toolbar buttons are also present.
-VS Code/Cursor owns that history, autosave, backup, and recovery because the
-deck is a text document.
+redo with `Ctrl+Y` or `Cmd+Shift+Z`; matching toolbar buttons use the same
+history even while a SlidePix text field is active. Continuous typing, nudging,
+and dragging are grouped into useful undo steps. VS Code/Cursor owns that
+history, autosave, backup, and recovery because the deck is a text document.
 
 ## Work on a deck with Git
 

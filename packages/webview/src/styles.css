@@ -2,7 +2,7 @@
   font-family: var(--vscode-font-family);
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
-  --toolbar: 52px;
+  --toolbar: 92px;
   --rail: 246px;
   --inspector: 300px;
 }
@@ -29,8 +29,15 @@ button:disabled { opacity: .45; cursor: default; }
   grid-template-areas: "toolbar toolbar toolbar" "rail workspace inspector";
 }
 
-.toolbar {
+.toolbar-shell {
   grid-area: toolbar;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 51px 40px;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.toolbar {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -38,8 +45,8 @@ button:disabled { opacity: .45; cursor: default; }
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--vscode-editorGroupHeader-tabsBackground);
-  border-bottom: 1px solid var(--vscode-panel-border);
 }
+.toolbar-primary { border-bottom: 1px solid var(--vscode-panel-border); }
 .brand {
   flex: none;
   display: flex;
@@ -75,6 +82,23 @@ button:disabled { opacity: .45; cursor: default; }
 }
 .ribbon-button .codicon { font-size: 15px; }
 .ribbon-button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.context-toolbar { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px 9px; overflow-x: auto; overflow-y: hidden; }
+.context-hint { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.context-font { flex: 0 1 230px; min-width: 145px; display: grid; grid-template-columns: minmax(100px, 1fr) 27px; }
+.context-font select, .context-font button { min-width: 0; height: 28px; border-radius: 3px 0 0 3px; }
+.context-font button { padding: 0; border-left: 0; border-radius: 0 3px 3px 0; }
+.context-number, .context-color { height: 28px; display: flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); font-size: 10px; }
+.context-number input { width: 58px; height: 28px; padding: 3px 5px; }
+.context-color input { width: 31px; height: 28px; padding: 2px; }
+.segmented-control { flex: none; display: flex; align-items: center; overflow: hidden; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px; }
+.segmented-control button, .context-icon { width: 29px; height: 27px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.segmented-control button + button { border-left: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
+.segmented-control button[aria-pressed="true"], .context-icon[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.context-action { flex: none; height: 28px; padding: 3px 7px; white-space: nowrap; }
+.context-action .codicon { margin-right: 4px; }
+.context-arrange { display: flex; align-items: center; gap: 2px; margin-left: auto; padding-left: 6px; border-left: 1px solid var(--vscode-panel-border); }
+.context-icon { flex: none; border: 1px solid transparent; border-radius: 3px; }
+.context-icon.danger { color: var(--vscode-errorForeground); }
 .ribbon-select {
   min-width: 70px;
   height: 34px;
@@ -121,8 +145,8 @@ button:disabled { opacity: .45; cursor: default; }
 .rail-entry:hover .rail-actions { opacity: 1; }
 .rail-actions button { padding: 1px 5px; background: transparent; border: 0; }
 
-.workspace { grid-area: workspace; display: grid; grid-template-rows: minmax(0, 1fr) 124px; min-width: 0; min-height: 0; }
-.workspace.notes-collapsed { grid-template-rows: minmax(0, 1fr) 36px; }
+.workspace { --notes-height: 124px; grid-area: workspace; display: grid; grid-template-rows: minmax(0, 1fr) var(--notes-height); min-width: 0; min-height: 0; }
+.workspace.notes-collapsed { --notes-height: 36px; }
 .canvas-scroll {
   overflow: auto;
   display: grid;
@@ -134,7 +158,11 @@ button:disabled { opacity: .45; cursor: default; }
 .canvas-scale { position: absolute; inset: 0; transform-origin: top left; }
 .slide { position: absolute; left: 0; top: 0; overflow: hidden; isolation: isolate; transform-origin: top left; }
 .slide-element { position: absolute; transform-origin: center center; }
+.slide-element[data-element-id]:has(.slidepix-text-content) { cursor: text; }
 .slide-element.selected { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.slide-element.editing .slidepix-text-content { visibility: hidden; }
+.inline-text-editor { position: absolute; overflow: auto; resize: none; outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; border: 0; border-radius: 0; background: transparent; transform-origin: center center; white-space: pre-wrap; tab-size: 2; }
+.inline-text-editor:focus { box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 50%, transparent); }
 .slidepix-text-content { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .slidepix-text-content.valign-middle { justify-content: center; }
 .slidepix-text-content.valign-bottom { justify-content: flex-end; }
@@ -177,6 +205,8 @@ button:disabled { opacity: .45; cursor: default; }
 .inspector-body { padding: 12px; overflow: auto; scrollbar-gutter: stable; }
 .inspector-body h3 { margin: 4px 0 14px; text-transform: capitalize; }
 .inspector-body h4 { margin: 14px 0 8px; }
+.inspector-control-label { display: block; margin: 10px 0 4px; color: var(--vscode-descriptionForeground); font-size: 11px; }
+.inspector-body > .segmented-control, .inspector-body .segmented-control { width: max-content; margin-bottom: 8px; }
 .property-heading { padding-top: 10px; border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .inspector-body label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--vscode-descriptionForeground); }
 .inspector-body input, .inspector-body textarea, .inspector-body select { min-width: 0; width: 100%; padding: 5px; }
@@ -250,10 +280,9 @@ button:disabled { opacity: .45; cursor: default; }
 .crop-corner.bottom-left { left: -3px; bottom: -3px; border-width: 0 0 4px 4px; }
 .crop-corner.bottom-right { right: -6px; bottom: -6px; border-width: 0 4px 4px 0; cursor: nwse-resize; pointer-events: auto; touch-action: none; }
 
-.zoom-control { position: fixed; right: calc(var(--inspector) + 12px); top: calc(var(--toolbar) + 12px); z-index: 50; display: flex; align-items: center; gap: 6px; padding: 2px; border: 1px solid var(--vscode-panel-border); border-radius: 5px; background: var(--vscode-editorGroupHeader-tabsBackground); box-shadow: 0 2px 8px #0005; }
-.zoom-control button { border: 0; }
-.zoom-control input { width: 90px; }
-.zoom-control span { min-width: 42px; font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; }
+.zoom-control { position: fixed; right: calc(var(--inspector) + 12px); bottom: calc(var(--notes-height) + 12px); z-index: 50; display: flex; overflow: hidden; border: 1px solid var(--vscode-panel-border); border-radius: 6px; background: var(--vscode-editorGroupHeader-tabsBackground); box-shadow: 0 2px 8px #0005; }
+.zoom-control button { width: 32px; height: 30px; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 17px; }
+.zoom-control button + button { border-left: 1px solid var(--vscode-panel-border); }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: #0009; }
 .text-editor { width: min(980px, 90vw); height: min(760px, 90vh); display: grid; grid-template-rows: 48px minmax(180px, 1fr) minmax(180px, .85fr) 34px; padding: 10px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); box-shadow: 0 20px 80px #000; }

@@ -1,5 +1,5 @@
 import Moveable from "react-moveable";
-import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import {
   duplicateSlide,
   elementSchema,
@@ -15,6 +15,7 @@ import {
 import { SlideView } from "./SlideView";
 import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
 import { useDeckStore } from "./store";
+import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { onHostMessage, postMessage } from "./vscode";
 
 type Tab = "properties" | "layers" | "animations";
@@ -24,34 +25,55 @@ const pendingAssets = new Map<string, (result?: MediaResult, error?: string) => 
 const pendingFonts = new Map<string, (family?: string, error?: string) => void>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
 type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
+type TextFormatCommand = "bold" | "italic" | "unordered-list" | "ordered-list";
+type InlineTextEditorHandle = { format(command: TextFormatCommand): void; focus(): void };
 let slidepixClipboard: SlidePixClipboard | undefined;
 
 export default function App() {
   const store = useDeckStore();
   const [tab, setTab] = useState<Tab>("properties");
   const [editingTextId, setEditingTextId] = useState<string>();
+  const [selectAllOnEdit, setSelectAllOnEdit] = useState(false);
+  const [advancedTextId, setAdvancedTextId] = useState<string>();
   const [cropElementId, setCropElementId] = useState<string>();
   const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const inlineTextEditor = useRef<InlineTextEditorHandle>(null);
+  const pendingTextFormat = useRef<TextFormatCommand | undefined>(undefined);
 
-  useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult)), []);
+  useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult, store.handleHistoryResult)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
+  useEffect(() => {
+    if (!store.historyError) return;
+    alert(store.historyError);
+    store.clearHistoryError();
+  }, [store.historyError]);
 
   const deck = store.deck;
   const slide = deck?.slides.find((item) => item.id === store.selectedSlideId) ?? deck?.slides[0];
   const selected = slide?.elements.find((item) => item.id === store.selectedElementId);
+  const editingText = slide?.elements.find((item): item is Extract<SlideElement, { type: "text" }> => item.id === editingTextId && item.type === "text");
   const target = selected && !selected.locked ? document.getElementById(`element-${selected.id}`) : null;
   const cropActive = selected?.type === "image" && cropElementId === selected.id;
 
   useEffect(() => {
     if (!selected || selected.type !== "image" || selected.id !== cropElementId) setCropElementId(undefined);
   }, [selected?.id, selected?.type, cropElementId]);
+  useEffect(() => {
+    if (editingTextId && (selected?.type !== "text" || selected.id !== editingTextId)) setEditingTextId(undefined);
+  }, [editingTextId, selected?.id, selected?.type]);
+  useEffect(() => {
+    if (!editingText || !pendingTextFormat.current) return;
+    const command = pendingTextFormat.current;
+    pendingTextFormat.current = undefined;
+    requestAnimationFrame(() => inlineTextEditor.current?.format(command));
+  }, [editingText?.id]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
       const textEntry = isTextEntryTarget(event.target);
       const accelerator = (event.ctrlKey || event.metaKey) && !event.altKey;
       const key = event.key.toLowerCase();
-      if (accelerator && !textEntry && (key === "z" || key === "y")) {
+      if (accelerator && (key === "z" || key === "y")) {
         event.preventDefault();
         const redo = key === "y" || (key === "z" && event.shiftKey);
         store.runCommand(redo ? "redo" : "undo");
@@ -63,10 +85,16 @@ export default function App() {
         return;
       }
       if (!deck || !slide || !selected || editingTextId || textEntry) return;
+      if ((event.key === "Enter" || event.key === "F2") && selected.type === "text") {
+        event.preventDefault();
+        setSelectAllOnEdit(false);
+        setEditingTextId(selected.id);
+        return;
+      }
       const delta = event.shiftKey ? 10 : 1;
       if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         event.preventDefault();
-        store.mutate((draft) => {
+        store.preview((draft) => {
           const element = findElement(draft, slide.id, selected.id);
           if (!element) return;
           if (event.key === "ArrowLeft") element.x -= delta;
@@ -74,6 +102,7 @@ export default function App() {
           if (event.key === "ArrowUp") element.y -= delta;
           if (event.key === "ArrowDown") element.y += delta;
         });
+        store.scheduleCommit();
       } else if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         deleteElement(deck, slide.id, selected.id, store.mutate, store.selectElement);
@@ -118,12 +147,31 @@ export default function App() {
     if (result) addMedia(kind, result, file.name);
   };
 
-  const addText = () => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
-    ...baseElement(slide.elements.length, "text"),
-    type: "text",
-    markdown: "Double-click to edit",
-    style: { fontFamily: deck.theme.fontFamily, fontSize: 48, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
-  }));
+  const addText = () => {
+    const common = baseElement(slide.elements.length, "text");
+    store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
+      ...common,
+      type: "text",
+      markdown: "Type here",
+      style: { fontFamily: deck.theme.fontFamily, fontSize: 48, fontWeight: 400, color: deck.theme.foreground, textAlign: "left", verticalAlign: "top", lineHeight: 1.2, padding: 8 }
+    }));
+    store.selectElement(common.id);
+    setSelectAllOnEdit(true);
+    setEditingTextId(common.id);
+  };
+  const beginTextEditing = (id: string, selectAll = false) => {
+    setSelectAllOnEdit(selectAll);
+    setEditingTextId(id);
+  };
+  const applyTextFormat = (command: TextFormatCommand) => {
+    if (editingText) {
+      inlineTextEditor.current?.format(command);
+      return;
+    }
+    if (selected?.type !== "text") return;
+    pendingTextFormat.current = command;
+    beginTextEditing(selected.id, true);
+  };
   const addShape = (shape: "rectangle" | "ellipse" | "triangle") => store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push({
     ...baseElement(slide.elements.length, "shape"), type: "shape", shape, fill: deck.theme.accent, stroke: "transparent", strokeWidth: 0, borderRadius: 0,
     shadow: { enabled: false, color: "#00000040", offsetX: 0, offsetY: 12, blur: 24 }
@@ -182,14 +230,29 @@ export default function App() {
     }} onPaste={paste}>
       <Toolbar
         slide={slide}
+        element={selected}
         addText={addText}
         addShape={addShape}
         addTable={addTable}
         chooseImage={() => requestMedia("image")}
         chooseVideo={() => requestMedia("video")}
         hasLinkedMedia={deck.slides.some((item) => item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
+        historyBusy={Boolean(store.historyPending)}
+        mutate={store.mutate}
+        preview={store.preview}
+        scheduleCommit={store.scheduleCommit}
+        commit={store.commit}
+        editAdvanced={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }}
+        formatText={applyTextFormat}
+        duplicateElement={() => {
+          if (!selected) return;
+          const copy = cloneElementForPaste(selected, false);
+          store.mutate((draft) => draft.slides.find((item) => item.id === slide.id)!.elements.push(copy));
+          store.selectElement(copy.id);
+        }}
+        deleteSelected={() => selected && deleteElement(deck, slide.id, selected.id, store.mutate, store.selectElement)}
       />
-      <SlideRail deck={deck} selectedId={slide.id} select={store.selectSlide} mutate={store.mutate} resolveAsset={assetUrl} />
+      <SlideRail deck={deck} selectedId={slide.id} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
       <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
         <div className="canvas-scroll" onWheel={(event) => {
           if (!event.ctrlKey && !event.metaKey) return;
@@ -206,20 +269,27 @@ export default function App() {
                 slide={slide}
                 interactive
                 selectedElementId={store.selectedElementId}
+                editingElementId={editingTextId}
                 resolveAsset={assetUrl}
                 onSelectElement={store.selectElement}
-                onEditText={setEditingTextId}
+                onEditText={(id) => beginTextEditing(id)}
                 onEditImage={setCropElementId}
               />
-              {target && selected && !cropActive && (
+              {target && selected && !cropActive && editingTextId !== selected.id && (
                 <Moveable
                   target={target}
                   draggable
                   resizable
                   rotatable
                   snappable
+                  clickable
                   origin={false}
                   zoom={1 / store.zoom}
+                  onClick={({ isDouble }) => {
+                    if (!isDouble) return;
+                    if (selected.type === "text") beginTextEditing(selected.id);
+                    if (selected.type === "image") setCropElementId(selected.id);
+                  }}
                   onDrag={({ left, top, target: elementTarget }) => {
                     elementTarget.style.left = `${left}px`;
                     elementTarget.style.top = `${top}px`;
@@ -242,6 +312,7 @@ export default function App() {
                 />
               )}
               {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} source={selected.type === "image" ? assetUrl(selected.src, selected.storage) : undefined} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCropElementId(undefined)} />}
+              {editingText && <InlineTextEditor ref={inlineTextEditor} element={editingText} selectAll={selectAllOnEdit} preview={(markdown) => { store.preview((draft) => { const element = findElement(draft, slide.id, editingText.id); if (element?.type === "text") element.markdown = markdown; }); store.scheduleCommit(); }} finish={() => { store.commit(); setEditingTextId(undefined); }} />}
             </div>
           </div>
         </div>
@@ -254,51 +325,111 @@ export default function App() {
           </header>
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
+        <div className="zoom-control" aria-label="Canvas zoom" title={`Canvas zoom ${Math.round(store.zoom * 100)}% · Ctrl/Cmd + mouse wheel also zooms`}><button aria-label={`Zoom out from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><button aria-label={`Zoom in from ${Math.round(store.zoom * 100)}%`} onClick={() => store.setZoom(store.zoom + 0.1)}>＋</button></div>
       </main>
-      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} commit={store.commit} selectElement={store.selectElement} editText={setEditingTextId} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
-      <div className="zoom-control" title="Ctrl/Cmd + mouse wheel also zooms the canvas"><button aria-label="Zoom out" onClick={() => store.setZoom(store.zoom - 0.1)}>−</button><input aria-label="Canvas zoom" type="range" min="10" max="150" step="5" value={Math.round(store.zoom * 100)} onChange={(event) => store.setZoom(Number(event.target.value) / 100)} /><span>{Math.round(store.zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => store.setZoom(store.zoom + 0.1)}>+</button></div>
-      {editingTextId && <TextEditor deck={deck} slideId={slide.id} elementId={editingTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setEditingTextId(undefined)} />}
+      <Inspector tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} />
+      {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
     </div>
   );
 }
 
-function Toolbar({ slide, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia }: {
-  slide: Slide; addText(): void; addShape(shape: "rectangle" | "ellipse" | "triangle"): void; addTable(): void; chooseImage(): void; chooseVideo(): void; hasLinkedMedia: boolean;
+function Toolbar({ slide, element, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, duplicateElement, deleteSelected }: {
+  slide: Slide;
+  element?: SlideElement;
+  addText(): void;
+  addShape(shape: "rectangle" | "ellipse" | "triangle"): void;
+  addTable(): void;
+  chooseImage(): void;
+  chooseVideo(): void;
+  hasLinkedMedia: boolean;
+  historyBusy: boolean;
+  mutate(fn: (deck: Deck) => void): void;
+  preview(fn: (deck: Deck) => void): void;
+  scheduleCommit(): void;
+  commit(): void;
+  editAdvanced(id: string): void;
+  formatText(command: TextFormatCommand): void;
+  duplicateElement(): void;
+  deleteSelected(): void;
 }) {
   const runCommand = useDeckStore((state) => state.runCommand);
-  return <header className="toolbar">
-    <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
-    <div className="ribbon-group history-actions"><div className="ribbon-actions">
-      <RibbonButton icon="discard" label="Undo" onClick={() => runCommand("undo")} />
-      <RibbonButton icon="redo" label="Redo" onClick={() => runCommand("redo")} />
-    </div></div>
-    <div className="ribbon-group"><span className="ribbon-label">Insert</span><div className="ribbon-actions">
-      <RibbonButton icon="symbol-string" label="Text" onClick={addText} />
-      <RibbonButton icon="file-media" label="Image" onClick={chooseImage} />
-      <RibbonButton icon="device-camera-video" label="Video" onClick={chooseVideo} />
-      <RibbonButton icon="table" label="Table" onClick={addTable} />
-      <label className="ribbon-select"><span className="codicon codicon-symbol-structure" /><select aria-label="Add shape" defaultValue="" onChange={(event) => { if (event.target.value) addShape(event.target.value as "rectangle" | "ellipse" | "triangle"); event.target.value = ""; }}><option value="" disabled>Shape</option><option value="rectangle">Rectangle</option><option value="ellipse">Circle</option><option value="triangle">Triangle</option></select></label>
-    </div></div>
-    <span className="toolbar-spacer" />
-    <div className="ribbon-group"><span className="ribbon-label">File &amp; export</span><div className="ribbon-actions">
-      <RibbonButton icon="save" label="Save" onClick={() => runCommand("save")} />
-      <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
-      <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
-      <RibbonButton icon="file" label="PPTX" onClick={() => postMessage({ type: "command", command: "exportPptx" })} />
-      <RibbonButton icon="globe" label="Web" onClick={() => postMessage({ type: "command", command: "exportWeb" })} />
-      <RibbonButton icon="package" label="Embed all" disabled={!hasLinkedMedia} onClick={() => postMessage({ type: "embedMedia" })} />
-      <RibbonButton icon="hubot" label="MCP" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
-    </div></div>
-    <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
-      <RibbonButton icon="play" label="Present" primary onClick={() => postMessage({ type: "command", command: "present" })} />
-      <RibbonButton icon="multiple-windows" label="Presenter" onClick={() => postMessage({ type: "command", command: "presenter" })} />
-    </div></div>
+  const updateStyle = (patch: Record<string, unknown>, continuous = false) => {
+    if (!element || (element.type !== "text" && element.type !== "table")) return;
+    const apply = (draft: Deck) => {
+      const target = findElement(draft, slide.id, element.id);
+      if (target?.type === "text" || target?.type === "table") Object.assign(target.style, patch);
+    };
+    if (continuous) { preview(apply); scheduleCommit(); } else { commit(); mutate(apply); }
+  };
+  const updateElement = (fn: (target: SlideElement) => void) => element && mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target) fn(target); });
+  const textLike = element?.type === "text" || element?.type === "table" ? element : undefined;
+  return <header className="toolbar-shell">
+    <div className="toolbar toolbar-primary">
+      <div className="brand"><span className="codicon codicon-preview" /><span>SlidePix</span></div>
+      <div className="ribbon-group history-actions"><div className="ribbon-actions">
+        <RibbonButton icon="discard" label="Undo" disabled={historyBusy} onClick={() => runCommand("undo")} />
+        <RibbonButton icon="redo" label="Redo" disabled={historyBusy} onClick={() => runCommand("redo")} />
+      </div></div>
+      <div className="ribbon-group"><span className="ribbon-label">Insert</span><div className="ribbon-actions">
+        <RibbonButton icon="symbol-string" label="Text" onClick={addText} />
+        <RibbonButton icon="file-media" label="Image" onClick={chooseImage} />
+        <RibbonButton icon="device-camera-video" label="Video" onClick={chooseVideo} />
+        <RibbonButton icon="table" label="Table" onClick={addTable} />
+        <label className="ribbon-select"><span className="codicon codicon-symbol-structure" /><select aria-label="Add shape" defaultValue="" onChange={(event) => { if (event.target.value) addShape(event.target.value as "rectangle" | "ellipse" | "triangle"); event.target.value = ""; }}><option value="" disabled>Shape</option><option value="rectangle">Rectangle</option><option value="ellipse">Circle</option><option value="triangle">Triangle</option></select></label>
+      </div></div>
+      <span className="toolbar-spacer" />
+      <div className="ribbon-group"><span className="ribbon-label">File &amp; export</span><div className="ribbon-actions">
+        <RibbonButton icon="save" label="Save" onClick={() => runCommand("save")} />
+        <RibbonButton icon="file-media" label="PNG" onClick={() => postMessage({ type: "command", command: "exportPng", slideIds: [slide.id] })} />
+        <RibbonButton icon="file-pdf" label="PDF" onClick={() => postMessage({ type: "command", command: "exportPdf" })} />
+        <RibbonButton icon="file" label="PPTX" onClick={() => postMessage({ type: "command", command: "exportPptx" })} />
+        <RibbonButton icon="globe" label="Web" onClick={() => postMessage({ type: "command", command: "exportWeb" })} />
+        <RibbonButton icon="package" label="Embed all" disabled={!hasLinkedMedia} onClick={() => postMessage({ type: "embedMedia" })} />
+        <RibbonButton icon="hubot" label="MCP" onClick={() => postMessage({ type: "command", command: "configureMcp" })} />
+      </div></div>
+      <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
+        <RibbonButton icon="play" label="Present" primary onClick={() => postMessage({ type: "command", command: "present" })} />
+        <RibbonButton icon="multiple-windows" label="Presenter" onClick={() => postMessage({ type: "command", command: "presenter" })} />
+      </div></div>
+    </div>
+    <div className="context-toolbar" aria-label="Selection formatting">
+      {textLike ? <>
+        <CompactFontPicker value={textLike.style.fontFamily} onChange={(fontFamily) => updateStyle({ fontFamily })} />
+        <label className="context-number" title="Font size"><span>Size</span><input aria-label="Font size" type="number" min="1" value={textLike.style.fontSize} onChange={(event) => updateStyle({ fontSize: Math.max(1, Number(event.target.value)) }, true)} onBlur={commit} /></label>
+        <label className="context-color" title="Text color"><span>Color</span><input aria-label="Text color" type="color" value={/^#[0-9a-f]{6}$/i.test(textLike.style.color) ? textLike.style.color : "#000000"} onChange={(event) => updateStyle({ color: event.target.value }, true)} onBlur={commit} /></label>
+        {element?.type === "text" && <div className="segmented-control" aria-label="Markdown formatting">
+          <ContextIcon icon="bold" label="Bold (Ctrl/Cmd+B)" onClick={() => formatText("bold")} />
+          <ContextIcon icon="italic" label="Italic (Ctrl/Cmd+I)" onClick={() => formatText("italic")} />
+          <ContextIcon icon="list-unordered" label="Bulleted list" onClick={() => formatText("unordered-list")} />
+          <ContextIcon icon="list-ordered" label="Numbered list" onClick={() => formatText("ordered-list")} />
+        </div>}
+        <AlignmentButtons label="Horizontal alignment" value={textLike.style.textAlign} values={["left", "center", "right"]} onChange={(textAlign) => updateStyle({ textAlign })} />
+        <AlignmentButtons label="Vertical alignment" value={textLike.style.verticalAlign} values={["top", "middle", "bottom"]} onChange={(verticalAlign) => updateStyle({ verticalAlign })} />
+        {element?.type === "text" && <button className="context-action" onClick={() => editAdvanced(element.id)}><span className="codicon codicon-open-preview" /> Advanced editor</button>}
+      </> : <span className="context-hint">{element ? `${elementLabel(element)} selected` : "Select an element to format it"}</span>}
+      {element && <div className="context-arrange">
+        <ContextIcon icon="copy" label="Duplicate" onClick={duplicateElement} />
+        <ContextIcon icon="arrow-up" label="Bring forward" onClick={() => updateElement((target) => { target.z += 1; })} />
+        <ContextIcon icon="arrow-down" label="Send backward" onClick={() => updateElement((target) => { target.z -= 1; })} />
+        <ContextIcon icon={element.locked ? "lock" : "unlock"} label={element.locked ? "Unlock" : "Lock"} pressed={element.locked} onClick={() => updateElement((target) => { target.locked = !target.locked; })} />
+        <ContextIcon icon="trash" label="Delete" danger onClick={deleteSelected} />
+      </div>}
+    </div>
   </header>;
 }
 
 function RibbonButton({ icon, label, primary, disabled, onClick }: { icon: string; label: string; primary?: boolean; disabled?: boolean; onClick(): void }) {
   return <button className={`ribbon-button ${primary ? "primary" : ""}`} title={label} disabled={disabled} onClick={onClick}><span className={`codicon codicon-${icon}`} /><span>{label}</span></button>;
+}
+
+function ContextIcon({ icon, label, disabled, pressed, danger, onClick }: { icon: string; label: string; disabled?: boolean; pressed?: boolean; danger?: boolean; onClick(): void }) {
+  return <button type="button" className={`context-icon ${danger ? "danger" : ""}`} title={label} aria-label={label} aria-pressed={pressed} disabled={disabled} onPointerDown={(event) => event.preventDefault()} onClick={onClick}><span className={`codicon codicon-${icon}`} /></button>;
+}
+
+function AlignmentButtons({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange(value: string): void }) {
+  const icons: Record<string, string> = { left: "layout-panel-left", center: "layout-panel-center", right: "layout-panel-right", top: "arrow-up", middle: "layout-panel-center", bottom: "arrow-down" };
+  return <div className="segmented-control" role="group" aria-label={label}>{values.map((item) => <button key={item} type="button" title={`${label}: ${item}`} aria-label={`${label}: ${item}`} aria-pressed={value === item} onPointerDown={(event) => event.preventDefault()} onClick={() => onChange(item)}><span className={`codicon codicon-${icons[item]}`} /></button>)}</div>;
 }
 
 function SlideRail({ deck, selectedId, select, mutate, resolveAsset }: { deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
@@ -413,42 +544,49 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
   </div>;
 }
 
-function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, commit, selectElement, editText, editImage, relinkMedia }: {
-  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
+function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia }: {
+  tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void;
 }) {
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
+  const updateContinuous = (patch: Partial<SlideElement>) => {
+    if (!element) return;
+    preview((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
+    scheduleCommit();
+  };
+  const continuous = (fn: (draft: Deck) => void) => { preview(fn); scheduleCommit(); };
   return <aside className="inspector">
     <nav>{(["properties", "layers", "animations"] as const).map((value) => <button className={tab === value ? "active" : ""} onClick={() => setTab(value)} key={value}>{value}</button>)}</nav>
     <div className="inspector-body">
       {tab === "properties" && <>
         <h3>{element ? element.type : "Slide"}</h3>
         {element ? <>
-          <label>Element name<input autoComplete="off" value={element.name ?? ""} placeholder={elementLabel(element)} onChange={(event) => update({ name: event.target.value.trimStart() || undefined })} /></label>
+          <label>Element name<input autoComplete="off" value={element.name ?? ""} placeholder={elementLabel(element)} onChange={(event) => updateContinuous({ name: event.target.value.trimStart() || undefined })} onBlur={commit} /></label>
           <h4 className="property-heading">Geometry</h4>
           <div className="field-grid geometry-grid">
-            <NumberField label="X" value={element.x} onChange={(x) => update({ x })} />
-            <NumberField label="Y" value={element.y} onChange={(y) => update({ y })} />
-            <NumberField label="W" value={element.width} min={0} onChange={(width) => update({ width })} />
-            <NumberField label="H" value={element.height} min={0} onChange={(height) => update({ height })} />
-            <NumberField label="Rotate" value={element.rotation} onChange={(rotation) => update({ rotation })} />
-            <NumberField label="Opacity" value={element.opacity} step={0.05} min={0} max={1} onChange={(opacity) => update({ opacity })} />
+            <NumberField label="X" value={element.x} onChange={(x) => updateContinuous({ x })} onCommit={commit} />
+            <NumberField label="Y" value={element.y} onChange={(y) => updateContinuous({ y })} onCommit={commit} />
+            <NumberField label="W" value={element.width} min={0} onChange={(width) => updateContinuous({ width })} onCommit={commit} />
+            <NumberField label="H" value={element.height} min={0} onChange={(height) => updateContinuous({ height })} onCommit={commit} />
+            <NumberField label="Rotate" value={element.rotation} onChange={(rotation) => updateContinuous({ rotation })} onCommit={commit} />
+            <NumberField label="Opacity" value={element.opacity} step={0.05} min={0} max={1} onChange={(opacity) => updateContinuous({ opacity })} onCommit={commit} />
           </div>
           <h4 className="property-heading">Appearance</h4>
           {element.type === "text" && <>
-            <button className="edit-text-button" onClick={() => editText(element.id)}>Edit Markdown · LaTeX · Code…</button>
-            <ColorField label="Text color" value={element.style.color} onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.color = color; })} />
-            <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontSize = fontSize; })} />
+            <button className="edit-text-button" onClick={() => editText(element.id)}>Open advanced Markdown · LaTeX · Code editor…</button>
+            <ColorField label="Text color" value={element.style.color} onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.color = color; })} onCommit={commit} />
+            <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontSize = fontSize; })} onCommit={commit} />
             <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontFamily = fontFamily; })} />
-            <label>Alignment<select value={element.style.textAlign} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.textAlign = event.target.value as "left" | "center" | "right"; })}><option>left</option><option>center</option><option>right</option></select></label>
+            <span className="inspector-control-label">Horizontal alignment</span><AlignmentButtons label="Horizontal alignment" value={element.style.textAlign} values={["left", "center", "right"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.textAlign = value as "left" | "center" | "right"; })} />
+            <span className="inspector-control-label">Vertical alignment</span><AlignmentButtons label="Vertical alignment" value={element.style.verticalAlign} values={["top", "middle", "bottom"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.verticalAlign = value as "top" | "middle" | "bottom"; })} />
           </>}
           {element.type === "shape" && <>
-            <ColorField label="Fill" value={element.fill} allowTransparent onChange={(fill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} />
-            <NumberField label="Border width" value={element.strokeWidth} onChange={(strokeWidth) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.strokeWidth = Math.max(0, strokeWidth); })} />
-            <ColorField label="Border color" value={element.stroke} allowTransparent onChange={(stroke) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.stroke = stroke; })} />
+            <ColorField label="Fill" value={element.fill} allowTransparent onChange={(fill) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} onCommit={commit} />
+            <NumberField label="Border width" value={element.strokeWidth} onChange={(strokeWidth) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.strokeWidth = Math.max(0, strokeWidth); })} onCommit={commit} />
+            <ColorField label="Border color" value={element.stroke} allowTransparent onChange={(stroke) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.stroke = stroke; })} onCommit={commit} />
             <CheckboxField label="Shadow" checked={element.shadow.enabled} onChange={(enabled) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.enabled = enabled; })} />
             {element.shadow.enabled && <>
-              <ColorField label="Shadow color" value={element.shadow.color} allowTransparent onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.color = color; })} />
-              <div className="field-grid"><NumberField label="Shadow X" value={element.shadow.offsetX} onChange={(offsetX) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetX = offsetX; })} /><NumberField label="Shadow Y" value={element.shadow.offsetY} onChange={(offsetY) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetY = offsetY; })} /></div>
+              <ColorField label="Shadow color" value={element.shadow.color} allowTransparent onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.color = color; })} onCommit={commit} />
+              <div className="field-grid"><NumberField label="Shadow X" value={element.shadow.offsetX} onChange={(offsetX) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetX = offsetX; })} onCommit={commit} /><NumberField label="Shadow Y" value={element.shadow.offsetY} onChange={(offsetY) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetY = offsetY; })} onCommit={commit} /></div>
               <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.blur = blur; })} onCommit={commit} />
             </>}
           </>}
@@ -461,15 +599,17 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
             </div>
             <CheckboxField label="Header row" checked={element.headerRow} onChange={(headerRow) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.headerRow = headerRow; })} />
             <div className="table-cell-editor" style={{ gridTemplateColumns: `repeat(${element.columns}, minmax(86px, 1fr))` }}>
-              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea className={row === 0 && element.headerRow ? "header-cell" : ""} key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; })} />))}
+              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea className={row === 0 && element.headerRow ? "header-cell" : ""} key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onChange={(event) => { preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; }); scheduleCommit(); }} onBlur={commit} />))}
             </div>
-            <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontSize = Math.max(0, fontSize); })} />
+            <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontSize = Math.max(0, fontSize); })} onCommit={commit} />
             <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontFamily = fontFamily; })} />
-            <ColorField label="Text color" value={element.style.color} onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.color = color; })} />
-            <ColorField label="Header fill" value={element.style.headerFill} allowTransparent onChange={(headerFill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.headerFill = headerFill; })} />
-            <ColorField label="Cell fill" value={element.style.cellFill} allowTransparent onChange={(cellFill) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.cellFill = cellFill; })} />
-            <NumberField label="Border width" value={element.style.borderWidth} onChange={(borderWidth) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.borderWidth = Math.max(0, borderWidth); })} />
-            <ColorField label="Border color" value={element.style.borderColor} allowTransparent onChange={(borderColor) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.borderColor = borderColor; })} />
+            <ColorField label="Text color" value={element.style.color} onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.color = color; })} onCommit={commit} />
+            <ColorField label="Header fill" value={element.style.headerFill} allowTransparent onChange={(headerFill) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.headerFill = headerFill; })} onCommit={commit} />
+            <ColorField label="Cell fill" value={element.style.cellFill} allowTransparent onChange={(cellFill) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.cellFill = cellFill; })} onCommit={commit} />
+            <NumberField label="Border width" value={element.style.borderWidth} onChange={(borderWidth) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.borderWidth = Math.max(0, borderWidth); })} onCommit={commit} />
+            <ColorField label="Border color" value={element.style.borderColor} allowTransparent onChange={(borderColor) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.borderColor = borderColor; })} onCommit={commit} />
+            <span className="inspector-control-label">Horizontal alignment</span><AlignmentButtons label="Horizontal alignment" value={element.style.textAlign} values={["left", "center", "right"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.textAlign = value as "left" | "center" | "right"; })} />
+            <span className="inspector-control-label">Vertical alignment</span><AlignmentButtons label="Vertical alignment" value={element.style.verticalAlign} values={["top", "middle", "bottom"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.verticalAlign = value as "top" | "middle" | "bottom"; })} />
           </>}
           {(element.type === "image" || element.type === "video") && <>
             <div className="media-source-card"><span className={`storage-badge ${element.storage}`}>{element.storage}</span><code title={element.src}>{element.src}</code><div><button onClick={() => relinkMedia(element.type, element.id)}>Choose linked file…</button>{element.storage === "linked" && <button onClick={() => postMessage({ type: "embedMedia", elementIds: [element.id] })}>Embed in .assets</button>}</div></div>
@@ -478,12 +618,12 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
           </>}
           {element.type === "image" && <>
             <RangeField label="Border width" value={element.border.width} min={0} max={40} onChange={(width) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.border.width = width; })} onCommit={commit} />
-            <ColorField label="Border color" value={element.border.color} allowTransparent onChange={(color) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.border.color = color; })} />
+            <ColorField label="Border color" value={element.border.color} allowTransparent onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.border.color = color; })} onCommit={commit} />
             <RangeField label="Edge fade" value={element.edgeFade} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(edgeFade) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} onCommit={commit} />
             <p className="panel-help">Drag the blue point upward from the bottom edge to fade all four sides.</p>
             <RangeField label="Crop zoom" value={cropZoomPercent(element.crop)} min={100} max={1000} onChange={(percent) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.crop = setCropZoom(target.crop, percent); })} onCommit={commit} suffix="%" />
             <button className={`edit-text-button ${cropActive ? "active" : ""}`} onClick={() => editImage(element.id)}>{cropActive ? "Cropping on canvas…" : "Crop image (or double-click)"}</button>
-            <label>Alt text<textarea value={element.alt ?? ""} onChange={(event) => update({ alt: event.target.value })} /></label>
+            <label>Alt text<textarea value={element.alt ?? ""} onChange={(event) => updateContinuous({ alt: event.target.value })} onBlur={commit} /></label>
           </>}
           {element.type === "video" && <>
             <label>Playback<select value={element.playback.mode} onChange={(event) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.mode = event.target.value as "manual" | "autoplay"; })}><option value="manual">Manual</option><option value="autoplay">Autoplay</option></select></label>
@@ -492,8 +632,8 @@ function Inspector({ tab, setTab, deck, slide, element, cropActive, mutate, prev
             <CheckboxField label="Controls" checked={element.playback.controls} onChange={(controls) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "video") target.playback.controls = controls; })} />
           </>}
         </> : <>
-          <label>Slide title<input value={slide.title} onChange={(event) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.title = event.target.value; })} /></label>
-          <ColorField label="Background" value={slide.background ?? deck.theme.background} onChange={(background) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.background = background; })} />
+          <label>Slide title<input value={slide.title} onChange={(event) => { preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.title = event.target.value; }); scheduleCommit(); }} onBlur={commit} /></label>
+          <ColorField label="Background" value={slide.background ?? deck.theme.background} onChange={(background) => continuous((draft) => { draft.slides.find((item) => item.id === slide.id)!.background = background; })} onCommit={commit} />
           <CheckboxField label="Hide page number" checked={slide.hidePageNumber} onChange={(hidePageNumber) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.hidePageNumber = hidePageNumber; })} />
         </>}
       </>}
@@ -520,8 +660,70 @@ function TextEditor({ deck, slideId, elementId, preview, scheduleCommit, commit,
   if (element?.type !== "text") return null;
   const background = slide?.background ?? deck.layouts[slide?.layout ?? ""]?.background ?? deck.theme.background;
   const finish = () => { commit(); close(); };
-  return <div className="modal-backdrop" onMouseDown={finish}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={finish}>Done</button></header><textarea autoFocus value={element.markdown} onChange={(event) => { preview((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; }); scheduleCommit(); }} onBlur={commit} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks.</p></div></div>;
+  return <div className="modal-backdrop" onMouseDown={finish}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={finish}>Done</button></header><textarea autoFocus value={element.markdown} onKeyDown={(event) => { if (event.key === "Escape" || ((event.ctrlKey || event.metaKey) && event.key === "Enter")) { event.preventDefault(); finish(); } }} onChange={(event) => { preview((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; }); scheduleCommit(); }} onBlur={commit} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks. Press <code>Ctrl/Cmd+Enter</code> or <code>Escape</code> to finish.</p></div></div>;
 }
+
+const InlineTextEditor = forwardRef<InlineTextEditorHandle, {
+  element: Extract<SlideElement, { type: "text" }>;
+  selectAll: boolean;
+  preview(markdown: string): void;
+  finish(): void;
+}>(function InlineTextEditor({ element, selectAll, preview, finish }, ref) {
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const applyFormat = (command: TextFormatCommand) => {
+    const input = textarea.current;
+    if (!input) return;
+    const selection: TextSelection = { start: input.selectionStart, end: input.selectionEnd };
+    const edit = command === "bold"
+      ? toggleInlineMarkdown(element.markdown, selection, "**")
+      : command === "italic"
+        ? toggleInlineMarkdown(element.markdown, selection, "_")
+        : toggleMarkdownList(element.markdown, selection, command === "ordered-list");
+    preview(edit.text);
+    requestAnimationFrame(() => {
+      textarea.current?.focus();
+      textarea.current?.setSelectionRange(edit.selection.start, edit.selection.end);
+    });
+  };
+  useImperativeHandle(ref, () => ({ format: applyFormat, focus: () => textarea.current?.focus() }), [element.markdown]);
+  useLayoutEffect(() => {
+    const input = textarea.current;
+    if (!input) return;
+    input.focus();
+    if (selectAll) input.select(); else input.setSelectionRange(input.value.length, input.value.length);
+  }, [element.id]);
+  const keyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const accelerator = (event.ctrlKey || event.metaKey) && !event.altKey;
+    if (accelerator && (event.key.toLowerCase() === "b" || event.key.toLowerCase() === "i")) {
+      event.preventDefault();
+      event.stopPropagation();
+      applyFormat(event.key.toLowerCase() === "b" ? "bold" : "italic");
+      return;
+    }
+    if (event.key === "Escape" || (accelerator && event.key === "Enter")) {
+      event.preventDefault();
+      event.stopPropagation();
+      finish();
+    }
+  };
+  const style: CSSProperties = {
+    left: element.x,
+    top: element.y,
+    width: element.width,
+    height: element.height,
+    transform: `rotate(${element.rotation}deg)`,
+    opacity: element.opacity,
+    zIndex: 2147482000,
+    fontFamily: element.style.fontFamily,
+    fontSize: element.style.fontSize,
+    fontWeight: element.style.fontWeight,
+    color: element.style.color,
+    textAlign: element.style.textAlign,
+    lineHeight: element.style.lineHeight,
+    padding: element.style.padding
+  };
+  return <textarea ref={textarea} className="inline-text-editor" aria-label="Edit text box Markdown" title="Markdown text · Ctrl/Cmd+Enter or Escape to finish" value={element.markdown} style={style} onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onKeyDown={keyDown} onChange={(event) => preview(event.target.value)} onBlur={finish} />;
+});
 
 const SYSTEM_FONT_STACK = "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
 const FONT_CANDIDATES = [
@@ -553,16 +755,31 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange(value: 
   return <label>Font family<div className="font-picker"><select value={value} onChange={(event) => onChange(event.target.value)}>{[...custom, ...available].map((font) => <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>{font.label}</option>)}</select><button type="button" title="Choose a font installed on this computer" onClick={discover}>System fonts…</button></div></label>;
 }
 
-function NumberField({ label, value, step = 1, min, max, onChange }: { label: string; value: number; step?: number; min?: number; max?: number; onChange(value: number): void }) {
+function CompactFontPicker({ value, onChange }: { value: string; onChange(value: string): void }) {
+  const available = [...FONT_CANDIDATES];
+  const custom = available.some((font) => font.value === value) ? [] : [{ label: `Current: ${value}`, value }];
+  const discover = () => {
+    const requestId = crypto.randomUUID();
+    pendingFonts.set(requestId, (family, error) => {
+      pendingFonts.delete(requestId);
+      if (error) alert(`Could not list system fonts: ${error}`);
+      else if (family) onChange(family);
+    });
+    postMessage({ type: "selectFont", requestId, current: value });
+  };
+  return <div className="context-font"><select aria-label="Font family" value={value} onChange={(event) => onChange(event.target.value)}>{[...custom, ...available].map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}</select><button type="button" title="Choose a system font" aria-label="Choose a system font" onClick={discover}>…</button></div>;
+}
+
+function NumberField({ label, value, step = 1, min, max, onChange, onCommit }: { label: string; value: number; step?: number; min?: number; max?: number; onChange(value: number): void; onCommit?(): void }) {
   const safeValue = Number.isFinite(value) ? value : 0;
   const update = (next: number) => onChange(roundStep(clampOptional(next, min, max), step));
   const nudge = (direction: -1 | 1, event: { shiftKey: boolean; altKey: boolean }) => update(safeValue + direction * step * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1));
-  return <label className="number-field"><span>{label}</span><span className="number-control"><button type="button" tabIndex={-1} title={`Decrease ${label} · Shift for ×10`} aria-label={`Decrease ${label}`} onClick={(event) => nudge(-1, event)}>−</button><input type="number" value={safeValue} step={step} min={min} max={max} onFocus={(event) => event.currentTarget.select()} onWheel={(event) => { if (document.activeElement !== event.currentTarget) return; event.preventDefault(); nudge(event.deltaY > 0 ? -1 : 1, event); }} onChange={(event) => update(Number(event.target.value))} /><button type="button" tabIndex={-1} title={`Increase ${label} · Shift for ×10`} aria-label={`Increase ${label}`} onClick={(event) => nudge(1, event)}>＋</button></span></label>;
+  return <label className="number-field"><span>{label}</span><span className="number-control"><button type="button" tabIndex={-1} title={`Decrease ${label} · Shift for ×10`} aria-label={`Decrease ${label}`} onClick={(event) => { nudge(-1, event); onCommit?.(); }}>−</button><input type="number" value={safeValue} step={step} min={min} max={max} onFocus={(event) => event.currentTarget.select()} onWheel={(event) => { if (document.activeElement !== event.currentTarget) return; event.preventDefault(); nudge(event.deltaY > 0 ? -1 : 1, event); }} onChange={(event) => update(Number(event.target.value))} onBlur={onCommit} /><button type="button" tabIndex={-1} title={`Increase ${label} · Shift for ×10`} aria-label={`Increase ${label}`} onClick={(event) => { nudge(1, event); onCommit?.(); }}>＋</button></span></label>;
 }
 function RangeField({ label, value, min, max, onChange, onCommit, suffix = " px" }: { label: string; value: number; min: number; max: number; onChange(value: number): void; onCommit?(): void; suffix?: string }) { return <label className="range-field"><span>{label}<output>{Math.round(value)}{suffix}</output></span><input type="range" min={min} max={max} step="1" value={clamp(value, min, max)} onChange={(event) => onChange(Number(event.target.value))} onPointerUp={onCommit} onPointerCancel={onCommit} onKeyUp={onCommit} onBlur={onCommit} /></label>; }
-function ColorField({ label, value, allowTransparent = false, onChange }: { label: string; value: string; allowTransparent?: boolean; onChange(value: string): void }) {
+function ColorField({ label, value, allowTransparent = false, onChange, onCommit }: { label: string; value: string; allowTransparent?: boolean; onChange(value: string): void; onCommit?(): void }) {
   const transparent = value.trim().toLowerCase() === "transparent";
-  return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} disabled={transparent} onChange={(event) => onChange(event.target.value)} /><input value={value} onChange={(event) => onChange(event.target.value)} />{allowTransparent && <button type="button" className={`transparent-toggle ${transparent ? "active" : ""}`} title={transparent ? "Use an opaque color" : "Make transparent"} aria-label={transparent ? `Disable transparent ${label}` : `Make ${label} transparent`} onClick={() => onChange(transparent ? "#000000" : "transparent")}>∅</button>}</span></label>;
+  return <label>{label}<span className="color-field"><input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"} disabled={transparent} onChange={(event) => onChange(event.target.value)} onBlur={onCommit} /><input value={value} onChange={(event) => onChange(event.target.value)} onBlur={onCommit} />{allowTransparent && <button type="button" className={`transparent-toggle ${transparent ? "active" : ""}`} title={transparent ? "Use an opaque color" : "Make transparent"} aria-label={transparent ? `Disable transparent ${label}` : `Make ${label} transparent`} onClick={() => { onChange(transparent ? "#000000" : "transparent"); onCommit?.(); }}>∅</button>}</span></label>;
 }
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange(checked: boolean): void }) { return <label className="checkbox-field"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
 function InvalidDeck({ message, gitConflict }: { message: string; gitConflict: boolean }) { return <div className="invalid"><h1>{gitConflict ? "This deck has an unresolved Git conflict" : "SlidePix could not open this deck"}</h1><pre>{message}</pre>{gitConflict ? <p><button onClick={() => postMessage({ type: "command", command: "resolveGitConflict" })}>Resolve with SlidePix</button> <button onClick={() => postMessage({ type: "command", command: "openTextEditor" })}>Open as text</button></p> : <p>Fix the JSON in the text editor. SlidePix will reopen the last valid preview automatically.</p>}</div>; }
@@ -587,7 +804,7 @@ function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): 
 function resizeTable(table: Extract<SlideElement, { type: "table" }>, rows: number, columns: number): void { table.rows = clamp(Math.round(rows), 1, 50); table.columns = clamp(Math.round(columns), 1, 20); table.cells = normalizedTableCells(table); }
 function isTextEntryTarget(target: EventTarget | null): boolean { return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)); }
 function deleteElement(deck: Deck, slideId: string, elementId: string, mutate: (fn: (deck: Deck) => void) => void, select: (id?: string) => void) { mutate((draft) => { const target = draft.slides.find((item) => item.id === slideId)!; target.elements = target.elements.filter((item) => item.id !== elementId); target.timeline = target.timeline.filter((step) => step.targetElementId !== elementId); }); select(); }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) alert(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");

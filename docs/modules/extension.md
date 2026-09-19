@@ -44,8 +44,10 @@ Private command helpers:
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's undo/autosave/external-change lifecycle.
-Undo/redo messages execute VS Code's built-in history commands rather than
-maintaining a competing history inside the webview.
+Acknowledged history messages await VS Code's built-in undo/redo command and
+return the resulting exact revision and parsed deck. The webview serializes
+these acknowledgements, so it never maintains a competing history or races a
+pending replacement.
 
 ## `src/git-collaboration.ts` and `src/merge-driver.ts`
 

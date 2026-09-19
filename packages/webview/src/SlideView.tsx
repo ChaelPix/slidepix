@@ -7,6 +7,7 @@ type Props = {
   scale?: number;
   interactive?: boolean;
   selectedElementId?: string;
+  editingElementId?: string;
   resolveAsset?: (source: string, storage: MediaStorage) => string;
   onSelectElement?: (id?: string) => void;
   onEditText?: (id: string) => void;
@@ -19,6 +20,7 @@ export function SlideView({
   scale = 1,
   interactive = false,
   selectedElementId,
+  editingElementId,
   resolveAsset = (value) => value,
   onSelectElement,
   onEditText,
@@ -45,6 +47,7 @@ export function SlideView({
           element={element}
           interactive={interactive}
           selected={selectedElementId === element.id}
+          editing={editingElementId === element.id}
           resolveAsset={resolveAsset}
           onMouseDown={(event) => stop(event, element.id)}
           onDoubleClick={() => {
@@ -66,6 +69,7 @@ function ElementView({
   element,
   interactive,
   selected,
+  editing,
   resolveAsset,
   onMouseDown,
   onDoubleClick
@@ -73,6 +77,7 @@ function ElementView({
   element: SlideElement;
   interactive: boolean;
   selected: boolean;
+  editing: boolean;
   resolveAsset: (source: string, storage: MediaStorage) => string;
   onMouseDown: (event: MouseEvent) => void;
   onDoubleClick: () => void;
@@ -91,7 +96,8 @@ function ElementView({
   return (
     <div
       id={interactive ? `element-${element.id}` : undefined}
-      className={`slide-element ${selected ? "selected" : ""}`}
+      className={`slide-element ${selected ? "selected" : ""} ${editing ? "editing" : ""}`}
+      title={interactive && element.type === "text" ? "Double-click to edit text" : undefined}
       data-element-id={element.id}
       style={style}
       onMouseDown={onMouseDown}

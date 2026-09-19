@@ -32,7 +32,11 @@ beforeEach(() => {
     zoom: 0.5,
     dirty: false,
     pending: undefined,
-    mergeState: undefined
+    mergeState: undefined,
+    historyPending: undefined,
+    historyQueue: [],
+    deferredCommands: [],
+    historyError: undefined
   });
 });
 
@@ -44,7 +48,7 @@ describe("revision-safe persistence queue", () => {
     useDeckStore.getState().preview((deck) => { deck.slides[0]!.notes = "typed"; });
     useDeckStore.getState().scheduleCommit();
     expect(postMessage).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(249);
+    vi.advanceTimersByTime(599);
     expect(postMessage).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(postMessage).toHaveBeenCalledOnce();
@@ -125,6 +129,56 @@ describe("revision-safe persistence queue", () => {
     useDeckStore.getState().handleEditResult(accepted(request.requestId, submitted.deck, "revision-1"));
     expect(postMessage).toHaveBeenCalledTimes(2);
     expect(vi.mocked(postMessage).mock.calls[1]![0]).toMatchObject({ type: "command", command: "save" });
+  });
+
+  it("flushes edits before sending an acknowledged history request", () => {
+    const base = fixture();
+    useDeckStore.getState().setFromHost(base, "revision-0", "asset", "linked");
+    useDeckStore.getState().preview((deck) => { deck.slides[0]!.notes = "mine"; });
+    useDeckStore.getState().runCommand("undo");
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(postMessage).mock.calls[0]![0].type).toBe("replaceDocument");
+
+    const request = firstEdit();
+    const submitted = parseDeckText(request.text);
+    if (!submitted.ok) return;
+    useDeckStore.getState().handleEditResult(accepted(request.requestId, submitted.deck, "revision-1"));
+    expect(vi.mocked(postMessage).mock.calls[1]![0]).toMatchObject({ type: "history", command: "undo" });
+  });
+
+  it("serializes rapid undo and redo requests", () => {
+    const base = fixture();
+    useDeckStore.getState().setFromHost(base, "revision-0", "asset", "linked");
+    useDeckStore.getState().runCommand("undo");
+    useDeckStore.getState().runCommand("redo");
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    const undo = vi.mocked(postMessage).mock.calls[0]![0];
+    if (undo.type !== "history") return;
+    useDeckStore.getState().handleHistoryResult({ version: 2, type: "historyResult", requestId: undo.requestId, command: "undo", ok: true, revision: "revision-undo", text: serializeDeck(base), deck: base });
+    expect(vi.mocked(postMessage).mock.calls[1]![0]).toMatchObject({ type: "history", command: "redo" });
+  });
+
+  it("acknowledges a no-op history command", () => {
+    const base = fixture();
+    useDeckStore.getState().setFromHost(base, "revision-0", "asset", "linked");
+    useDeckStore.getState().runCommand("undo");
+    const request = vi.mocked(postMessage).mock.calls[0]![0];
+    if (request.type !== "history") return;
+    useDeckStore.getState().handleHistoryResult({ version: 2, type: "historyResult", requestId: request.requestId, command: "undo", ok: true, revision: "revision-0", text: serializeDeck(base), deck: base });
+    expect(useDeckStore.getState().historyPending).toBeUndefined();
+    expect(useDeckStore.getState().deck).toEqual(base);
+  });
+
+  it("reports a failed history request without invalidating the deck", () => {
+    const base = fixture();
+    useDeckStore.getState().setFromHost(base, "revision-0", "asset", "linked");
+    useDeckStore.getState().runCommand("undo");
+    const request = vi.mocked(postMessage).mock.calls[0]![0];
+    if (request.type !== "history") return;
+    useDeckStore.getState().handleHistoryResult({ version: 2, type: "historyResult", requestId: request.requestId, command: "undo", ok: false, revision: "revision-0", text: serializeDeck(base), deck: base, error: "History failed" });
+    expect(useDeckStore.getState().deck).toEqual(base);
+    expect(useDeckStore.getState().error).toBeUndefined();
+    expect(useDeckStore.getState().historyError).toBe("History failed");
   });
 });
 

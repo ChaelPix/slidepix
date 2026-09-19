@@ -115,6 +115,39 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       await panel.webview.postMessage(editResult(message.requestId, applied, nextText, applied ? undefined : "applyFailed", applied ? undefined : "VS Code rejected the document edit."));
       return;
     }
+    if (message.type === "history") {
+      try {
+        await vscode.commands.executeCommand(message.command);
+        const text = document.getText();
+        const parsed = parseDeckText(text);
+        await panel.webview.postMessage({
+          version: 2,
+          type: "historyResult",
+          requestId: message.requestId,
+          command: message.command,
+          ok: parsed.ok,
+          revision: revisionForText(text),
+          text,
+          deck: parsed.ok ? parsed.deck : undefined,
+          error: parsed.ok ? undefined : parsed.message
+        } satisfies HostToWebviewMessage);
+      } catch (error) {
+        const text = document.getText();
+        const parsed = parseDeckText(text);
+        await panel.webview.postMessage({
+          version: 2,
+          type: "historyResult",
+          requestId: message.requestId,
+          command: message.command,
+          ok: false,
+          revision: revisionForText(text),
+          text,
+          deck: parsed.ok ? parsed.deck : undefined,
+          error: error instanceof Error ? error.message : `Could not ${message.command}.`
+        } satisfies HostToWebviewMessage);
+      }
+      return;
+    }
     if (message.type === "importAsset") return this.importAsset(document, panel, message);
     if (message.type === "selectMedia") return this.selectMedia(document, panel, message);
     if (message.type === "linkMedia") return this.resolveMedia(document, panel, message, vscode.Uri.parse(message.uri));
