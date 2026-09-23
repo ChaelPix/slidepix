@@ -165,10 +165,16 @@ independently; its name must match the deck.
 
 ## AI review with MCP
 
-Run **SlidePix: Configure MCP** from the Command Palette. SlidePix installs the
-renderer with consent and produces previewable host configuration for its
-read-only tools. Those tools list, inspect, and render slides; they never modify
-the deck.
+The **AI** button and **SlidePix: Configure MCP** install the read-only MCP
+server for Cursor, VS Code, Codex, Claude Code, and Claude Desktop. Each app
+keeps its own config: `~/.cursor/mcp.json`, the VS Code profile `mcp.json`,
+`~/.codex/config.toml`, `~/.claude.json`, and the Claude Desktop config.
+Existing servers in those files stay. A file that is not valid is left unchanged.
+
+After adding it, start a new chat in the app you want to use. That chat can call `list_slides`,
+`inspect_slides`, and `render_slides` with an absolute deck path. Those tools
+never modify the deck. Enable **slidepix** in MCP settings if the editor asks.
+The chat that was already open will not see a server added after it started.
 
 Repository-native agent guidance is not kept in a loose MCP tutorial:
 

@@ -1,3 +1,5 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { createDeck, parseDeckText, serializeDeck } from "@slidepix/core";
 import { uniqueDeckFilename } from "./create-deck";
@@ -6,6 +8,7 @@ import { exportPdf, exportPng, installRenderer } from "./renderer";
 import { exportPptx } from "./pptx-export-command";
 import { exportWeb } from "./web-export-command";
 import { configureGitCollaboration, removeGitCollaboration, resolveGitConflict } from "./git-collaboration";
+import { mcpTargets, mergeMcpTarget, slidepixMcpProcess, type McpTarget } from "./mcp-config";
 
 export function activate(context: vscode.ExtensionContext): void {
   const editor = new SlidePixEditorProvider(context);
@@ -84,16 +87,46 @@ async function withDeck(editor: SlidePixEditorProvider, action: (deck: import("@
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
   const renderer = await installRenderer(context);
   if (!renderer) return;
-  const server = vscode.Uri.joinPath(context.extensionUri, "dist", "mcp.cjs").fsPath;
-  const browsers = vscode.Uri.joinPath(context.globalStorageUri, "playwright").fsPath;
-  const command = process.execPath;
-  const common = { command, args: [server], env: { ELECTRON_RUN_AS_NODE: "1", PLAYWRIGHT_BROWSERS_PATH: browsers } };
-  const config = {
-    vscode: { servers: { slidepix: { type: "stdio", ...common } } },
-    cursor: { mcpServers: { slidepix: common } }
-  };
-  const text = JSON.stringify(config, null, 2);
-  const choice = await vscode.window.showInformationMessage("SlidePix MCP configuration is ready. It will not modify your workspace automatically.", "Copy", "Preview");
-  if (choice === "Copy") await vscode.env.clipboard.writeText(text);
-  if (choice === "Preview") await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({ language: "json", content: text }));
+  const server = slidepixMcpProcess(
+    process.execPath,
+    vscode.Uri.joinPath(context.extensionUri, "dist", "mcp.cjs").fsPath,
+    vscode.Uri.joinPath(context.globalStorageUri, "playwright").fsPath
+  );
+  const userDirectory = path.resolve(context.globalStorageUri.fsPath, "..", "..");
+  const targets = mcpTargets(os.homedir(), userDirectory, process.platform);
+  const choice = await vscode.window.showInformationMessage(
+    "Add the read-only SlidePix MCP server for Cursor, VS Code, Codex, Claude Code, and Claude Desktop? New chats in those apps can then list, inspect, and render decks.",
+    "Add",
+    "Cancel"
+  );
+  if (choice !== "Add") return;
+  const written: string[] = [];
+  const failed: string[] = [];
+  for (const target of targets) {
+    try {
+      await writeMcpTarget(target, server);
+      written.push(target.filePath);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      failed.push(`${target.filePath}: ${detail}`);
+    }
+  }
+  if (!written.length) return void vscode.window.showErrorMessage(`SlidePix could not install MCP. ${failed.join(" ")}`);
+  const summary = `SlidePix MCP was added for ${written.length} app${written.length === 1 ? "" : "s"}. Start a new chat to use list_slides, inspect_slides, and render_slides.`;
+  void vscode.window.showInformationMessage(failed.length ? `${summary} Skipped: ${failed.join(" ")}` : summary);
+}
+
+async function writeMcpTarget(target: McpTarget, server: ReturnType<typeof slidepixMcpProcess>): Promise<void> {
+  const merged = mergeMcpTarget(await readOptionalText(target.filePath), target, server);
+  const destination = vscode.Uri.file(target.filePath);
+  await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(target.filePath)));
+  await vscode.workspace.fs.writeFile(destination, Buffer.from(merged, "utf8"));
+}
+
+async function readOptionalText(filePath: string): Promise<string | undefined> {
+  try {
+    return Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(filePath))).toString("utf8");
+  } catch {
+    return undefined;
+  }
 }

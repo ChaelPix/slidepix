@@ -3,8 +3,11 @@
 Package: `@slidepix/mcp`
 
 Purpose: expose read-only deck inspection and deterministic rendering over MCP
-stdio. This is an implementation reference, not host setup instructions. Agent
-usage guidance lives in Cursor rules and the Codex skill linked below.
+stdio. The extension's **AI** action writes this server into the Cursor, VS Code,
+Codex, Claude Code, and Claude Desktop user configs. Agents only see the tools
+after a new chat. This document is an
+implementation reference, not host setup instructions. Agent usage guidance
+lives in Cursor rules and the Codex skill linked below.
 
 ## `src/server.ts`
 

@@ -22,9 +22,11 @@ Private command helpers:
   Explorer both skip the save dialog and filename prompt.
 - `withDeck(editor, action)` requires an active deck, validates current text,
   and only invokes the action for a valid document.
-- `configureMcp(context)` ensures the renderer exists and produces previewable
-  VS Code/Cursor stdio configuration. It intentionally does not edit workspace
-  agent configuration.
+- `configureMcp(context)` installs the renderer, then adds a `slidepix` stdio
+  server for Cursor (`~/.cursor/mcp.json`), VS Code (profile `mcp.json`),
+  Codex (`~/.codex/config.toml`), Claude Code (`~/.claude.json`), and Claude
+  Desktop. Other servers and unrelated settings in those files are kept. A
+  malformed file is skipped and reported.
 - Git collaboration commands configure/remove only repository-local settings
   for the active deck and resolve remaining conflicts from Git index stages.
 
@@ -78,7 +80,8 @@ these acknowledgements, so it never races a pending replacement.
 `src/git-collaboration.test.ts` verifies managed attributes and the bundled
 driver directly and through a temporary Git repository, including paths with
 spaces and marker fallback. `src/document-history.test.ts` covers snapshot
-undo/redo, redo invalidation, and the history cap.
+undo/redo, redo invalidation, and the history cap. `src/mcp-config.test.ts`
+covers the Codex table replacement and JSON merges that keep other servers.
 
 ## `src/fonts.ts`
 
