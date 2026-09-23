@@ -73,7 +73,7 @@ export async function buildPptxExport(
     for (const element of [...sourceSlide.elements].filter((item) => !item.hidden).sort((left, right) => left.z - right.z)) {
       patch.animationTargets.set(element.id, await addNativeElement(pptx, slide, element, sourceSlide, patch, context, morphCounts));
     }
-    if (deck.pageNumbers.enabled && !sourceSlide.hidePageNumber) addPageNumber(slide, deck, sourceSlide, visibleIndex, context);
+    addPageNumber(slide, deck, sourceSlide, visibleIndex, context);
     patches.push(patch);
   }
 

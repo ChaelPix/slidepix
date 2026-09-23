@@ -608,7 +608,7 @@
                       "additionalProperties": false
                     },
                     "lockAspectRatio": {
-                      "default": false,
+                      "default": true,
                       "type": "boolean"
                     },
                     "aspectRatio": {
@@ -719,7 +719,7 @@
                       "minimum": 0
                     },
                     "lockAspectRatio": {
-                      "default": false,
+                      "default": true,
                       "type": "boolean"
                     },
                     "aspectRatio": {

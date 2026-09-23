@@ -68,11 +68,10 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   incoming transition and duration.
 - Selecting an image exposes canvas handles for radius and four-sided edge
   fade. The fade uses the same geometry-derived rounded SVG mask in editor and
-  export, so it follows the configured corner radius. Double-clicking enters a
-  persistent crop mode that shows the image outside the crop window. Drag pans;
-  wheel zoom anchors under the pointer; the diagonal handle and toolbar slider
-  preserve the current normalized crop ratio. The toolbar also provides reset
-  and explicit Done controls. Videos expose only the shared radius handle.
+  export, so it follows the configured corner radius. Double-clicking, or
+  **Crop edges**, cuts the picture by dragging an edge or corner. Scroll
+  zooms that crop while keeping its ratio. **Done** or Escape leaves the mode.
+  Videos expose only the shared radius handle.
 - Workspace media is linked by default. Properties embeds one selected item;
   **Embed all** embeds every linked image/video in the deck.
 - Copy/cut writes a typed SlidePix clipboard payload plus a private marker.
@@ -84,7 +83,10 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   the rendered slide. Moveable forwards its intercepted double-click before
   pausing while editing is active. `Escape` and `Ctrl/Cmd+Enter` finish; the
   optional **Advanced editor** retains the larger source and live shared-renderer
-  preview for LaTeX and code.
+  preview for LaTeX and code. Tab inserts a tab stop in the inline editor,
+  advanced editor, and table cells; Shift+Tab removes one. Rendered text keeps
+  those stops. Text properties include **Vertical spacing**, which sets
+  `lineHeight`.
 - The stable second toolbar row is contextual. Text and table selections expose
   compact typography plus icon-button horizontal/vertical alignment. During
   inline text editing, Bold, Italic, and list actions transform the active
@@ -136,10 +138,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   page or the selection, centers on the page, and distributes three or more
   unlocked items by centers or equal gaps. Dragging one selected item moves
   the whole unlocked selection.
-- Image and video Properties include **Keep original aspect ratio**. Turning it
-  on stores the media's width/height ratio and sets height from the current
-  width. Later width edits, including a width written into the deck, keep that
-  ratio. Text renders past its box; the slide still clips at the page edge.
+- Image and video Properties include **Keep original aspect ratio**, on by
+  default for newly inserted media. Turning it on measures the source ratio
+  and fits the box inside the slide. Later width edits, including a width
+  written into the deck, keep that ratio. Page numbers stay on every slide.
+  Text renders past its box; the slide still clips at the page edge.
 - Slide Properties exposes the same incoming transition controls as the rail
   and can choose, replace, or remove a storage-aware background image.
 - Blocking browser alerts are not used. Success toasts auto-dismiss after 2.5

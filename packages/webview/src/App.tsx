@@ -4,6 +4,7 @@ import { flushSync } from "react-dom";
 import {
   duplicateSlide,
   elementSchema,
+  fitAspectBoxInSlide,
   fitLockedAspectBox,
   heightForLockedAspect,
   renderMarkdown,
@@ -17,12 +18,12 @@ import {
   type Transition
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
-import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
+import { clamp, cropBoxByEdges, localPointerDelta, scaleCropAround, type CropBox } from "./geometry";
 import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
 import { peerBoxes, resizeEdges, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
 import { railDropIndex } from "./rail";
 import { useDeckStore } from "./store";
-import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
+import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
 
@@ -43,7 +44,7 @@ export default function App() {
   const [editingTextId, setEditingTextId] = useState<string>();
   const [selectAllOnEdit, setSelectAllOnEdit] = useState(false);
   const [advancedTextId, setAdvancedTextId] = useState<string>();
-  const [cropElementId, setCropElementId] = useState<string>();
+  const [croppingId, setCroppingId] = useState<string>();
   const [notesCollapsed, setNotesCollapsed] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
@@ -70,11 +71,11 @@ export default function App() {
   const editingText = slide?.elements.find((item): item is Extract<SlideElement, { type: "text" }> => item.id === editingTextId && item.type === "text");
   const dragTarget = selectedElements.find((item) => !item.locked) ?? selected;
   const target = dragTarget && !dragTarget.locked ? document.getElementById(`element-${dragTarget.id}`) : null;
-  const cropActive = selected?.type === "image" && cropElementId === selected.id;
+  const cropping = selected?.type === "image" && croppingId === selected.id;
 
   useEffect(() => {
-    if (!selected || selected.type !== "image" || selected.id !== cropElementId) setCropElementId(undefined);
-  }, [selected?.id, selected?.type, cropElementId]);
+    if (!selected || selected.type !== "image" || selected.id !== croppingId) setCroppingId(undefined);
+  }, [selected?.id, selected?.type, croppingId]);
   useEffect(() => {
     if (editingTextId && (selected?.type !== "text" || selected.id !== editingTextId)) setEditingTextId(undefined);
   }, [editingTextId, selected?.id, selected?.type]);
@@ -96,9 +97,9 @@ export default function App() {
         store.runCommand(redo ? "redo" : "undo");
         return;
       }
-      if (event.key === "Escape" && cropElementId) {
+      if (event.key === "Escape" && croppingId) {
         event.preventDefault();
-        setCropElementId(undefined);
+        setCroppingId(undefined);
         return;
       }
       if (!deck || !slide || !selectedElements.length || editingTextId || textEntry) return;
@@ -131,7 +132,7 @@ export default function App() {
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [deck, slide, selected, selectedElements, editingTextId, cropElementId]);
+  }, [deck, slide, selected, selectedElements, editingTextId, croppingId]);
 
   if (store.error) return <InvalidDeck message={store.error} gitConflict={store.gitConflict} />;
   if (!deck || !slide) return <div className="loading">Opening SlidePix…</div>;
@@ -141,19 +142,28 @@ export default function App() {
     if (!base) return reference;
     try { return new URL(reference.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`).toString(); } catch { return reference; }
   };
-  const addMedia = (kind: "image" | "video", result: MediaResult, name?: string, elementId?: string) => store.mutate((draft) => {
-    const targetSlide = draft.slides.find((item) => item.id === slide.id)!;
-    const existing = elementId ? targetSlide.elements.find((item) => item.id === elementId) : undefined;
-    if (existing?.type === kind) {
-      existing.src = result.reference;
-      existing.storage = result.storage;
-      return;
-    }
-    const common = baseElement(targetSlide.elements.length, kind);
-    targetSlide.elements.push(kind === "image"
-      ? { ...common, type: "image", src: result.reference, storage: result.storage, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: name ?? "", lockAspectRatio: false }
-      : { ...common, type: "video", src: result.reference, storage: result.storage, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true }, lockAspectRatio: false });
-  });
+  const addMedia = (kind: "image" | "video", result: MediaResult, name?: string, elementId?: string) => {
+    let fitId: string | undefined;
+    store.mutate((draft) => {
+      const targetSlide = draft.slides.find((item) => item.id === slide.id)!;
+      const existing = elementId ? targetSlide.elements.find((item) => item.id === elementId) : undefined;
+      if (existing?.type === kind) {
+        existing.src = result.reference;
+        existing.storage = result.storage;
+        if (existing.lockAspectRatio) fitId = existing.id;
+        return;
+      }
+      const common = baseElement(targetSlide.elements.length, kind);
+      targetSlide.elements.push(kind === "image"
+        ? { ...common, type: "image", src: result.reference, storage: result.storage, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: name ?? "", lockAspectRatio: true }
+        : { ...common, type: "video", src: result.reference, storage: result.storage, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true }, lockAspectRatio: true });
+      fitId = common.id;
+    });
+    if (!fitId) return;
+    const elementToFit = fitId;
+    const url = assetUrl(result.reference, result.storage);
+    void measureMediaAspect(url, kind).then((aspectRatio) => lockMediaAspect(slide.id, elementToFit, aspectRatio, store.mutate));
+  };
   const requestMedia = (kind: "image" | "video", uri?: string, elementId?: string) => {
     const requestId = crypto.randomUUID();
     pendingAssets.set(requestId, (result, error) => {
@@ -332,9 +342,9 @@ export default function App() {
                 resolveAsset={assetUrl}
                 onSelectElement={store.selectElement}
                 onEditText={(id) => beginTextEditing(id)}
-                onEditImage={setCropElementId}
+                onEditImage={setCroppingId}
               />
-              {target && dragTarget && !cropActive && editingTextId !== dragTarget.id && (
+              {target && dragTarget && !cropping && editingTextId !== dragTarget.id && (
                 <Moveable
                   ref={moveableRef}
                   target={target}
@@ -348,7 +358,7 @@ export default function App() {
                   onClick={({ isDouble }) => {
                     if (!isDouble || selectedElements.length !== 1) return;
                     if (dragTarget.type === "text") beginTextEditing(dragTarget.id);
-                    if (dragTarget.type === "image") setCropElementId(dragTarget.id);
+                    if (dragTarget.type === "image") setCroppingId(dragTarget.id);
                   }}
                   onDragStart={() => {
                     dragOrigins.current = selectedElements.filter((item) => !item.locked).map((item) => ({ id: item.id, x: item.x, y: item.y }));
@@ -435,7 +445,7 @@ export default function App() {
                   onRotateEnd={store.commit}
                 />
               )}
-              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} source={selected.type === "image" ? assetUrl(selected.src, selected.storage) : undefined} cropActive={cropActive} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCropElementId(undefined)} />}
+              {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropping={cropping} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCroppingId(undefined)} />}
               {editingText && <InlineTextEditor ref={inlineTextEditor} element={editingText} selectAll={selectAllOnEdit} preview={(markdown) => { store.preview((draft) => { const element = findElement(draft, slide.id, editingText.id); if (element?.type === "text") element.markdown = markdown; }); store.scheduleCommit(); }} finish={() => { store.commit(); setEditingTextId(undefined); }} />}
             </div>
             {snapGuides.length > 0 && (
@@ -461,7 +471,7 @@ export default function App() {
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
       </main>
-      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} assetUrl={assetUrl} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
+      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropping={cropping} assetUrl={assetUrl} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={(id) => setCroppingId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
@@ -743,7 +753,7 @@ function TransitionControls({ transition, update }: { transition: Transition; up
 
 type MediaElement = Extract<SlideElement, { type: "image" | "video" }>;
 
-function MediaControls({ element, source, cropActive, zoom, preview, commit, finishCrop }: { element: MediaElement; source?: string; cropActive: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; finishCrop(): void }) {
+function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }: { element: MediaElement; cropping: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; finishCrop(): void }) {
   const wheelCommit = useRef<number | undefined>(undefined);
   const maxRadius = Math.max(1, Math.min(element.width, element.height) / 2);
   const radius = Math.min(maxRadius, element.borderRadius);
@@ -763,26 +773,6 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
       preview({ edgeFade: clamp(initial - local.y, 0, Math.min(element.width, element.height) / 2) });
     }, commit);
   } : undefined;
-  const panCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest("button")) return;
-    const crop = { ...element.crop };
-    startPointerDrag(event, (deltaX, deltaY) => {
-      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
-      preview({ crop: {
-        ...crop,
-        x: clamp(crop.x - (local.x / Math.max(1, element.width)) * crop.width, 0, 1 - crop.width),
-        y: clamp(crop.y - (local.y / Math.max(1, element.height)) * crop.height, 0, 1 - crop.height)
-      } });
-    }, commit);
-  } : undefined;
-  const zoomCrop = element.type === "image" ? (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const crop = { ...element.crop };
-    startPointerDrag(event, (deltaX, deltaY) => {
-      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
-      const factor = Math.exp((local.x / Math.max(1, element.width) + local.y / Math.max(1, element.height)) * 0.55);
-      preview({ crop: scaleCrop(crop, factor) });
-    }, commit);
-  } : undefined;
   const wheelCrop = element.type === "image" ? (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -794,34 +784,41 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
     if (wheelCommit.current) window.clearTimeout(wheelCommit.current);
     wheelCommit.current = window.setTimeout(commit, 180);
   } : undefined;
+  const shapeDrag = (edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean }) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (element.type !== "image") return;
+    const initial: CropBox = { x: element.x, y: element.y, width: element.width, height: element.height, crop: { ...element.crop } };
+    startPointerDrag(event, (deltaX, deltaY) => {
+      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
+      preview(cropBoxByEdges(initial, {
+        left: edges.left ? local.x : 0,
+        right: edges.right ? -local.x : 0,
+        top: edges.top ? local.y : 0,
+        bottom: edges.bottom ? -local.y : 0
+      }));
+    }, commit);
+  };
 
-  const updateCrop = (crop: Extract<SlideElement, { type: "image" }>["crop"]) => { preview({ crop } as Partial<MediaElement>); commit(); };
-  return <div className={`media-controls ${cropActive ? "crop-active" : ""}`} style={overlayStyle}>
-    {cropActive && element.type === "image" && <>
-      {source && <img className="crop-ghost" src={source} alt="" style={{ width: `${100 / element.crop.width}%`, height: `${100 / element.crop.height}%`, left: `${-(element.crop.x / element.crop.width) * 100}%`, top: `${-(element.crop.y / element.crop.height) * 100}%` }} />}
-      <div className="crop-surface" onPointerDown={panCrop} onWheel={wheelCrop}>
-        <div className="crop-toolbar" style={{ fontSize: 12 / zoom, top: 12 / zoom, gap: 5 / zoom, padding: `${5 / zoom}px ${7 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()}>
-          <span>Drag to move · ratio locked</span>
-          <IconButton icon="remove" label="Zoom out" onClick={() => updateCrop(scaleCrop(element.crop, 1.2))} />
-          <input className="crop-zoom-slider" aria-label="Crop zoom" type="range" min="100" max="1000" step="5" value={cropZoomPercent(element.crop)} style={{ width: 130 / zoom }} onChange={(event) => preview({ crop: setCropZoom(element.crop, Number(event.target.value)) })} onPointerUp={commit} onPointerCancel={commit} onKeyUp={commit} onBlur={commit} />
-          <output>{cropZoomPercent(element.crop)}%</output>
-          <IconButton icon="add" label="Zoom in" onClick={() => updateCrop(scaleCrop(element.crop, 1 / 1.2))} />
-          <button title="Reset crop" onClick={() => updateCrop({ x: 0, y: 0, width: 1, height: 1 })}>Reset</button>
-          <button className="crop-done" onClick={finishCrop}>Done</button>
-        </div>
-        <i className="crop-corner top-left" /><i className="crop-corner top-right" /><i className="crop-corner bottom-left" /><button className="crop-zoom-handle crop-corner bottom-right" aria-label="Adjust image crop zoom" title="Drag diagonally to zoom while keeping the crop ratio" onPointerDown={zoomCrop} />
-        <span className="crop-hint" style={{ fontSize: 12 / zoom, bottom: 12 / zoom }}>Drag anywhere to reposition · wheel to zoom</span>
-      </div>
-    </>}
-    {!cropActive && <>
+  return <div className={`media-controls ${cropping ? "crop-active" : ""}`} style={overlayStyle}>
+    {cropping && element.type === "image" && <div className="crop-surface" title="Drag an edge to crop. Scroll to zoom." onWheel={wheelCrop}>
+      <button className="crop-done" style={{ fontSize: 12 / zoom, top: 8 / zoom, right: 8 / zoom, padding: `${4 / zoom}px ${8 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()} onClick={finishCrop}>Done</button>
+      <button className="crop-edge left" aria-label="Crop left edge" style={{ width: 10 / zoom, height: 28 / zoom }} onPointerDown={shapeDrag({ left: true })} />
+      <button className="crop-edge right" aria-label="Crop right edge" style={{ width: 10 / zoom, height: 28 / zoom }} onPointerDown={shapeDrag({ right: true })} />
+      <button className="crop-edge top" aria-label="Crop top edge" style={{ width: 28 / zoom, height: 10 / zoom }} onPointerDown={shapeDrag({ top: true })} />
+      <button className="crop-edge bottom" aria-label="Crop bottom edge" style={{ width: 28 / zoom, height: 10 / zoom }} onPointerDown={shapeDrag({ bottom: true })} />
+      <button className="crop-edge corner nw" aria-label="Crop top-left corner" style={{ width: 12 / zoom, height: 12 / zoom }} onPointerDown={shapeDrag({ left: true, top: true })} />
+      <button className="crop-edge corner ne" aria-label="Crop top-right corner" style={{ width: 12 / zoom, height: 12 / zoom }} onPointerDown={shapeDrag({ right: true, top: true })} />
+      <button className="crop-edge corner sw" aria-label="Crop bottom-left corner" style={{ width: 12 / zoom, height: 12 / zoom }} onPointerDown={shapeDrag({ left: true, bottom: true })} />
+      <button className="crop-edge corner se" aria-label="Crop bottom-right corner" style={{ width: 12 / zoom, height: 12 / zoom }} onPointerDown={shapeDrag({ right: true, bottom: true })} />
+    </div>}
+    {!cropping && <>
       <button className="media-handle radius-handle" title="Drag to change corner radius" aria-label="Adjust corner radius" style={{ left: `${(radius / Math.max(1, element.width)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={radiusDrag} />
       {element.type === "image" && <button className="media-handle fade-handle" title="Drag inward to fade all edges" aria-label="Adjust edge fade" style={{ bottom: `${(element.edgeFade / Math.max(1, element.height)) * 100}%`, width: handleSize, height: handleSize }} onPointerDown={fadeDrag} />}
     </>}
   </div>;
 }
 
-function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropActive, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
-  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
+function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropping, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
+  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropping: boolean; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
   const selectedIds = useDeckStore((state) => state.selectedElementIds);
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
@@ -857,6 +854,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
             <button className="edit-text-button" onClick={() => editText(element.id)}>Open advanced Markdown · LaTeX · Code editor…</button>
             <ColorField label="Text color" value={element.style.color} onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.color = color; })} onCommit={commit} />
             <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontSize = fontSize; })} onCommit={commit} />
+            <NumberField label="Vertical spacing" value={element.style.lineHeight} step={0.1} min={0.5} max={4} onChange={(lineHeight) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.lineHeight = lineHeight; })} onCommit={commit} />
             <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.fontFamily = fontFamily; })} />
             <span className="inspector-control-label">Horizontal alignment</span><AlignmentButtons label="Horizontal alignment" value={element.style.textAlign} values={["left", "center", "right"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.textAlign = value as "left" | "center" | "right"; })} />
             <span className="inspector-control-label">Vertical alignment</span><AlignmentButtons label="Vertical alignment" value={element.style.verticalAlign} values={["top", "middle", "bottom"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.verticalAlign = value as "top" | "middle" | "bottom"; })} />
@@ -881,7 +879,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
             </div>
             <CheckboxField label="Header row" checked={element.headerRow} onChange={(headerRow) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.headerRow = headerRow; })} />
             <div className="table-cell-editor" style={{ gridTemplateColumns: `repeat(${element.columns}, minmax(86px, 1fr))` }}>
-              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea className={row === 0 && element.headerRow ? "header-cell" : ""} key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onChange={(event) => { preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; }); scheduleCommit(); }} onBlur={commit} />))}
+              {Array.from({ length: element.rows }, (_, row) => Array.from({ length: element.columns }, (_, column) => <textarea className={row === 0 && element.headerRow ? "header-cell" : ""} key={`${row}-${column}`} aria-label={`Row ${row + 1}, column ${column + 1}`} value={element.cells[row]?.[column] ?? ""} onKeyDown={(event) => applyTextTab(event, element.cells[row]?.[column] ?? "", (text) => { preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = text; }); scheduleCommit(); })} onChange={(event) => { preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type !== "table") return; target.cells = normalizedTableCells(target); target.cells[row]![column] = event.target.value; }); scheduleCommit(); }} onBlur={commit} />))}
             </div>
             <NumberField label="Font size" value={element.style.fontSize} onChange={(fontSize) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontSize = Math.max(0, fontSize); })} onCommit={commit} />
             <FontFamilyPicker value={element.style.fontFamily} onChange={(fontFamily) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") target.style.fontFamily = fontFamily; })} />
@@ -906,7 +904,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
                 () => lockMediaAspect(slide.id, element.id, fallback, mutate)
               );
             }} />
-            <p className="panel-help">Width stays as set. Height follows the media’s original ratio, including when the width is edited in the deck file.</p>
+            <p className="panel-help">New images keep their original ratio. Turning this on fits the picture inside the slide.</p>
             <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} onCommit={commit} />
             <p className="panel-help">Drag the yellow point on the top edge to round corners.</p>
           </>}
@@ -915,8 +913,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
             <ColorField label="Border color" value={element.border.color} allowTransparent onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.border.color = color; })} onCommit={commit} />
             <RangeField label="Edge fade" value={element.edgeFade} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(edgeFade) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.edgeFade = edgeFade; })} onCommit={commit} />
             <p className="panel-help">Drag the blue point upward from the bottom edge to fade all four sides.</p>
-            <RangeField label="Crop zoom" value={cropZoomPercent(element.crop)} min={100} max={1000} onChange={(percent) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image") target.crop = setCropZoom(target.crop, percent); })} onCommit={commit} suffix="%" />
-            <button className={`edit-text-button ${cropActive ? "active" : ""}`} onClick={() => editImage(element.id)}>{cropActive ? "Cropping on canvas…" : "Crop image (or double-click)"}</button>
+            <button className={`edit-text-button ${cropping ? "active" : ""}`} onClick={() => editImage(element.id)}>{cropping ? "Done cropping" : "Crop edges"}</button>
             <label>Alt text<textarea value={element.alt ?? ""} onChange={(event) => updateContinuous({ alt: event.target.value })} onBlur={commit} /></label>
           </>}
           {element.type === "video" && <>
@@ -932,7 +929,6 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
           {slide.backgroundImage ? <div className="media-source-card"><span className={`storage-badge ${slide.backgroundImage.storage}`}>{slide.backgroundImage.storage}</span><code title={slide.backgroundImage.src}>{slide.backgroundImage.src}</code><div><button onClick={chooseBackgroundImage}>Replace image…</button><button className="danger-quiet" onClick={() => mutate((draft) => { delete draft.slides.find((item) => item.id === slide.id)!.backgroundImage; })}>Remove</button></div></div> : <button className="edit-text-button" onClick={chooseBackgroundImage}><span className="codicon codicon-file-media" /> Choose background image…</button>}
           <h4 className="property-heading">Transition</h4>
           <TransitionControls transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.transition, patch))} />
-          <CheckboxField label="Hide page number" checked={slide.hidePageNumber} onChange={(hidePageNumber) => mutate((draft) => { draft.slides.find((item) => item.id === slide.id)!.hidePageNumber = hidePageNumber; })} />
         </>}
       </>}
       {tab === "layers" && <><h3>Layers</h3><p className="panel-help">Shift-click to add items to the selection for align and distribute.</p>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${selectedIds.includes(item.id) ? "active" : ""}`} key={item.id} onClick={(event) => selectElement(item.id, event.shiftKey)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button title={item.locked ? "Unlock" : "Lock"} aria-label={item.locked ? "Unlock" : "Lock"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}><span className={`codicon codicon-${item.locked ? "lock" : "unlock"}`} /></button><button title={item.hidden ? "Show" : "Hide"} aria-label={item.hidden ? "Show" : "Hide"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}><span className={`codicon codicon-${item.hidden ? "eye-closed" : "eye"}`} /></button><button title="Bring forward" aria-label="Bring forward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}><span className="codicon codicon-arrow-up" /></button><button title="Send backward" aria-label="Send backward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}><span className="codicon codicon-arrow-down" /></button></div>)}</>}
@@ -958,7 +954,7 @@ function TextEditor({ deck, slideId, elementId, preview, scheduleCommit, commit,
   if (element?.type !== "text") return null;
   const background = slide?.background ?? deck.layouts[slide?.layout ?? ""]?.background ?? deck.theme.background;
   const finish = () => { commit(); close(); };
-  return <div className="modal-backdrop" onMouseDown={finish}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={finish}>Done</button></header><textarea autoFocus value={element.markdown} onKeyDown={(event) => { if (event.key === "Escape" || ((event.ctrlKey || event.metaKey) && event.key === "Enter")) { event.preventDefault(); finish(); } }} onChange={(event) => { preview((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; }); scheduleCommit(); }} onBlur={commit} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks. Press <code>Ctrl/Cmd+Enter</code> or <code>Escape</code> to finish.</p></div></div>;
+  return <div className="modal-backdrop" onMouseDown={finish}><div className="text-editor" onMouseDown={(event) => event.stopPropagation()}><header><strong>Markdown · LaTeX · Code</strong><button onClick={finish}>Done</button></header><textarea autoFocus value={element.markdown} onKeyDown={(event) => { if (applyTextTab(event, element.markdown, (markdown) => { preview((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = markdown; }); scheduleCommit(); })) return; if (event.key === "Escape" || ((event.ctrlKey || event.metaKey) && event.key === "Enter")) { event.preventDefault(); finish(); } }} onChange={(event) => { preview((draft) => { const target = findElement(draft, slideId, elementId); if (target?.type === "text") target.markdown = event.target.value; }); scheduleCommit(); }} onBlur={commit} /><section className="text-preview-panel"><strong>Live preview</strong><div className="text-preview" style={{ background, fontFamily: element.style.fontFamily, fontSize: Math.min(element.style.fontSize, 34), fontWeight: element.style.fontWeight, color: element.style.color, textAlign: element.style.textAlign, lineHeight: element.style.lineHeight }} dangerouslySetInnerHTML={{ __html: renderMarkdown(element.markdown) }} /></section><p>Use <code>$x^2$</code>, <code>$$…$$</code>, and fenced code blocks. Press <code>Tab</code> for a tab stop. Press <code>Ctrl/Cmd+Enter</code> or <code>Escape</code> to finish.</p></div></div>;
 }
 
 const InlineTextEditor = forwardRef<InlineTextEditorHandle, {
@@ -996,6 +992,15 @@ const InlineTextEditor = forwardRef<InlineTextEditorHandle, {
       event.preventDefault();
       event.stopPropagation();
       applyFormat(event.key.toLowerCase() === "b" ? "bold" : "italic");
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      event.stopPropagation();
+      const input = event.currentTarget;
+      const edit = insertTextTab(element.markdown, { start: input.selectionStart, end: input.selectionEnd }, event.shiftKey);
+      preview(edit.text);
+      requestAnimationFrame(() => input.setSelectionRange(edit.selection.start, edit.selection.end));
       return;
     }
     if (event.key === "Escape" || (accelerator && event.key === "Enter")) {
@@ -1136,9 +1141,13 @@ function lockMediaAspect(slideId: string, elementId: string, aspectRatio: number
   mutate((draft) => {
     const target = findElement(draft, slideId, elementId);
     if (target?.type !== "image" && target?.type !== "video") return;
+    const fitted = fitAspectBoxInSlide(target, aspectRatio, draft.size);
+    target.x = fitted.x;
+    target.y = fitted.y;
+    target.width = fitted.width;
+    target.height = fitted.height;
     target.lockAspectRatio = true;
     target.aspectRatio = aspectRatio;
-    target.height = heightForLockedAspect(target.width, aspectRatio);
   });
 }
 function measureMediaAspect(url: string, kind: "image" | "video"): Promise<number> {
@@ -1205,6 +1214,16 @@ function readSlidePixClipboard(data: DataTransfer): SlidePixClipboard | undefine
 function cloneElementForPaste(element: SlideElement, preserveMorphKey: boolean): SlideElement {
   const copy = structuredClone(element);
   return { ...copy, id: crypto.randomUUID(), morphKey: preserveMorphKey ? copy.morphKey : crypto.randomUUID(), name: `${elementLabel(copy)} copy`, x: copy.x + (preserveMorphKey ? 0 : 20), y: copy.y + (preserveMorphKey ? 0 : 20) } as SlideElement;
+}
+function applyTextTab(event: ReactKeyboardEvent<HTMLTextAreaElement>, value: string, apply: (text: string) => void): boolean {
+  if (event.key !== "Tab") return false;
+  event.preventDefault();
+  event.stopPropagation();
+  const input = event.currentTarget;
+  const edit = insertTextTab(value, { start: input.selectionStart, end: input.selectionEnd }, event.shiftKey);
+  apply(edit.text);
+  requestAnimationFrame(() => input.setSelectionRange(edit.selection.start, edit.selection.end));
+  return true;
 }
 function startPointerDrag(event: ReactPointerEvent<HTMLElement>, move: (deltaX: number, deltaY: number) => void, finish: () => void): void {
   event.preventDefault();

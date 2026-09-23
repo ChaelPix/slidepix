@@ -45,7 +45,7 @@ describe("shared document rendering", () => {
     expect(morphIndex).toBeGreaterThan(stateIndex);
   });
 
-  it("pushes the real outgoing and incoming slides without a dark fallback", () => {
+  it("letterboxes present mode on black and pushes both slides across that stage", () => {
     const deck = createDeck("Slide transition");
     const second = duplicateSlide(deck.slides[0]!);
     second.transition = { type: "slide-left", durationMs: 700, easing: "ease-in-out" };
@@ -54,6 +54,9 @@ describe("shared document rendering", () => {
     const html = renderDeckDocument(deck, undefined, { mode: "present" });
 
     expect(html).toContain("html,body{margin:0;background:#ffffff");
+    expect(html).toContain("html.mode-present,html.mode-frame,body.mode-present,body.mode-frame{background:#000}");
+    expect(html).toContain(".mode-present .slidepix-stage,.mode-frame .slidepix-stage{position:absolute;overflow:hidden");
+    expect(html).toContain("s.style.left='0px'");
     expect(html).not.toContain("background:#020617");
     expect(html).toContain(".slidepix-slide.active,.mode-present .slidepix-slide.transitioning{display:block}");
     expect(html).toContain("function slideTransition(current,previous,transition)");
@@ -67,6 +70,20 @@ describe("shared document rendering", () => {
 
     expect(html).toContain(".slidepix-slide{position:relative;overflow:hidden;isolation:isolate;page-break-inside:avoid;break-inside:avoid}");
     expect(html).not.toContain("page-break-after:always");
+  });
+
+  it("always paints a page number", () => {
+    const deck = createDeck("Numbers");
+    deck.pageNumbers.enabled = false;
+    deck.slides[0]!.hidePageNumber = true;
+    expect(renderDeckDocument(deck)).toContain("slidepix-page-number");
+  });
+
+  it("keeps tab stops in text instead of turning a leading tab into a code block", () => {
+    expect(renderMarkdown("Name\tAda")).toContain("Name\tAda");
+    expect(renderMarkdown("Name\tAda")).not.toContain("\uE000");
+    expect(parsePresentationMarkdown("\tAda")[0]).toMatchObject({ type: "paragraph", runs: [expect.objectContaining({ text: "\tAda" })] });
+    expect(renderDeckDocument(createDeck("Tabs"))).toContain("tab-size:4");
   });
 
   it("adds deterministic syntax highlighting to fenced code", () => {

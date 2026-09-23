@@ -81,7 +81,7 @@ export const slideBackgroundImageSchema = z.object({
 });
 
 const mediaAspectFields = {
-  lockAspectRatio: z.boolean().default(false),
+  lockAspectRatio: z.boolean().default(true),
   aspectRatio: z.number().positive().optional()
 };
 
@@ -292,11 +292,11 @@ export function parseDeckText(text: string): ParseDeckResult {
       issues: parsed.error.issues
     };
   }
-  return { ok: true, deck: enforceLockedAspect(parsed.data) };
+  return { ok: true, deck: enforceDeckInvariants(parsed.data) };
 }
 
 export function serializeDeck(deck: Deck): string {
-  return `${JSON.stringify(enforceLockedAspect(deckSchema.parse(deck)), null, 2)}\n`;
+  return `${JSON.stringify(enforceDeckInvariants(deckSchema.parse(deck)), null, 2)}\n`;
 }
 
 export function heightForLockedAspect(width: number, aspectRatio: number): number {
@@ -322,6 +322,31 @@ export function fitLockedAspectBox(
   const width = widthForLockedAspect(box.height, aspectRatio);
   const x = edges.left && !edges.right ? box.x + box.width - width : box.x;
   return { ...box, x, width };
+}
+
+export function fitAspectBoxInSlide(
+  box: { x: number; y: number; width: number; height: number },
+  aspectRatio: number,
+  slide: { width: number; height: number }
+): { x: number; y: number; width: number; height: number } {
+  const maxWidth = Math.max(1, slide.width);
+  const maxHeight = Math.max(1, slide.height);
+  let width = Math.min(Math.max(1, box.width), maxWidth);
+  let height = heightForLockedAspect(width, aspectRatio);
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = Math.min(maxWidth, widthForLockedAspect(height, aspectRatio));
+    height = heightForLockedAspect(width, aspectRatio);
+  }
+  const x = Math.min(Math.max(0, box.x), Math.max(0, maxWidth - width));
+  const y = Math.min(Math.max(0, box.y), Math.max(0, maxHeight - height));
+  return { x, y, width, height };
+}
+
+function enforceDeckInvariants(deck: Deck): Deck {
+  deck.pageNumbers.enabled = true;
+  for (const slide of deck.slides) slide.hidePageNumber = false;
+  return enforceLockedAspect(deck);
 }
 
 function enforceLockedAspect(deck: Deck): Deck {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
-import { createDeck, duplicateSlide, parseDeckText, serializeDeck } from "./schema.js";
+import { createDeck, duplicateSlide, fitAspectBoxInSlide, parseDeckText, serializeDeck } from "./schema.js";
 import { renderDeckDocument, renderMarkdown } from "./render.js";
 import { resolveAssetPath, resolveMediaPath } from "./assets.js";
 
@@ -139,6 +139,19 @@ describe("deck schema", () => {
 
     expect(parsed.ok).toBe(true);
     if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ type: "table", rows: 2, columns: 2, headerRow: true, style: { borderWidth: 2 } });
+  });
+
+  it("keeps page numbers on and fits a locked picture inside the slide", () => {
+    const deck = createDeck("Numbers");
+    deck.pageNumbers.enabled = false;
+    deck.slides[0]!.hidePageNumber = true;
+    const parsed = parseDeckText(serializeDeck(deck));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.deck.pageNumbers.enabled).toBe(true);
+    expect(parsed.deck.slides[0]!.hidePageNumber).toBe(false);
+    const fitted = fitAspectBoxInSlide({ x: 100, y: 900, width: 1000, height: 100 }, 0.5, { width: 1920, height: 1080 });
+    expect(fitted).toEqual({ x: 100, y: 0, width: 540, height: 1080 });
   });
 
   it("renders LaTeX as portable MathML", () => {

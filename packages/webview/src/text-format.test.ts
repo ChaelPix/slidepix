@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toggleInlineMarkdown, toggleMarkdownList } from "./text-format";
+import { toggleInlineMarkdown, toggleMarkdownList, insertTextTab } from "./text-format";
 
 describe("Markdown selection formatting", () => {
   it("wraps and unwraps a selected range", () => {
@@ -20,6 +20,12 @@ describe("Markdown selection formatting", () => {
 
   it("numbers selected lines and replaces another list style", () => {
     expect(toggleMarkdownList("- one\n- two", { start: 0, end: 11 }, true).text).toBe("1. one\n2. two");
+  });
+
+  it("inserts and removes a tab stop without leaving the field", () => {
+    expect(insertTextTab("NameAda", { start: 4, end: 4 }, false)).toEqual({ text: "Name\tAda", selection: { start: 5, end: 5 } });
+    expect(insertTextTab("Name\tAda", { start: 5, end: 5 }, true).text).toBe("NameAda");
+    expect(insertTextTab("one\ntwo", { start: 0, end: 7 }, false).text).toBe("\tone\n\ttwo");
   });
 
   it("does not format the next line when a selection ends at its start", () => {

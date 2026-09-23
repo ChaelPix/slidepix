@@ -75,14 +75,15 @@ invalid inputs fall back to ordinary Git conflict markers.
 - `metadata`: title, author, and description.
 - `size`: logical width and height.
 - `theme`: deck background, foreground, accent, and default font family.
-- `pageNumbers`: deck-wide visibility, color, and size.
+- `pageNumbers`: color and size. Numbers are always shown; a saved deck forces
+  `enabled` on and clears per-slide `hidePageNumber`.
 - `layouts`: reusable named background definitions. The UI designer is not yet
   implemented.
 - `slides`: at least one ordered slide.
 
 A slide contains its title, optional layout/background color, optional
 `backgroundImage` (`src` plus explicit linked/embedded storage), speaker notes,
-hidden state, page-number override, incoming transition, animation timeline,
+hidden state, incoming transition, animation timeline,
 and ordered elements. Background images stretch to the exact logical slide
 rectangle in every renderer and export.
 
@@ -91,11 +92,13 @@ are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior
 includes locking, hiding, optional name, and optional accessibility text.
 Image and video elements also carry `storage: "linked" | "embedded"`; the
 `src` string alone is never enough to decide its security boundary. Optional
-`lockAspectRatio` keeps the source ratio (`aspectRatio`, width divided by
-height). While it is on, width is authoritative and height is rewritten from
-that ratio when the deck is parsed or saved.
+`lockAspectRatio` defaults to on and keeps the source ratio (`aspectRatio`,
+width divided by height). While it is on, width is authoritative and height is
+rewritten from that ratio when the deck is parsed or saved. Enabling it in the
+editor also fits the box inside the slide.
 
-Text paints past its box. The slide still clips at its own edges.
+Text paints past its box. The slide still clips at its own edges. Tab characters
+in Markdown stay as tab stops. `style.lineHeight` is the vertical line spacing.
 
 Shape fills and strokes accept CSS colors including the literal `transparent`.
 A shape also stores a shadow object (`enabled`, color, X/Y offset, and blur);

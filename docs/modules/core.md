@@ -79,7 +79,10 @@ Text keeps its declared logical pixel size in every output: editor and
 standalone documents use the same `slidepix-text-content` typography contract
 and disable browser text autoscaling. Text is allowed to paint outside its box
 so a short box does not clip copy; the slide frame still clips at the page
-edge. Tables render cell Markdown through the
+edge. Tab characters in text and table Markdown stay as tab stops (`tab-size: 4`)
+instead of collapsing or becoming indented code. Page numbers are always
+painted; parse and save force `pageNumbers.enabled` and clear
+`hidePageNumber`. Tables render cell Markdown through the
 same sanitizer and center header cells independently of body alignment. Image
 edge fade is a geometry-derived blurred rounded-rectangle SVG mask shared with
 the editor, so it follows corner radius rather than producing square corners.
@@ -89,8 +92,12 @@ Presentation state is initialized before a destination morph starts; otherwise
 timeline reset would immediately cancel the new Web Animations. The runtime
 also tolerates browsers that omit `Element.getAnimations`. Directional slide
 transitions keep both complete slides mounted and push them together across an
-absolutely positioned, clipped stage; the document and letterbox background is
-the deck theme background rather than a hard-coded dark color.
+absolutely positioned stage clipped to the fitted slide rectangle. Present
+and frame documents letterbox on black outside that rectangle, so a window
+that is not the slide aspect ratio shows static black bars. A push transition
+moves only inside the clip and does not carry those bars with the slides.
+Print and contact output keep the deck theme background. The slide itself
+still paints its own background.
 
 ### `src/protocol.ts`
 

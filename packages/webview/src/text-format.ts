@@ -31,6 +31,39 @@ export function toggleInlineMarkdown(text: string, selection: TextSelection, mar
   };
 }
 
+export function insertTextTab(text: string, selection: TextSelection, outward: boolean): TextEdit {
+  const start = Math.min(selection.start, selection.end);
+  const end = Math.max(selection.start, selection.end);
+  const blockStart = text.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+  const effectiveEnd = end > start && text[end - 1] === "\n" ? end - 1 : end;
+  const nextBreak = text.indexOf("\n", effectiveEnd);
+  const blockEnd = nextBreak === -1 ? text.length : nextBreak;
+  const multiline = end > start && text.slice(start, end).includes("\n");
+
+  if (multiline) {
+    const lines = text.slice(blockStart, blockEnd).split("\n");
+    const nextLines = lines.map((line) => outward ? (line.startsWith("\t") ? line.slice(1) : line) : `\t${line}`);
+    const nextBlock = nextLines.join("\n");
+    return { text: text.slice(0, blockStart) + nextBlock + text.slice(blockEnd), selection: { start: blockStart, end: blockStart + nextBlock.length } };
+  }
+
+  if (!outward) {
+    const next = text.slice(0, start) + "\t" + text.slice(end);
+    return { text: next, selection: { start: start + 1, end: start + 1 } };
+  }
+
+  if (text[blockStart] === "\t") {
+    const next = text.slice(0, blockStart) + text.slice(blockStart + 1);
+    const caret = Math.max(blockStart, start - 1);
+    return { text: next, selection: { start: caret, end: caret } };
+  }
+  if (start === end && start > 0 && text[start - 1] === "\t") {
+    const next = text.slice(0, start - 1) + text.slice(start);
+    return { text: next, selection: { start: start - 1, end: start - 1 } };
+  }
+  return { text, selection: { start, end } };
+}
+
 export function toggleMarkdownList(text: string, selection: TextSelection, ordered: boolean): TextEdit {
   const start = Math.min(selection.start, selection.end);
   const end = Math.max(selection.start, selection.end);

@@ -57,7 +57,7 @@ export function SlideView({
           }}
         />
       ))}
-      {deck.pageNumbers.enabled && !slide.hidePageNumber && pageIndex >= 0 && (
+      {pageIndex >= 0 && (
         <div className="page-number" style={{ color: deck.pageNumbers.color, fontSize: deck.pageNumbers.fontSize }}>
           {pageIndex + 1}
         </div>
