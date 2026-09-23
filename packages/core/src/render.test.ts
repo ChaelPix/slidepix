@@ -62,6 +62,8 @@ describe("shared document rendering", () => {
     expect(html).toContain("function slideTransition(current,previous,transition)");
     expect(html).toContain("previous.animate([{transform:priorBase}");
     expect(html).toContain("direction==='left'?['-100%','0']");
+    expect(html).toContain("function reverseSlide(type){return type==='slide-left'?'slide-right':type==='slide-right'?'slide-left':type==='slide-up'?'slide-down':type==='slide-down'?'slide-up':type}");
+    expect(html).toContain("previous&&bounded<fromIndex&&traversed&&String(traversed.type||'').startsWith('slide-')");
     expect(html).toContain("fit();if(t.type==='morph')");
   });
 
@@ -84,6 +86,26 @@ describe("shared document rendering", () => {
     expect(renderMarkdown("Name\tAda")).not.toContain("\uE000");
     expect(parsePresentationMarkdown("\tAda")[0]).toMatchObject({ type: "paragraph", runs: [expect.objectContaining({ text: "\tAda" })] });
     expect(renderDeckDocument(createDeck("Tabs"))).toContain("tab-size:4");
+    expect(renderDeckDocument(createDeck("Tabs"))).toContain("margin-top:.3em;margin-bottom:.3em");
+  });
+
+  it("renders camera-pose LaTeX atomically and ends a compact list before following prose", () => {
+    const source = [
+      "For each frame $i$, we therefore need:",
+      "- the RGB image $I_i$",
+      "- the camera pose ${}^{W}\\mathbf{T}_{C_i} \\in SE(3)$",
+      "where ${}^{W}\\mathbf{T}_{C_i}$ represents the pose of camera $C_i$ in the world frame $W$.",
+    ].join("\n");
+    const html = renderMarkdown(source);
+
+    expect(html).toContain("<msup>");
+    expect(html).toContain("<msub>");
+    expect(html).toContain("vlist-t");
+    expect(html).toContain("</ul>\n<p>where");
+    expect(renderMarkdown("first\nsecond")).toContain("first<br>second");
+    expect(renderMarkdown("first\nsecond")).not.toContain("<br>\n");
+    expect(renderDeckDocument(createDeck("Math"))).toContain(".katex{display:inline-block;font-size:1em;white-space:nowrap}");
+    expect(renderDeckDocument(createDeck("Math"))).toContain(".katex-html{display:none!important}");
   });
 
   it("adds deterministic syntax highlighting to fenced code", () => {

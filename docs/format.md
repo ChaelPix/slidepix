@@ -37,10 +37,12 @@ for backward compatibility.
 - `(0, 0)` is the top-left corner. Positive X moves right; positive Y moves
   down.
 - IDs are stable non-empty strings. New objects currently use UUIDs.
-- Element `id` identifies one concrete object. `morphKey` identifies the same
-  visual object across slides.
+- Element `id` identifies one concrete object. Morph matches a trimmed
+  `name` that is unique among the visible elements on its slide. A blank name,
+  or the same name twice on one slide, does not morph. `morphKey` stays in the
+  file for compatibility and is not the match.
 - Slide duplication generates a new slide ID and new element IDs, preserves
-  element morph keys, and clears the animation timeline.
+  element names and morph keys, and clears the animation timeline.
 
 ## Version and validation
 
@@ -92,13 +94,14 @@ are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior
 includes locking, hiding, optional name, and optional accessibility text.
 Image and video elements also carry `storage: "linked" | "embedded"`; the
 `src` string alone is never enough to decide its security boundary. Optional
-`lockAspectRatio` defaults to on and keeps the source ratio (`aspectRatio`,
-width divided by height). While it is on, width is authoritative and height is
-rewritten from that ratio when the deck is parsed or saved. Enabling it in the
-editor also fits the box inside the slide.
+`lockAspectRatio` defaults to on. `aspectRatio` is the ratio of the current
+media frame (width divided by height): new media starts at its source ratio,
+while cropping updates it to the cropped frame ratio. The flag constrains
+interactive resizing; parsing and saving never rewrite stored geometry.
 
 Text paints past its box. The slide still clips at its own edges. Tab characters
-in Markdown stay as tab stops. `style.lineHeight` is the vertical line spacing.
+in Markdown stay as tab stops. `style.lineHeight` is the spacing within a
+paragraph. A blank line separates blocks with a `0.5em` margin on each side.
 
 Shape fills and strokes accept CSS colors including the literal `transparent`.
 A shape also stores a shadow object (`enabled`, color, X/Y offset, and blur);

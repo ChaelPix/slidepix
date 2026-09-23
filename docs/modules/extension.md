@@ -51,6 +51,15 @@ Private command helpers:
 
 `src/document-history.ts` owns the capped snapshot stack used by undo/redo.
 
+`src/editor-recovery.ts` works around a Cursor case where the workbench holds
+a deck's text model without synchronizing it to extensions. The custom editor
+then fails before `resolveCustomTextEditor` runs, and every reopen of that path
+fails the same way. If an active SlidePix tab is unresolved after 1.5 s and
+the extension host has no document for it, the provider opens the document
+with an explicit encoding, which forces workbench synchronization, then closes
+and reopens the tab once per 10 s cooldown. Failures are reported, not
+swallowed. `src/editor-recovery.test.ts` covers the decision rules.
+
 Webview-triggered exports carry an optional request ID. The provider reports
 completion or failure through a typed `notify` message so the editor can replace
 its non-blocking progress toast; command-palette exports keep their native VS
@@ -167,8 +176,8 @@ is vendored into the VSIX; OS-specific Chromium is not.
   Shapes, tables, pictures, video, notes, and page numbers remain native objects.
   There is no screenshot fallback.
 - `src/pptx-ooxml.ts` patches package XML for OfficeMath, picture crop/rounding/
-  soft-edge/border effects, fade/push/Morph transitions, stable `!!morphKey`
-  names, and appear/fade/fly animation timing.
+  soft-edge/border effects, fade/push/Morph transitions, `!!` object names
+  taken from the unique element name, and appear/fade/fly animation timing.
 - Hidden slides and elements are omitted. System fonts are referenced rather
   than embedded; unsupported CSS easing and browser-only details use the closest
   native PowerPoint equivalent and produce structured warnings.

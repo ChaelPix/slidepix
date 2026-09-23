@@ -181,7 +181,8 @@
           "border": {
             "width": 5,
             "color": "#2563eb"
-          }
+          },
+          "lockAspectRatio": true
         }
       ]
     },
@@ -606,7 +607,8 @@
           "border": {
             "width": 10,
             "color": "#2563eb"
-          }
+          },
+          "lockAspectRatio": true
         },
         {
           "id": "e03-right",
@@ -636,7 +638,8 @@
           "border": {
             "width": 4,
             "color": "#f6bd2f"
-          }
+          },
+          "lockAspectRatio": true
         },
         {
           "id": "e03-left-label",
@@ -723,7 +726,7 @@
       "id": "demo-04",
       "title": "Morph starts",
       "background": "#f8fafc",
-      "notes": "The next slide shares morph keys and changes position, size, rotation, opacity, radius, and crop.",
+      "notes": "The next slide uses the same element names and changes position, size, rotation, opacity, radius, and crop.",
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
@@ -787,7 +790,8 @@
           "border": {
             "width": 7,
             "color": "#2563eb"
-          }
+          },
+          "lockAspectRatio": true
         },
         {
           "id": "e04-line",
@@ -830,7 +834,7 @@
           "hidden": false,
           "name": "morph-copy",
           "type": "text",
-          "markdown": "## Duplicate, move, present\n\nA shared `morphKey` connects objects across slides. No timeline authoring is required for the movement itself.",
+          "markdown": "## Duplicate, move, present\n\nThe same element name connects objects across slides. No timeline authoring is required for the movement itself.",
           "style": {
             "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
             "fontSize": 36,
@@ -870,7 +874,7 @@
           "z": 3,
           "locked": false,
           "hidden": false,
-          "name": "morph-title-finish",
+          "name": "morph-title",
           "type": "text",
           "markdown": "# Motion without rebuilding the slide",
           "style": {
@@ -896,7 +900,7 @@
           "z": 2,
           "locked": false,
           "hidden": false,
-          "name": "morph-image-finish",
+          "name": "morph-image",
           "alt": "SlidePix presentation workflow illustration",
           "type": "image",
           "src": "3138572bd3448a799c8d56626f36bff6da5b6e9830a9a976ef08ef25449fed12.png",
@@ -912,7 +916,8 @@
           "border": {
             "width": 7,
             "color": "#f6bd2f"
-          }
+          },
+          "lockAspectRatio": true
         },
         {
           "id": "e05-line",
@@ -926,7 +931,7 @@
           "z": 1,
           "locked": false,
           "hidden": false,
-          "name": "morph-line-finish",
+          "name": "morph-line",
           "type": "shape",
           "shape": "rectangle",
           "fill": "#f6bd2f",
@@ -953,7 +958,7 @@
           "z": 3,
           "locked": false,
           "hidden": false,
-          "name": "morph-copy-finish",
+          "name": "morph-copy",
           "type": "text",
           "markdown": "## The same objects, transformed\n\nPosition · size · rotation · opacity · radius · crop",
           "style": {
@@ -1085,6 +1090,7 @@
           "storage": "embedded",
           "poster": "3362e868c0b5c134abc45d61bc47298dfdbfbf0bd497f8605e93305840ef4497.png",
           "borderRadius": 44,
+          "lockAspectRatio": true,
           "playback": {
             "mode": "manual",
             "muted": true,
@@ -1224,6 +1230,47 @@
             "offsetX": 0,
             "offsetY": 12,
             "blur": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "13700c8d-a52c-4e66-8641-bac6663bd977",
+      "title": "Slide 8",
+      "notes": "",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "none",
+        "durationMs": 500,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "24d457ae-74ad-4edb-8a3a-e4bb427a4674",
+          "morphKey": "909b0e35-ac15-4aa3-8429-780f9d3b6526",
+          "x": 214,
+          "y": 280,
+          "width": 1256,
+          "height": 1064,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 0,
+          "locked": false,
+          "hidden": false,
+          "name": "text-24d4",
+          "type": "text",
+          "markdown": "## 3D Gaussian Splatting\nIntroduced in 2023 by Kerbl, it uses the same general idea, but the Gaussians are no longer fixed. Their position, size, orientation, color and opacity are optimized from multiple images.\n\n**In simple terms: we start with many 3D blobs, project them into the camera views, and iteratively move and reshape them until the rendered images match the real images.**\n\nTo reconstruct the scene, we need a set of camera images and, for each image, the corresponding camera pose in a common world reference frame.\n\nFor each frame $i$, we therefore need:\n- the RGB image $I_i$\n- the camera pose ${}^{W}\\mathbf{T}_{C_i} \\in SE(3)$\nwhere ${}^{W}\\mathbf{T}_{C_i}$ represents the pose of camera $C_i$ in the world frame $W$.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 27,
+            "fontWeight": 400,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.2,
+            "padding": 8
           }
         }
       ]

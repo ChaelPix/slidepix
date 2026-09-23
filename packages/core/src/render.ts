@@ -16,7 +16,7 @@ import xml from "highlight.js/lib/languages/xml";
 // markdown-it-katex does not publish TypeScript declarations.
 // @ts-ignore The plugin follows MarkdownIt's standard PluginSimple shape.
 import markdownItKatex from "markdown-it-katex";
-import type { Deck, ImageElement, MediaStorage, Slide, SlideElement } from "./schema.js";
+import { morphMatchToken, type Deck, type ImageElement, type MediaStorage, type Slide, type SlideElement } from "./schema.js";
 
 for (const [name, language] of Object.entries({ bash, c, cpp, css: cssLanguage, java, javascript, json, markdown: markdownLanguage, python, rust, typescript, xml })) {
   hljs.registerLanguage(name, language);
@@ -38,6 +38,24 @@ const markdown = new MarkdownIt({
     return `<pre class="slidepix-code" data-language="${lang}"><code class="hljs">${highlighted.value}</code></pre>`;
   }
 }).use(markdownItKatex, { output: "mathml", throwOnError: false });
+
+// markdown-it-katex tokenizes the delimiters, but its transitive KaTeX is an
+// old release whose HTML is incompatible with the current webview stylesheet.
+// Render those tokens with the core's direct KaTeX dependency instead.
+markdown.renderer.rules.math_inline = (tokens, index) => katex.renderToString(tokens[index]!.content, {
+  output: "htmlAndMathml",
+  throwOnError: false,
+});
+markdown.renderer.rules.math_block = (tokens, index) => `${katex.renderToString(tokens[index]!.content, {
+  output: "htmlAndMathml",
+  throwOnError: false,
+  displayMode: true,
+})}\n`;
+
+// The rendered text container preserves author whitespace for tabs. MarkdownIt's
+// default `<br>\n` would therefore paint a second line after every soft break.
+markdown.renderer.rules.softbreak = () => "<br>";
+markdown.renderer.rules.hardbreak = () => "<br>";
 
 markdown.validateLink = (url) => /^(https?:|mailto:|#)/i.test(url);
 
@@ -90,8 +108,25 @@ function restoreTabs(source: string): string {
   return source.replaceAll(TAB_STOP, "\t");
 }
 
+function normalizeMarkdown(source: string): string {
+  const lines = source.split("\n");
+  const normalized: string[] = [];
+  let listRun = 0;
+  let fence: string | undefined;
+  for (const line of lines) {
+    const marker = line.match(/^\s*(```+|~~~+)/)?.[1];
+    if (marker) fence = fence ? undefined : marker[0];
+    const listItem = !fence && /^\s*(?:[-+*]|\d+[.)])\s+/.test(line);
+    const plainAfterList = !fence && listRun >= 2 && line.trim() !== "" && !listItem && !/^\s/.test(line);
+    if (plainAfterList && normalized.at(-1) !== "") normalized.push("");
+    normalized.push(line);
+    listRun = listItem ? listRun + 1 : plainAfterList || line.trim() === "" ? 0 : listRun;
+  }
+  return normalized.join("\n");
+}
+
 export function renderMarkdown(source: string): string {
-  return restoreTabs(markdown.render(protectTabs(source)));
+  return restoreTabs(markdown.render(protectTabs(normalizeMarkdown(source))));
 }
 
 export function renderPresentationMathMl(latex: string, displayMode = false): string {
@@ -104,7 +139,7 @@ export function renderPresentationMathMl(latex: string, displayMode = false): st
  * maintaining a second Markdown interpretation.
  */
 export function parsePresentationMarkdown(source: string): PresentationMarkdownBlock[] {
-  const tokens = markdown.parse(protectTabs(source), {});
+  const tokens = markdown.parse(protectTabs(normalizeMarkdown(source)), {});
   const blocks: PresentationMarkdownBlock[] = [];
   const lists: Array<{ ordered: boolean }> = [];
   let headingLevel: number | undefined;
@@ -269,7 +304,7 @@ export function renderSlideMarkup(
   const elements = [...slide.elements]
     .filter((element) => !element.hidden)
     .sort((a, b) => a.z - b.z)
-    .map((element) => renderElement(element, resolveAsset))
+    .map((element) => renderElement(element, slide.elements, resolveAsset))
     .join("");
   const background = slide.background ?? deck.layouts[slide.layout ?? ""]?.background ?? deck.theme.background;
   const backgroundImage = slide.backgroundImage
@@ -299,9 +334,9 @@ export function renderDeckDocument(
   return `<!doctype html><html class="mode-${mode}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${baseStyles(deck, mode, columns)}</style></head><body class="mode-${mode}"><main>${stage}</main>${runtime}</body></html>`;
 }
 
-function renderElement(element: SlideElement, resolveAsset: AssetResolver): string {
+function renderElement(element: SlideElement, elements: readonly SlideElement[], resolveAsset: AssetResolver): string {
   const base = `left:${element.x}px;top:${element.y}px;width:${element.width}px;height:${element.height}px;transform:rotate(${element.rotation}deg);opacity:${element.opacity};z-index:${element.z}`;
-  const common = `class="slidepix-element slidepix-${element.type}" data-element-id="${attr(element.id)}" data-morph-key="${attr(element.morphKey)}" style="${attr(base)}"`;
+  const common = `class="slidepix-element slidepix-${element.type}" data-element-id="${attr(element.id)}" data-morph-key="${attr(morphMatchToken(element, elements))}" style="${attr(base)}"`;
   switch (element.type) {
     case "text": {
       const align = element.style.verticalAlign === "middle" ? "center" : element.style.verticalAlign === "bottom" ? "flex-end" : "flex-start";
@@ -363,11 +398,12 @@ main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.si
 .slidepix-element{position:absolute;transform-origin:center center;overflow:visible}
 .slidepix-text-content{width:100%;height:100%;display:flex;flex-direction:column;overflow:visible;white-space:pre-wrap;tab-size:4}
 .slidepix-text-content>*:first-child{margin-top:0}.slidepix-text-content>*:last-child{margin-bottom:0}
+.slidepix-text-content p,.slidepix-text-content ul,.slidepix-text-content ol,.slidepix-text-content blockquote,.slidepix-table-cell p,.slidepix-table-cell ul,.slidepix-table-cell ol,.slidepix-table-cell blockquote{margin-top:.3em;margin-bottom:.3em}.slidepix-text-content p+ul,.slidepix-text-content p+ol,.slidepix-table-cell p+ul,.slidepix-table-cell p+ol{margin-top:0}.slidepix-text-content ul,.slidepix-text-content ol,.slidepix-table-cell ul,.slidepix-table-cell ol{padding-left:1.25em}
 .slidepix-text-content h1,.slidepix-text-content h2,.slidepix-text-content h3{line-height:1.08;margin:.25em 0}.slidepix-text-content h1{font-size:1.3em}.slidepix-text-content h2{font-size:1.15em}.slidepix-text-content h3{font-size:1em}
 .slidepix-table-content{width:100%;height:100%;border-collapse:collapse;table-layout:fixed}.slidepix-table-content tr{height:auto}.slidepix-table-content th,.slidepix-table-content td{overflow:hidden}.slidepix-table-cell{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;white-space:pre-wrap;tab-size:4}.slidepix-table-cell>*:first-child{margin-top:0}.slidepix-table-cell>*:last-child{margin-bottom:0}
 .slidepix-code{padding:.45em .6em;border-radius:.25em;background:#111827;color:#e2e8f0;white-space:pre-wrap;overflow:hidden}
 .slidepix-code .hljs-keyword,.slidepix-code .hljs-selector-tag,.slidepix-code .hljs-literal{color:#c084fc}.slidepix-code .hljs-string,.slidepix-code .hljs-attr{color:#a7f3d0}.slidepix-code .hljs-number,.slidepix-code .hljs-symbol{color:#fbbf24}.slidepix-code .hljs-title,.slidepix-code .hljs-function .hljs-title{color:#7dd3fc}.slidepix-code .hljs-built_in,.slidepix-code .hljs-type{color:#f9a8d4}.slidepix-code .hljs-comment,.slidepix-code .hljs-quote{color:#94a3b8;font-style:italic}.slidepix-code .hljs-meta{color:#fb923c}.slidepix-code .hljs-variable,.slidepix-code .hljs-params{color:#e2e8f0}
-.katex{font-size:1em}.katex-display{display:block;margin:.4em 0;text-align:center}.katex-html{display:none!important}.katex-mathml{display:inline-block}.katex-display .katex-mathml{display:block}.katex-mathml annotation{display:none}
+.katex{display:inline-block;font-size:1em;white-space:nowrap}.katex-display{display:block;margin:.4em 0;text-align:center}.katex-html{display:none!important}.katex-mathml{display:inline-block}.katex-display .katex-mathml{display:block}.katex-mathml annotation{display:none}
 .slidepix-image-clip,.slidepix-image-clip img,.slidepix-video video,.slidepix-shape-content{position:absolute;width:100%;height:100%}
 .slidepix-image-clip{overflow:hidden}.slidepix-image-clip img{max-width:none;object-fit:fill}
 .slidepix-video video{object-fit:cover}.slidepix-shape-content{inset:0}
@@ -411,8 +447,9 @@ function keepTransitionSlides(current,previous){current.classList.add('transitio
 function settleTransition(run,current,previous,animations){Promise.allSettled(animations.map(animation=>animation.finished)).then(()=>{if(run!==transitionRun)return;current.classList.remove('transitioning');current.style.zIndex='';if(previous){previous.classList.remove('transitioning');previous.style.zIndex=''}})}
 function slideVector(type){const direction=type.slice(6);return direction==='left'?['-100%','0']:direction==='right'?['100%','0']:direction==='up'?['0','-100%']:['0','100%']}
 function opposite(value){return value==='0'?'0':value.startsWith('-')?value.slice(1):'-'+value}
+function reverseSlide(type){return type==='slide-left'?'slide-right':type==='slide-right'?'slide-left':type==='slide-up'?'slide-down':type==='slide-down'?'slide-up':type}
 function slideTransition(current,previous,transition){const run=transitionRun,[x,y]=slideVector(transition.type),duration=transition.durationMs||0,easing=transition.easing||'ease-in-out',base=current.style.transform;keepTransitionSlides(current,previous);const animations=[current.animate([{transform:base+' translate('+x+','+y+')'},{transform:base}],{duration,easing})];if(previous){const priorBase=previous.style.transform;animations.push(previous.animate([{transform:priorBase},{transform:priorBase+' translate('+opposite(x)+','+opposite(y)+')'}],{duration,easing}))}settleTransition(run,current,previous,animations)}
-	function show(next,animationState='initial'){const bounded=Math.max(0,Math.min(slides.length-1,next)),active=slides[index]?.classList.contains('active');if(bounded===index&&active){animationState==='final'?finish():reset();syncVideos();fit();return}const previous=active?slides[index]:null,before=snapshot(previous);pauseVideos(previous);stopSlideTransitions();index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const t=transitions[index]||{type:'none',durationMs:0},s=slides[index];animationState==='final'?finish():reset();fit();if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-'))slideTransition(s,previous,t);syncVideos()}
+	function show(next,animationState='initial'){const bounded=Math.max(0,Math.min(slides.length-1,next)),active=slides[index]?.classList.contains('active');if(bounded===index&&active){animationState==='final'?finish():reset();syncVideos();fit();return}const previous=active?slides[index]:null,before=snapshot(previous),fromIndex=index;pauseVideos(previous);stopSlideTransitions();index=bounded;slides.forEach((s,i)=>s.classList.toggle('active',i===index));const incoming=transitions[index]||{type:'none',durationMs:0},traversed=transitions[fromIndex],t=previous&&bounded<fromIndex&&traversed&&String(traversed.type||'').startsWith('slide-')?Object.assign({},traversed,{type:reverseSlide(traversed.type)}):incoming,s=slides[index];animationState==='final'?finish():reset();fit();if(t.type==='morph')morph(s,before,t);else if(t.type==='fade')s.animate([{opacity:0},{opacity:1}],{duration:t.durationMs,easing:t.easing});else if(t.type.startsWith('slide-'))slideTransition(s,previous,t);syncVideos()}
 window.slidepixShow=show;window.slidepixAdvance=advance;addEventListener('resize',fit);addEventListener('visibilitychange',()=>{if(document.hidden)slides.forEach(pauseVideos);else syncVideos()});addEventListener('keydown',e=>{if(e.key==='f')document.documentElement.requestFullscreen?.()});show(0)
 })();</script>`;
 }

@@ -12,6 +12,7 @@ import { cssFontFamily, discoverSystemFontFamilies } from "./fonts";
 import { revisionForText } from "./document-revision";
 import { emptyDocumentHistory, historyFlags, recordDocumentEdit, redoDocument, undoDocument, type DocumentHistory } from "./document-history";
 import type { ExportResult } from "./export-result";
+import { EditorResolveRecovery } from "./editor-recovery";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -20,18 +21,32 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly sessions = new Map<string, PresentationServer>();
   private readonly histories = new Map<string, DocumentHistory>();
   private activeDocument?: vscode.TextDocument;
+  private readonly recovery = new EditorResolveRecovery<vscode.Tab>({
+    isResolved: (key) => this.panels.has(key),
+    hasDocument: (key) => vscode.workspace.textDocuments.some((document) => document.uri.toString() === key),
+    reopen: (tab) => reopenUnsyncedEditor(tab),
+    report: (error) => void vscode.window.showErrorMessage(`SlidePix could not reopen the deck: ${error instanceof Error ? error.message : String(error)}`)
+  });
 
   constructor(private readonly context: vscode.ExtensionContext) {}
+
+  private watchTab(tab: vscode.Tab): void {
+    if (!tab.isActive || !(tab.input instanceof vscode.TabInputCustom) || tab.input.viewType !== VIEW_TYPE || tab.input.uri.scheme !== "file") return;
+    this.recovery.watch(tab.input.uri.toString(), tab);
+  }
 
   register(): vscode.Disposable {
     const provider = vscode.window.registerCustomEditorProvider(VIEW_TYPE, this, { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } });
     const changes = vscode.workspace.onDidChangeTextDocument((event) => this.updatePanels(event.document));
-    return vscode.Disposable.from(provider, changes, { dispose: () => { for (const session of this.sessions.values()) session.dispose(); } });
+    const tabs = vscode.window.tabGroups.onDidChangeTabs((event) => { for (const tab of [...event.opened, ...event.changed]) this.watchTab(tab); });
+    for (const group of vscode.window.tabGroups.all) for (const tab of group.tabs) this.watchTab(tab);
+    return vscode.Disposable.from(provider, changes, tabs, this.recovery, { dispose: () => { for (const session of this.sessions.values()) session.dispose(); } });
   }
 
   async resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
     this.activeDocument = document;
     const key = document.uri.toString();
+    this.recovery.resolved(key);
     const set = this.panels.get(key) ?? new Set<vscode.WebviewPanel>();
     set.add(panel);
     this.panels.set(key, set);
@@ -352,6 +367,20 @@ async function replaceDocument(document: vscode.TextDocument, text: string, base
   const edit = new vscode.WorkspaceEdit();
   edit.replace(document.uri, new vscode.Range(new vscode.Position(0, 0), end), text);
   return vscode.workspace.applyEdit(edit);
+}
+
+async function reopenUnsyncedEditor(tab: vscode.Tab): Promise<void> {
+  if (!(tab.input instanceof vscode.TabInputCustom)) return;
+  const { uri, viewType } = tab.input;
+  const head = await vscode.workspace.fs.readFile(uri).then((bytes) => bytes.subarray(0, 3));
+  const encoding = head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf ? "utf8bom" : "utf8";
+  // An explicit encoding routes through the workbench file resolve, which is
+  // what synchronizes a model Cursor opened without extension-host sync.
+  await vscode.workspace.openTextDocument(uri, { encoding });
+  const current = vscode.window.tabGroups.all.flatMap((group) => group.tabs).find((candidate) =>
+    candidate.input instanceof vscode.TabInputCustom && candidate.input.viewType === viewType && candidate.input.uri.toString() === uri.toString() && candidate.group.viewColumn === tab.group.viewColumn);
+  if (current) await vscode.window.tabGroups.close(current, true);
+  await vscode.commands.executeCommand("vscode.openWith", uri, viewType, { viewColumn: tab.group.viewColumn, preserveFocus: false });
 }
 
 function workspaceRootUris(document: vscode.TextDocument): vscode.Uri[] {

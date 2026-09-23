@@ -58,6 +58,14 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - Stored coordinates remain logical slide units regardless of zoom.
 - Pointer deltas are divided by canvas zoom and inverse-rotated into element
   coordinates before changing radius, fade, crop pan, or crop zoom.
+- Crop mode follows a frame/content model: edge handles change the crop frame,
+  and dragging the surface moves the image behind that fixed frame. Mouse-wheel
+  crop zoom is intentionally disabled. Leaving crop mode restores ordinary
+  frame resize; its lock uses the current cropped-frame ratio.
+- Editor and advanced-preview math force KaTeX's HTML layer to remain visible
+  and keep its MathML accessibility layer visually clipped. This explicit
+  webview rule avoids native MathML leaking into the canvas when host styles
+  override KaTeX's bundled accessibility CSS.
 - Only the interactive canvas emits `element-<id>` DOM IDs. Thumbnails must not
   duplicate them, because selection and Moveable target lookup require a unique
   main-canvas element.
@@ -70,13 +78,15 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   fade. The fade uses the same geometry-derived rounded SVG mask in editor and
   export, so it follows the configured corner radius. Double-clicking, or
   **Crop edges**, cuts the picture by dragging an edge or corner. Scroll
-  zooms that crop while keeping its ratio. **Done** or Escape leaves the mode.
+  zooms that picture from its center: width and height change by the same
+  factor, and the zoom stops at an image edge instead of stretching one side.
+  **Done** or Escape leaves the mode.
   Videos expose only the shared radius handle.
 - Workspace media is linked by default. Properties embeds one selected item;
   **Embed all** embeds every linked image/video in the deck.
 - Copy/cut writes a typed SlidePix clipboard payload plus a private marker.
   Paste checks it before plain text, assigns new element IDs, and preserves
-  morph keys only when copying to a different slide in the same deck.
+  the element name only when copying to a different slide in the same deck.
 - Double-clicking a text element, pressing `Enter`/`F2`, or inserting a new
   text box opens an in-place Markdown textarea at the element's logical
   geometry. A small **editing...** badge marks inline Markdown editing versus
@@ -143,6 +153,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   and fits the box inside the slide. Later width edits, including a width
   written into the deck, keep that ratio. Page numbers stay on every slide.
   Text renders past its box; the slide still clips at the page edge.
+- **Element name** is the morph link. The same name on both slides morphs
+  that object. A blank name, or the same name twice on one slide, does not.
 - Slide Properties exposes the same incoming transition controls as the rail
   and can choose, replace, or remove a storage-aware background image.
 - Blocking browser alerts are not used. Success toasts auto-dismiss after 2.5

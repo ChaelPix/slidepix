@@ -97,22 +97,22 @@ const slides = [
   },
   {
     id: "demo-04", title: "Morph starts", background: "#f8fafc", hidden: false, hidePageNumber: false,
-    notes: "The next slide shares morph keys and changes position, size, rotation, opacity, radius, and crop.", transition: transition("slide-up", 700), timeline: [],
+    notes: "The next slide uses the same element names and changes position, size, rotation, opacity, radius, and crop.", transition: transition("slide-up", 700), timeline: [],
     elements: [
       text("e04-title", "morph-title", "# Motion without rebuilding the slide", 105, 70, 1600, 130, 62, ink, 760, "left", "morph-title"),
       image("e04-image", "morph-image", 120, 255, 800, 620, { x: 0.02, y: 0, width: 0.88, height: 1 }, 40, 0, { width: 7, color: blue }, "morph-image"),
       shape("e04-line", "morph-line", "rectangle", 1080, 285, 620, 28, yellow, 14, "transparent", 0, "morph-line"),
-      text("e04-copy", "morph-copy", "## Duplicate, move, present\n\nA shared `morphKey` connects objects across slides. No timeline authoring is required for the movement itself.", 1080, 365, 620, 360, 36, muted, 500, "left", "morph-copy")
+      text("e04-copy", "morph-copy", "## Duplicate, move, present\n\nThe same element name connects objects across slides. No timeline authoring is required for the movement itself.", 1080, 365, 620, 360, 36, muted, 500, "left", "morph-copy")
     ]
   },
   {
     id: "demo-05", title: "Morph finishes", background: "#ffffff", hidden: false, hidePageNumber: false,
     notes: "Morph interpolates geometry and normalized image crop; unmatched objects crossfade.", transition: transition("morph", 1600), timeline: [],
     elements: [
-      text("e05-title", "morph-title-finish", "# Motion without rebuilding the slide", 750, 95, 1050, 160, 58, ink, 760, "right", "morph-title"),
-      { ...image("e05-image", "morph-image-finish", 910, 310, 760, 570, { x: 0.18, y: 0.06, width: 0.66, height: 0.86 }, 150, 0, { width: 7, color: yellow }, "morph-image"), rotation: 7 },
-      { ...shape("e05-line", "morph-line-finish", "rectangle", 140, 780, 540, 28, yellow, 14, "transparent", 0, "morph-line"), rotation: 12 },
-      text("e05-copy", "morph-copy-finish", "## The same objects, transformed\n\nPosition · size · rotation · opacity · radius · crop", 125, 270, 600, 380, 38, muted, 520, "left", "morph-copy"),
+      text("e05-title", "morph-title", "# Motion without rebuilding the slide", 750, 95, 1050, 160, 58, ink, 760, "right", "morph-title"),
+      { ...image("e05-image", "morph-image", 910, 310, 760, 570, { x: 0.18, y: 0.06, width: 0.66, height: 0.86 }, 150, 0, { width: 7, color: yellow }, "morph-image"), rotation: 7 },
+      { ...shape("e05-line", "morph-line", "rectangle", 140, 780, 540, 28, yellow, 14, "transparent", 0, "morph-line"), rotation: 12 },
+      text("e05-copy", "morph-copy", "## The same objects, transformed\n\nPosition · size · rotation · opacity · radius · crop", 125, 270, 600, 380, 38, muted, 520, "left", "morph-copy"),
       text("e05-new", "crossfade-copy", "**Unmatched objects crossfade naturally.**", 130, 885, 650, 80, 28, coral, 760)
     ]
   }

@@ -211,6 +211,31 @@ button:disabled { opacity: .45; cursor: default; }
 .slidepix-text-content.valign-bottom { justify-content: flex-end; }
 .slidepix-text-content > *:first-child { margin-top: 0; }
 .slidepix-text-content > *:last-child { margin-bottom: 0; }
+.slidepix-text-content p, .slidepix-text-content ul, .slidepix-text-content ol, .slidepix-text-content blockquote,
+.slidepix-table-cell p, .slidepix-table-cell ul, .slidepix-table-cell ol, .slidepix-table-cell blockquote,
+.text-preview p, .text-preview ul, .text-preview ol, .text-preview blockquote { margin-top: .3em; margin-bottom: .3em; }
+.slidepix-text-content p + ul, .slidepix-text-content p + ol,
+.slidepix-table-cell p + ul, .slidepix-table-cell p + ol,
+.text-preview p + ul, .text-preview p + ol { margin-top: 0; }
+.slidepix-text-content ul, .slidepix-text-content ol,
+.slidepix-table-cell ul, .slidepix-table-cell ol,
+.text-preview ul, .text-preview ol { padding-left: 1.25em; }
+.slidepix-text-content .katex, .slidepix-table-cell .katex, .text-preview .katex { display: inline-block; white-space: nowrap; }
+.slidepix-text-content .katex > .katex-mathml,
+.slidepix-table-cell .katex > .katex-mathml,
+.text-preview .katex > .katex-mathml {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 0 !important;
+  clip: rect(1px, 1px, 1px, 1px) !important;
+  clip-path: inset(50%) !important;
+}
+.slidepix-text-content .katex > .katex-html,
+.slidepix-table-cell .katex > .katex-html,
+.text-preview .katex > .katex-html { display: inline-block !important; }
 .slidepix-text-content h1, .slidepix-text-content h2, .slidepix-text-content h3 { line-height: 1.08; margin: .25em 0; }
 .slidepix-text-content h1 { font-size: 1.3em; }
 .slidepix-text-content h2 { font-size: 1.15em; }
@@ -313,7 +338,7 @@ button:disabled { opacity: .45; cursor: default; }
 .media-handle { position: absolute; z-index: 2; min-width: 0; padding: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 5px #000c; pointer-events: auto; touch-action: none; }
 .radius-handle { top: 0; background: #f6c945; transform: translate(-50%, -50%); }
 .fade-handle { left: 50%; background: #38a7ff; transform: translate(-50%, 50%); }
-.crop-surface { position: absolute; inset: 0; z-index: 1; border: 2px solid #fff; outline: 1px solid #000; background: transparent; pointer-events: auto; touch-action: none; }
+.crop-surface { position: absolute; inset: 0; z-index: 1; border: 2px solid #fff; outline: 1px solid #000; background: transparent; cursor: move; pointer-events: auto; touch-action: none; }
 .crop-done { position: absolute; z-index: 5; border: 0; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; pointer-events: auto; }
 .crop-edge { position: absolute; z-index: 3; padding: 0; border: 2px solid #111; background: #fff; box-shadow: 0 1px 4px #000a; pointer-events: auto; touch-action: none; }
 .crop-edge.left, .crop-edge.right { top: 50%; width: 10px; height: 28px; transform: translate(-50%, -50%); cursor: ew-resize; }

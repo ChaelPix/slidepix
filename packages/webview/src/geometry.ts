@@ -21,19 +21,46 @@ export function scaleCrop(crop: ImageCrop, factor: number): ImageCrop {
   return scaleCropAround(crop, factor, 0.5, 0.5);
 }
 
+const MIN_CROP_SPAN = 0.05;
+
+function anchoredScaleLimit(span: number, point: number, anchor: number): number {
+  const before = anchor > 0 ? point / (span * anchor) : Number.POSITIVE_INFINITY;
+  const after = anchor < 1 ? (1 - point) / (span * (1 - anchor)) : Number.POSITIVE_INFINITY;
+  return Math.min(before, after);
+}
+
 export function scaleCropAround(crop: ImageCrop, factor: number, anchorX: number, anchorY: number): ImageCrop {
   const safeAnchorX = clamp(anchorX, 0, 1);
   const safeAnchorY = clamp(anchorY, 0, 1);
   const sourceX = crop.x + crop.width * safeAnchorX;
   const sourceY = crop.y + crop.height * safeAnchorY;
-  const width = clamp(crop.width * factor, 0.05, 1);
-  const height = clamp(crop.height * factor, 0.05, 1);
-  return { x: clamp(sourceX - width * safeAnchorX, 0, 1 - width), y: clamp(sourceY - height * safeAnchorY, 0, 1 - height), width, height };
+  const maxFactor = Math.min(
+    anchoredScaleLimit(crop.width, sourceX, safeAnchorX),
+    anchoredScaleLimit(crop.height, sourceY, safeAnchorY),
+  );
+  const applied = clamp(factor, MIN_CROP_SPAN / Math.max(crop.width, crop.height), maxFactor);
+  if (Math.abs(applied - 1) < 1e-9) return crop;
+  const width = crop.width * applied;
+  const height = crop.height * applied;
+  return {
+    x: sourceX - width * safeAnchorX,
+    y: sourceY - height * safeAnchorY,
+    width,
+    height
+  };
 }
 
 export function setCropZoom(crop: ImageCrop, percent: number): ImageCrop {
   const targetLargestSide = clamp(100 / percent, 0.05, 1);
   return scaleCrop(crop, targetLargestSide / Math.max(crop.width, crop.height));
+}
+
+export function panCrop(crop: ImageCrop, deltaX: number, deltaY: number, frameWidth: number, frameHeight: number): ImageCrop {
+  return {
+    ...crop,
+    x: clamp(crop.x - deltaX * crop.width / Math.max(1, frameWidth), 0, 1 - crop.width),
+    y: clamp(crop.y - deltaY * crop.height / Math.max(1, frameHeight), 0, 1 - crop.height),
+  };
 }
 
 export type CropBox = { x: number; y: number; width: number; height: number; crop: ImageCrop };

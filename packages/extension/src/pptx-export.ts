@@ -3,6 +3,7 @@ import { access, readFile, rename, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import PptxGenJS from "pptxgenjs";
 import {
+  morphMatchToken,
   parsePresentationMarkdown,
   type Deck,
   type PresentationMarkdownBlock,
@@ -68,10 +69,9 @@ export async function buildPptxExport(
     }
     if (sourceSlide.notes) slide.addNotes(sourceSlide.notes);
     const patch: PptxSlidePatch = { slide: sourceSlide, math: [], pictures: [], animationTargets: new Map() };
-    const morphCounts = countMorphKeys(sourceSlide);
 
     for (const element of [...sourceSlide.elements].filter((item) => !item.hidden).sort((left, right) => left.z - right.z)) {
-      patch.animationTargets.set(element.id, await addNativeElement(pptx, slide, element, sourceSlide, patch, context, morphCounts));
+      patch.animationTargets.set(element.id, await addNativeElement(pptx, slide, element, sourceSlide, patch, context));
     }
     addPageNumber(slide, deck, sourceSlide, visibleIndex, context);
     patches.push(patch);
@@ -108,10 +108,9 @@ async function addNativeElement(
   element: SlideElement,
   sourceSlide: Slide,
   patch: PptxSlidePatch,
-  context: BuildContext,
-  morphCounts: Map<string, number>
+  context: BuildContext
 ): Promise<string[]> {
-  const name = nativeObjectName(element, morphCounts, sourceSlide, context.warnings);
+  const name = nativeObjectName(element, sourceSlide, context.warnings);
   if (element.type === "text") return addTextElement(slide, element, name, sourceSlide, patch, context);
   if (element.type === "shape") {
     const fill = pptxColor(element.fill, element.opacity, context.warnings, sourceSlide.id, element.id);
@@ -327,16 +326,11 @@ function addPageNumber(slide: PptxGenJS.Slide, deck: Deck, sourceSlide: Slide, v
   context.nativeObjectCount += 1;
 }
 
-function nativeObjectName(element: SlideElement, counts: Map<string, number>, slide: Slide, warnings: PptxExportWarning[]): string {
-  if ((counts.get(element.morphKey) ?? 0) === 1) return `!!${element.morphKey}`;
-  addPptxWarning(warnings, "morph-match-ambiguous", `Morph key “${element.morphKey}” is duplicated on this slide; PowerPoint matching uses the element ID for this object.`, slide.id, element.id);
-  return `!!${element.morphKey}-${element.id}`;
-}
-
-function countMorphKeys(slide: Slide): Map<string, number> {
-  const result = new Map<string, number>();
-  for (const element of slide.elements.filter((item) => !item.hidden)) result.set(element.morphKey, (result.get(element.morphKey) ?? 0) + 1);
-  return result;
+function nativeObjectName(element: SlideElement, slide: Slide, warnings: PptxExportWarning[]): string {
+  const token = morphMatchToken(element, slide.elements);
+  const name = element.name?.trim();
+  if (token.startsWith("id:") && name) addPptxWarning(warnings, "morph-match-ambiguous", `Element name “${name}” is repeated on this slide, so this object does not morph.`, slide.id, element.id);
+  return `!!${token}`;
 }
 
 function addFontWarnings(context: BuildContext): void {

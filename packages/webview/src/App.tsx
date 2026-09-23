@@ -1,5 +1,5 @@
 import Moveable from "react-moveable";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import {
   duplicateSlide,
@@ -18,7 +18,7 @@ import {
   type Transition
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
-import { clamp, cropBoxByEdges, localPointerDelta, scaleCropAround, type CropBox } from "./geometry";
+import { clamp, cropBoxByEdges, localPointerDelta, panCrop, type CropBox } from "./geometry";
 import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
 import { peerBoxes, resizeEdges, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
 import { railDropIndex } from "./rail";
@@ -754,7 +754,6 @@ function TransitionControls({ transition, update }: { transition: Transition; up
 type MediaElement = Extract<SlideElement, { type: "image" | "video" }>;
 
 function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }: { element: MediaElement; cropping: boolean; zoom: number; preview(patch: Partial<MediaElement>): void; commit(): void; finishCrop(): void }) {
-  const wheelCommit = useRef<number | undefined>(undefined);
   const maxRadius = Math.max(1, Math.min(element.width, element.height) / 2);
   const radius = Math.min(maxRadius, element.borderRadius);
   const handleSize = 14 / zoom;
@@ -773,33 +772,31 @@ function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }:
       preview({ edgeFade: clamp(initial - local.y, 0, Math.min(element.width, element.height) / 2) });
     }, commit);
   } : undefined;
-  const wheelCrop = element.type === "image" ? (event: ReactWheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const local = localPointerDelta(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2), element.rotation, zoom);
-    const anchorX = clamp(0.5 + local.x / Math.max(1, element.width), 0, 1);
-    const anchorY = clamp(0.5 + local.y / Math.max(1, element.height), 0, 1);
-    preview({ crop: scaleCropAround(element.crop, Math.exp(event.deltaY * 0.0015), anchorX, anchorY) });
-    if (wheelCommit.current) window.clearTimeout(wheelCommit.current);
-    wheelCommit.current = window.setTimeout(commit, 180);
-  } : undefined;
   const shapeDrag = (edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean }) => (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (element.type !== "image") return;
     const initial: CropBox = { x: element.x, y: element.y, width: element.width, height: element.height, crop: { ...element.crop } };
     startPointerDrag(event, (deltaX, deltaY) => {
       const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
-      preview(cropBoxByEdges(initial, {
+      const next = cropBoxByEdges(initial, {
         left: edges.left ? local.x : 0,
         right: edges.right ? -local.x : 0,
         top: edges.top ? local.y : 0,
         bottom: edges.bottom ? -local.y : 0
-      }));
+      });
+      preview({ ...next, aspectRatio: next.width / Math.max(1, next.height) });
     }, commit);
   };
+  const panImage = element.type === "image" ? (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const initial = { ...element.crop };
+    startPointerDrag(event, (deltaX, deltaY) => {
+      const local = localPointerDelta(deltaX, deltaY, element.rotation, zoom);
+      preview({ crop: panCrop(initial, local.x, local.y, element.width, element.height) });
+    }, commit);
+  } : undefined;
 
   return <div className={`media-controls ${cropping ? "crop-active" : ""}`} style={overlayStyle}>
-    {cropping && element.type === "image" && <div className="crop-surface" title="Drag an edge to crop. Scroll to zoom." onWheel={wheelCrop}>
+    {cropping && element.type === "image" && <div className="crop-surface" title="Drag the picture to reposition it, or drag an edge to crop." onPointerDown={panImage}>
       <button className="crop-done" style={{ fontSize: 12 / zoom, top: 8 / zoom, right: 8 / zoom, padding: `${4 / zoom}px ${8 / zoom}px` }} onPointerDown={(event) => event.stopPropagation()} onClick={finishCrop}>Done</button>
       <button className="crop-edge left" aria-label="Crop left edge" style={{ width: 10 / zoom, height: 28 / zoom }} onPointerDown={shapeDrag({ left: true })} />
       <button className="crop-edge right" aria-label="Crop right edge" style={{ width: 10 / zoom, height: 28 / zoom }} onPointerDown={shapeDrag({ right: true })} />
@@ -840,6 +837,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
         <h3>{selectedIds.length > 1 ? `${selectedIds.length} items` : element ? element.type : "Slide"}</h3>
         {element ? <>
           <label>Element name<input autoComplete="off" value={element.name ?? ""} placeholder={elementLabel(element)} onChange={(event) => updateContinuous({ name: event.target.value.trimStart() || undefined })} onBlur={commit} /></label>
+          <p className="panel-help">The same name on both slides morphs this object. A blank name, or the same name twice on one slide, does not morph.</p>
           <h4 className="property-heading">Geometry</h4>
           <div className="field-grid geometry-grid">
             <NumberField label="X" value={element.x} onChange={(x) => updateContinuous({ x })} onCommit={commit} />
@@ -898,13 +896,14 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
                 mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.lockAspectRatio = false; });
                 return;
               }
-              const fallback = element.aspectRatio ?? element.width / Math.max(element.height, 1);
-              void measureMediaAspect(assetUrl(element.src, element.storage), element.type).then(
-                (aspectRatio) => lockMediaAspect(slide.id, element.id, aspectRatio, mutate),
-                () => lockMediaAspect(slide.id, element.id, fallback, mutate)
-              );
+              mutate((draft) => {
+                const target = findElement(draft, slide.id, element.id);
+                if (target?.type !== "image" && target?.type !== "video") return;
+                target.lockAspectRatio = true;
+                target.aspectRatio = target.width / Math.max(1, target.height);
+              });
             }} />
-            <p className="panel-help">New images keep their original ratio. Turning this on fits the picture inside the slide.</p>
+            <p className="panel-help">Locks the current frame ratio. Cropping updates that ratio; normal resize keeps it.</p>
             <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} onCommit={commit} />
             <p className="panel-help">Drag the yellow point on the top edge to round corners.</p>
           </>}
@@ -1213,7 +1212,7 @@ function readSlidePixClipboard(data: DataTransfer): SlidePixClipboard | undefine
 }
 function cloneElementForPaste(element: SlideElement, preserveMorphKey: boolean): SlideElement {
   const copy = structuredClone(element);
-  return { ...copy, id: crypto.randomUUID(), morphKey: preserveMorphKey ? copy.morphKey : crypto.randomUUID(), name: `${elementLabel(copy)} copy`, x: copy.x + (preserveMorphKey ? 0 : 20), y: copy.y + (preserveMorphKey ? 0 : 20) } as SlideElement;
+  return { ...copy, id: crypto.randomUUID(), morphKey: preserveMorphKey ? copy.morphKey : crypto.randomUUID(), name: preserveMorphKey ? copy.name : `${elementLabel(copy)} copy`, x: copy.x + (preserveMorphKey ? 0 : 20), y: copy.y + (preserveMorphKey ? 0 : 20) } as SlideElement;
 }
 function applyTextTab(event: ReactKeyboardEvent<HTMLTextAreaElement>, value: string, apply: (text: string) => void): boolean {
   if (event.key !== "Tab") return false;

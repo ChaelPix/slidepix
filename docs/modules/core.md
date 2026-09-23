@@ -15,7 +15,7 @@ cross-process message types, and shared DOM/HTML rendering semantics.
 | `parseDeckText(text)` | Parses JSON, rejects unsupported future versions, validates the full model, and returns a discriminated success/error result instead of throwing. |
 | `serializeDeck(deck)` | Revalidates a deck and returns stable two-space JSON with a final newline. Throws on invalid in-memory data. |
 | `createDeck(title?)` | Creates one valid 1920×1080 light-theme deck with a centered dark title using a portable system-font stack. |
-| `duplicateSlide(slide)` | Deep-copies the slide, creates new slide/element IDs, preserves morph keys, and clears the timeline. |
+| `duplicateSlide(slide)` | Deep-copies the slide, creates new slide/element IDs, preserves element names and morph keys, and clears the timeline. |
 | `Deck`, `Slide`, element and motion types | Types inferred from their schemas; do not maintain parallel handwritten interfaces. |
 
 When adding a persisted field, define validation/defaults here, add parser and
@@ -80,7 +80,15 @@ standalone documents use the same `slidepix-text-content` typography contract
 and disable browser text autoscaling. Text is allowed to paint outside its box
 so a short box does not clip copy; the slide frame still clips at the page
 edge. Tab characters in text and table Markdown stay as tab stops (`tab-size: 4`)
-instead of collapsing or becoming indented code. Page numbers are always
+instead of collapsing or becoming indented code. Markdown line breaks omit the
+parser's trailing formatting newline so preserved whitespace does not create a
+second visual line. Blocks use compact `0.3em` margins, and paragraph-to-list
+spacing collapses further. Inline KaTeX is non-wrapping; standalone documents
+show MathML and hide the unstyled HTML fallback so equations are not duplicated.
+`markdown-it-katex` owns delimiter tokenization only; its bundled legacy KaTeX
+markup is replaced by the core's current direct KaTeX renderer so the editor's
+bundled stylesheet and generated HTML always use the same version.
+Page numbers are always
 painted; parse and save force `pageNumbers.enabled` and clear
 `hidePageNumber`. Tables render cell Markdown through the
 same sanitizer and center header cells independently of body alignment. Image
@@ -88,11 +96,15 @@ edge fade is a geometry-derived blurred rounded-rectangle SVG mask shared with
 the editor, so it follows corner radius rather than producing square corners.
 Shape shadows use CSS drop shadows so triangles and ellipses follow their
 silhouette.
-Presentation state is initialized before a destination morph starts; otherwise
-timeline reset would immediately cancel the new Web Animations. The runtime
+Morph matches a trimmed element name that is unique on each slide. A blank or
+repeated name does not match, so that object fades in. Presentation state is
+initialized before a destination morph starts; otherwise timeline reset would
+immediately cancel the new Web Animations. The runtime
 also tolerates browsers that omit `Element.getAnimations`. Directional slide
 transitions keep both complete slides mounted and push them together across an
-absolutely positioned stage clipped to the fitted slide rectangle. Present
+absolutely positioned stage clipped to the fitted slide rectangle. Going
+backward through a directional push plays the opposite direction of the
+transition on the slide being left, with that transition's duration. Present
 and frame documents letterbox on black outside that rectangle, so a window
 that is not the slide aspect ratio shows static black bars. A push transition
 moves only inside the clip and does not carry those bars with the slides.

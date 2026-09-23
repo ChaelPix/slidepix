@@ -21,7 +21,7 @@ describe("visual regression example", () => {
     const tables = elements.filter((element) => element.type === "table");
     const effects = new Set(deck.slides.flatMap((slide) => slide.timeline.map((step) => step.effect)));
 
-    expect(deck.slides).toHaveLength(7);
+    expect(deck.slides).toHaveLength(8);
     expect(text.some((element) => element.markdown.includes("$$"))).toBe(true);
     expect(text.some((element) => element.markdown.includes("```typescript"))).toBe(true);
     expect(deck.theme).toMatchObject({ background: "#ffffff", foreground: "#111827" });
@@ -42,8 +42,8 @@ describe("visual regression example", () => {
     const morphSource = morphDestination && deck.slides[deck.slides.indexOf(morphDestination) - 1];
     expect(morphDestination).toBeDefined();
     expect(morphSource).toBeDefined();
-    const sourceKeys = new Set(morphSource?.elements.map((element) => element.morphKey));
-    expect(morphDestination?.elements.filter((element) => sourceKeys.has(element.morphKey)).length).toBeGreaterThanOrEqual(3);
+    const sourceNames = new Set(morphSource?.elements.map((element) => element.name).filter(Boolean));
+    expect(morphDestination?.elements.filter((element) => element.name && sourceNames.has(element.name)).length).toBeGreaterThanOrEqual(3);
 
     for (const media of [...images, ...videos]) {
       expect(media.storage).toBe("embedded");

@@ -255,6 +255,13 @@ export const deckSchema = z.object({
 export type Deck = z.infer<typeof deckSchema>;
 export type Slide = z.infer<typeof slideSchema>;
 export type SlideElement = z.infer<typeof elementSchema>;
+
+export function morphMatchToken(element: SlideElement, elements: readonly SlideElement[]): string {
+  const name = element.name?.trim() ?? "";
+  if (!name) return `id:${element.id}`;
+  const matches = elements.filter((item) => !item.hidden && (item.name?.trim() ?? "") === name);
+  return matches.length === 1 ? name : `id:${element.id}`;
+}
 export type TextElement = z.infer<typeof textElementSchema>;
 export type ImageElement = z.infer<typeof imageElementSchema>;
 export type VideoElement = z.infer<typeof videoElementSchema>;
@@ -346,17 +353,6 @@ export function fitAspectBoxInSlide(
 function enforceDeckInvariants(deck: Deck): Deck {
   deck.pageNumbers.enabled = true;
   for (const slide of deck.slides) slide.hidePageNumber = false;
-  return enforceLockedAspect(deck);
-}
-
-function enforceLockedAspect(deck: Deck): Deck {
-  for (const slide of deck.slides) {
-    for (const element of slide.elements) {
-      if ((element.type === "image" || element.type === "video") && element.lockAspectRatio && element.aspectRatio) {
-        element.height = heightForLockedAspect(element.width, element.aspectRatio);
-      }
-    }
-  }
   return deck;
 }
 

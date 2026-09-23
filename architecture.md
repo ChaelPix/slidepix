@@ -72,7 +72,8 @@ Detailed ownership and method contracts:
 2. Every persisted deck is parsed and serialized through `deckSchema`; unknown
    future schema versions are rejected without overwriting the source.
 3. Element IDs are unique. Duplicating a slide creates new element IDs but
-   preserves each `morphKey` so morph matching continues to work.
+   preserves each element name. Morph matches that name when it is unique on
+   the slide.
 4. Every media element declares `storage`. `embedded` references stay inside
    the sibling asset directory; `linked` references stay relative and may only
    resolve inside an open workspace root. All consumers receive the storage

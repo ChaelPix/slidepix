@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
-import { createDeck, duplicateSlide, fitAspectBoxInSlide, parseDeckText, serializeDeck } from "./schema.js";
+import { createDeck, duplicateSlide, fitAspectBoxInSlide, morphMatchToken, parseDeckText, serializeDeck } from "./schema.js";
 import { renderDeckDocument, renderMarkdown } from "./render.js";
 import { resolveAssetPath, resolveMediaPath } from "./assets.js";
 
@@ -54,12 +54,31 @@ describe("deck schema", () => {
     expect(parseDeckText('{"schemaVersion":99}')).toMatchObject({ ok: false });
   });
 
+  it("morphs a unique element name and ignores a blank or repeated name", () => {
+    const deck = createDeck("Morph");
+    const slide = deck.slides[0]!;
+    const titled = slide.elements[0]!;
+    titled.name = "Title";
+    const blank = { ...titled, id: "blank", morphKey: "blank", name: undefined, markdown: "blank" };
+    const cardA = { ...titled, id: "card-a", morphKey: "card-a", name: "Card", markdown: "a" };
+    const cardB = { ...titled, id: "card-b", morphKey: "card-b", name: "Card", markdown: "b" };
+    slide.elements.push(blank, cardA, cardB);
+
+    expect(morphMatchToken(titled, slide.elements)).toBe("Title");
+    expect(morphMatchToken(blank, slide.elements)).toBe("id:blank");
+    expect(morphMatchToken(cardA, slide.elements)).toBe("id:card-a");
+    expect(renderDeckDocument(deck)).toContain('data-morph-key="Title"');
+    expect(renderDeckDocument(deck)).toContain('data-morph-key="id:blank"');
+    expect(renderDeckDocument(deck)).not.toContain(`data-morph-key="${titled.morphKey}"`);
+  });
+
   it("keeps morph keys but replaces element ids when duplicating", () => {
     const slide = createDeck().slides[0]!;
     const copy = duplicateSlide(slide);
     expect(copy.id).not.toBe(slide.id);
     expect(copy.elements[0]!.id).not.toBe(slide.elements[0]!.id);
     expect(copy.elements[0]!.morphKey).toBe(slide.elements[0]!.morphKey);
+    expect(copy.elements[0]!.name).toBe(slide.elements[0]!.name);
   });
 
   it("blocks asset traversal", () => {
@@ -114,7 +133,7 @@ describe("deck schema", () => {
     if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ type: "shape", shadow: { enabled: false } });
   });
 
-  it("derives a locked image height from its width and source ratio", () => {
+  it("preserves a locked image frame exactly when parsing", () => {
     const raw = JSON.parse(serializeDeck(createDeck()));
     raw.slides[0].elements.push({
       id: "locked-image", morphKey: "locked-image", type: "image", src: "photo.png",
@@ -124,7 +143,7 @@ describe("deck schema", () => {
     const parsed = parseDeckText(JSON.stringify(raw));
 
     expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ width: 400, height: 200, lockAspectRatio: true });
+    if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ width: 400, height: 10, lockAspectRatio: true, aspectRatio: 2 });
   });
 
   it("normalizes a table with editable Markdown cells", () => {
