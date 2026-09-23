@@ -77,7 +77,9 @@ after-break that could create a trailing blank PDF page. Shared code-token
 classes and colors are consumed by editor, presentation, export, and MCP.
 Text keeps its declared logical pixel size in every output: editor and
 standalone documents use the same `slidepix-text-content` typography contract
-and disable browser text autoscaling. Tables render cell Markdown through the
+and disable browser text autoscaling. Text is allowed to paint outside its box
+so a short box does not clip copy; the slide frame still clips at the page
+edge. Tables render cell Markdown through the
 same sanitizer and center header cells independently of body alignment. Image
 edge fade is a geometry-derived blurred rounded-rectangle SVG mask shared with
 the editor, so it follows corner radius rather than producing square corners.

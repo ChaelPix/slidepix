@@ -606,6 +606,14 @@
                         "color"
                       ],
                       "additionalProperties": false
+                    },
+                    "lockAspectRatio": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "aspectRatio": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
                     }
                   },
                   "required": [
@@ -626,7 +634,8 @@
                     "crop",
                     "borderRadius",
                     "edgeFade",
-                    "border"
+                    "border",
+                    "lockAspectRatio"
                   ],
                   "additionalProperties": false
                 },
@@ -709,6 +718,14 @@
                       "type": "number",
                       "minimum": 0
                     },
+                    "lockAspectRatio": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "aspectRatio": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
                     "playback": {
                       "type": "object",
                       "properties": {
@@ -758,6 +775,7 @@
                     "src",
                     "storage",
                     "borderRadius",
+                    "lockAspectRatio",
                     "playback"
                   ],
                   "additionalProperties": false

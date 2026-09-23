@@ -80,6 +80,11 @@ export const slideBackgroundImageSchema = z.object({
   storage: mediaStorageSchema.default("embedded")
 });
 
+const mediaAspectFields = {
+  lockAspectRatio: z.boolean().default(false),
+  aspectRatio: z.number().positive().optional()
+};
+
 export const imageElementSchema = baseElementSchema.extend({
   type: z.literal("image"),
   src: z.string().min(1),
@@ -87,7 +92,8 @@ export const imageElementSchema = baseElementSchema.extend({
   crop: cropSchema.default({ x: 0, y: 0, width: 1, height: 1 }),
   borderRadius: nonNegative.default(0),
   edgeFade: nonNegative.default(0),
-  border: borderSchema.default({ width: 0, color: "transparent" })
+  border: borderSchema.default({ width: 0, color: "transparent" }),
+  ...mediaAspectFields
 });
 
 export const videoElementSchema = baseElementSchema.extend({
@@ -96,6 +102,7 @@ export const videoElementSchema = baseElementSchema.extend({
   storage: mediaStorageSchema.default("embedded"),
   poster: z.string().optional(),
   borderRadius: nonNegative.default(0),
+  ...mediaAspectFields,
   playback: z.object({
     mode: z.enum(["autoplay", "manual"]).default("manual"),
     muted: z.boolean().default(false),
@@ -285,11 +292,47 @@ export function parseDeckText(text: string): ParseDeckResult {
       issues: parsed.error.issues
     };
   }
-  return { ok: true, deck: parsed.data };
+  return { ok: true, deck: enforceLockedAspect(parsed.data) };
 }
 
 export function serializeDeck(deck: Deck): string {
-  return `${JSON.stringify(deckSchema.parse(deck), null, 2)}\n`;
+  return `${JSON.stringify(enforceLockedAspect(deckSchema.parse(deck)), null, 2)}\n`;
+}
+
+export function heightForLockedAspect(width: number, aspectRatio: number): number {
+  return Math.max(1, width / aspectRatio);
+}
+
+export function widthForLockedAspect(height: number, aspectRatio: number): number {
+  return Math.max(1, height * aspectRatio);
+}
+
+export function fitLockedAspectBox(
+  box: { x: number; y: number; width: number; height: number },
+  aspectRatio: number,
+  edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean }
+): { x: number; y: number; width: number; height: number } {
+  const horizontal = Boolean(edges.left || edges.right);
+  const vertical = Boolean(edges.top || edges.bottom);
+  if (horizontal || !vertical) {
+    const height = heightForLockedAspect(box.width, aspectRatio);
+    const y = edges.top && !edges.bottom ? box.y + box.height - height : box.y;
+    return { ...box, y, height };
+  }
+  const width = widthForLockedAspect(box.height, aspectRatio);
+  const x = edges.left && !edges.right ? box.x + box.width - width : box.x;
+  return { ...box, x, width };
+}
+
+function enforceLockedAspect(deck: Deck): Deck {
+  for (const slide of deck.slides) {
+    for (const element of slide.elements) {
+      if ((element.type === "image" || element.type === "video") && element.lockAspectRatio && element.aspectRatio) {
+        element.height = heightForLockedAspect(element.width, element.aspectRatio);
+      }
+    }
+  }
+  return deck;
 }
 
 export function createDeck(title = "Untitled deck"): Deck {

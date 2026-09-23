@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { peerBoxes, snapMove, snapResize, snapThreshold } from "./snap";
+import { peerBoxes, resizeEdges, snapMove, snapResize, snapThreshold } from "./snap";
 
 const page = { width: 1000, height: 800 };
 const peer = { id: "peer", x: 200, y: 100, width: 120, height: 80 };
@@ -43,9 +43,45 @@ describe("snapMove", () => {
 
 describe("snapResize", () => {
   it("snaps a dragged right edge to a peer left edge", () => {
-    const resized = snapResize({ x: 40, y: 40, width: 152, height: 40 }, [peer], page, 16);
+    const resized = snapResize({ x: 40, y: 40, width: 152, height: 40 }, [peer], page, 16, { right: true });
     expect(resized.width).toBe(160);
     expect(resized.guides).toContainEqual({ axis: "x", position: 200 });
+  });
+
+  it("does not snap a stationary edge while resizing the opposite side", () => {
+    const resized = snapResize({ x: 8, y: 40, width: 184, height: 40 }, [peer], page, 16, { right: true });
+    expect(resized.x).toBe(8);
+    expect(resized.width).toBe(192);
+    expect(resized.guides).toEqual([{ axis: "x", position: 200 }]);
+  });
+
+  it("keeps a locked resize guide until the pointer pulls away", () => {
+    const held = snapResize(
+      { x: 40, y: 40, width: 168, height: 40 },
+      [peer],
+      page,
+      16,
+      { right: true },
+      [{ axis: "x", position: 200 }],
+    );
+    expect(held.width).toBe(160);
+    const released = snapResize(
+      { x: 40, y: 40, width: 190, height: 40 },
+      [peer],
+      page,
+      16,
+      { right: true },
+      [{ axis: "x", position: 200 }],
+    );
+    expect(released.width).toBe(190);
+    expect(released.guides).toEqual([]);
+  });
+});
+
+describe("resizeEdges", () => {
+  it("maps Moveable direction to the edges that are actually moving", () => {
+    expect(resizeEdges([1, 0])).toEqual({ left: false, right: true, top: false, bottom: false });
+    expect(resizeEdges([-1, 1])).toEqual({ left: true, right: false, top: false, bottom: true });
   });
 });
 

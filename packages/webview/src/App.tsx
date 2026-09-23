@@ -4,7 +4,10 @@ import { flushSync } from "react-dom";
 import {
   duplicateSlide,
   elementSchema,
+  fitLockedAspectBox,
+  heightForLockedAspect,
   renderMarkdown,
+  widthForLockedAspect,
   type AnimationStep,
   type Deck,
   type HostToWebviewMessage,
@@ -16,7 +19,7 @@ import {
 import { SlideView } from "./SlideView";
 import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
 import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
-import { peerBoxes, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
+import { peerBoxes, resizeEdges, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
 import { useDeckStore } from "./store";
 import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
@@ -48,6 +51,7 @@ export default function App() {
   const moveableRef = useRef<Moveable | null>(null);
   const dragOrigins = useRef<{ id: string; x: number; y: number }[]>([]);
   const snapPeers = useRef<ReturnType<typeof peerBoxes>>([]);
+  const snapHold = useRef<SnapGuide[]>([]);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
 
   useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult, store.handleHistoryResult)), []);
@@ -146,8 +150,8 @@ export default function App() {
     }
     const common = baseElement(targetSlide.elements.length, kind);
     targetSlide.elements.push(kind === "image"
-      ? { ...common, type: "image", src: result.reference, storage: result.storage, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: name ?? "" }
-      : { ...common, type: "video", src: result.reference, storage: result.storage, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true } });
+      ? { ...common, type: "image", src: result.reference, storage: result.storage, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" }, alt: name ?? "", lockAspectRatio: false }
+      : { ...common, type: "video", src: result.reference, storage: result.storage, poster: undefined, borderRadius: 0, playback: { mode: "manual", muted: false, loop: false, controls: true }, lockAspectRatio: false });
   });
   const requestMedia = (kind: "image" | "video", uri?: string, elementId?: string) => {
     const requestId = crypto.randomUUID();
@@ -349,15 +353,17 @@ export default function App() {
                     dragOrigins.current = selectedElements.filter((item) => !item.locked).map((item) => ({ id: item.id, x: item.x, y: item.y }));
                     snapPeers.current = peerBoxes(slide.elements, store.selectedElementIds);
                   }}
-                  onDrag={({ left, top, target: elementTarget }) => {
+                  onDrag={({ left, top, inputEvent, target: elementTarget }) => {
                     const origin = dragOrigins.current.find((item) => item.id === dragTarget.id);
                     if (!origin) return;
-                    const snapped = snapMove(
-                      { x: left, y: top, width: dragTarget.width, height: dragTarget.height },
-                      snapPeers.current,
-                      deck.size,
-                      snapThreshold(store.zoom),
-                    );
+                    const snapped = shiftHeld(inputEvent)
+                      ? snapMove(
+                        { x: left, y: top, width: dragTarget.width, height: dragTarget.height },
+                        snapPeers.current,
+                        deck.size,
+                        snapThreshold(store.zoom),
+                      )
+                      : { x: left, y: top, guides: [] as SnapGuide[] };
                     const dx = snapped.x - origin.x;
                     const dy = snapped.y - origin.y;
                     elementTarget.style.left = `${snapped.x}px`;
@@ -383,29 +389,41 @@ export default function App() {
                   }}
                   onResizeStart={() => {
                     snapPeers.current = peerBoxes(slide.elements, store.selectedElementIds);
+                    snapHold.current = [];
                   }}
-                  onResize={({ width, height, drag, target: elementTarget }) => {
-                    const snapped = snapResize(
-                      { x: drag.left, y: drag.top, width, height },
-                      snapPeers.current,
-                      deck.size,
-                      snapThreshold(store.zoom),
-                    );
-                    elementTarget.style.width = `${snapped.width}px`;
-                    elementTarget.style.height = `${snapped.height}px`;
-                    elementTarget.style.left = `${snapped.x}px`;
-                    elementTarget.style.top = `${snapped.y}px`;
+                  onResize={({ width, height, drag, direction, inputEvent, target: elementTarget }) => {
+                    const edges = resizeEdges(direction);
+                    const snapped = shiftHeld(inputEvent)
+                      ? snapResize(
+                        { x: drag.left, y: drag.top, width, height },
+                        snapPeers.current,
+                        deck.size,
+                        snapThreshold(store.zoom),
+                        edges,
+                        snapHold.current,
+                      )
+                      : { x: drag.left, y: drag.top, width, height, guides: [] as SnapGuide[] };
+                    snapHold.current = snapped.guides;
+                    const media = dragTarget.type === "image" || dragTarget.type === "video" ? dragTarget : undefined;
+                    const fitted = media?.lockAspectRatio && media.aspectRatio
+                      ? fitLockedAspectBox(snapped, media.aspectRatio, edges)
+                      : snapped;
+                    elementTarget.style.width = `${fitted.width}px`;
+                    elementTarget.style.height = `${fitted.height}px`;
+                    elementTarget.style.left = `${fitted.x}px`;
+                    elementTarget.style.top = `${fitted.y}px`;
                     setSnapGuides(snapped.guides);
                     store.preview((draft) => {
                       const element = findElement(draft, slide.id, dragTarget.id);
                       if (!element) return;
-                      element.width = snapped.width;
-                      element.height = snapped.height;
-                      element.x = snapped.x;
-                      element.y = snapped.y;
+                      element.width = fitted.width;
+                      element.height = fitted.height;
+                      element.x = fitted.x;
+                      element.y = fitted.y;
                     });
                   }}
                   onResizeEnd={() => {
+                    snapHold.current = [];
                     setSnapGuides([]);
                     store.commit();
                   }}
@@ -442,7 +460,7 @@ export default function App() {
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
       </main>
-      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
+      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropActive={cropActive} assetUrl={assetUrl} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={setCropElementId} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
@@ -753,8 +771,8 @@ function MediaControls({ element, source, cropActive, zoom, preview, commit, fin
   </div>;
 }
 
-function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropActive, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
-  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
+function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropActive, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
+  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropActive: boolean; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
   const selectedIds = useDeckStore((state) => state.selectedElementIds);
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
@@ -780,8 +798,8 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
           <div className="field-grid geometry-grid">
             <NumberField label="X" value={element.x} onChange={(x) => updateContinuous({ x })} onCommit={commit} />
             <NumberField label="Y" value={element.y} onChange={(y) => updateContinuous({ y })} onCommit={commit} />
-            <NumberField label="W" value={element.width} min={0} onChange={(width) => updateContinuous({ width })} onCommit={commit} />
-            <NumberField label="H" value={element.height} min={0} onChange={(height) => updateContinuous({ height })} onCommit={commit} />
+            <NumberField label="W" value={element.width} min={0} onChange={(width) => updateContinuous(elementSizePatch(element, "width", width))} onCommit={commit} />
+            <NumberField label="H" value={element.height} min={0} onChange={(height) => updateContinuous(elementSizePatch(element, "height", height))} onCommit={commit} />
             <NumberField label="Rotate" value={element.rotation} onChange={(rotation) => updateContinuous({ rotation })} onCommit={commit} />
             <NumberField label="Opacity" value={element.opacity} step={0.05} min={0} max={1} onChange={(opacity) => updateContinuous({ opacity })} onCommit={commit} />
           </div>
@@ -828,6 +846,18 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
           </>}
           {(element.type === "image" || element.type === "video") && <>
             <div className="media-source-card"><span className={`storage-badge ${element.storage}`}>{element.storage}</span><code title={element.src}>{element.src}</code><div><button onClick={() => relinkMedia(element.type, element.id)}>Choose linked file…</button>{element.storage === "linked" && <button onClick={() => postMessage({ type: "embedMedia", elementIds: [element.id] })}>Embed in .assets</button>}</div></div>
+            <CheckboxField label="Keep original aspect ratio" checked={element.lockAspectRatio} onChange={(locked) => {
+              if (!locked) {
+                mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.lockAspectRatio = false; });
+                return;
+              }
+              const fallback = element.aspectRatio ?? element.width / Math.max(element.height, 1);
+              void measureMediaAspect(assetUrl(element.src, element.storage), element.type).then(
+                (aspectRatio) => lockMediaAspect(slide.id, element.id, aspectRatio, mutate),
+                () => lockMediaAspect(slide.id, element.id, fallback, mutate)
+              );
+            }} />
+            <p className="panel-help">Width stays as set. Height follows the media’s original ratio, including when the width is edited in the deck file.</p>
             <RangeField label="Corner radius" value={element.borderRadius} min={0} max={Math.max(1, Math.round(Math.min(element.width, element.height) / 2))} onChange={(borderRadius) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "image" || target?.type === "video") target.borderRadius = borderRadius; })} onCommit={commit} />
             <p className="panel-help">Drag the yellow point on the top edge to round corners.</p>
           </>}
@@ -1044,6 +1074,43 @@ function animationFlowLabel(timeline: AnimationStep[], index: number): string { 
 function transitionLabel(type: Transition["type"]): string { return ({ none: "None", fade: "Fade", "slide-left": "From left", "slide-right": "From right", "slide-up": "From top", "slide-down": "From bottom", morph: "Morph" } as Record<Transition["type"], string>)[type]; }
 function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
+function elementSizePatch(element: SlideElement, driver: "width" | "height", value: number): Partial<SlideElement> {
+  if ((element.type !== "image" && element.type !== "video") || !element.lockAspectRatio || !element.aspectRatio) {
+    return driver === "width" ? { width: value } : { height: value };
+  }
+  return driver === "width"
+    ? { width: value, height: heightForLockedAspect(value, element.aspectRatio) }
+    : { height: value, width: widthForLockedAspect(value, element.aspectRatio) };
+}
+function lockMediaAspect(slideId: string, elementId: string, aspectRatio: number, mutate: (fn: (deck: Deck) => void) => void) {
+  if (!(aspectRatio > 0)) return;
+  mutate((draft) => {
+    const target = findElement(draft, slideId, elementId);
+    if (target?.type !== "image" && target?.type !== "video") return;
+    target.lockAspectRatio = true;
+    target.aspectRatio = aspectRatio;
+    target.height = heightForLockedAspect(target.width, aspectRatio);
+  });
+}
+function measureMediaAspect(url: string, kind: "image" | "video"): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (kind === "image") {
+      const image = new Image();
+      image.onload = () => image.naturalWidth > 0 && image.naturalHeight > 0 ? resolve(image.naturalWidth / image.naturalHeight) : reject(new Error("missing size"));
+      image.onerror = () => reject(new Error("image"));
+      image.src = url;
+      return;
+    }
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => video.videoWidth > 0 && video.videoHeight > 0 ? resolve(video.videoWidth / video.videoHeight) : reject(new Error("missing size"));
+    video.onerror = () => reject(new Error("video"));
+    video.src = url;
+  });
+}
+function shiftHeld(event: Event | undefined): boolean {
+  return Boolean(event && "shiftKey" in event && (event as { shiftKey?: boolean }).shiftKey);
+}
 function clampOptional(value: number, min?: number, max?: number): number { return Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, value)); }
 function roundStep(value: number, step: number): number { const precision = Math.max(0, (String(step).split(".")[1] ?? "").length); return Number(value.toFixed(Math.min(8, precision))); }
 function normalizedTableCells(table: Extract<SlideElement, { type: "table" }>): string[][] { return Array.from({ length: table.rows }, (_, row) => Array.from({ length: table.columns }, (_, column) => table.cells[row]?.[column] ?? "")); }

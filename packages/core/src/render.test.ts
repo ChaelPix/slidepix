@@ -98,7 +98,7 @@ describe("shared document rendering", () => {
     deck.slides[0]!.elements.push({
       id: "image-1", morphKey: "image-morph", type: "image", name: "chart", src: "media/chart.png", storage: "linked",
       x: 0, y: 0, width: 400, height: 300, rotation: 0, opacity: 1, z: 1, locked: false, hidden: false,
-      crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 24, edgeFade: 20, border: { width: 0, color: "transparent" }
+      crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 24, edgeFade: 20, border: { width: 0, color: "transparent" }, lockAspectRatio: false
     });
     const calls: string[] = [];
     const html = renderDeckDocument(deck, (reference, storage) => { calls.push(`${storage}:${reference}`); return reference; });

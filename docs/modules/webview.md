@@ -125,15 +125,20 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   Alt for ×0.1 nudges. Range properties use a visible card and slider.
 - All persistent changes go through `mutate` or the `preview`/`commit` queue;
   selections, zoom, open tabs, panel collapse, and modal state stay transient.
-- Drag and resize snap in logical slide units to visible peer left/center/right
-  and top/middle/bottom edges and to the slide edges and center. The catch
-  radius is 24 CSS pixels, divided by canvas zoom, so it stays easy to hit at
-  any scale. Guidelines are overlay lines on the canvas frame (no distance
+- Drag and resize snap only while Shift is held, in logical slide units, to
+  visible peer left/center/right and top/middle/bottom edges and to the slide
+  edges and center. Resize snaps only the dragged edges, and stays on a guide
+  until the pointer pulls away. The catch radius is 24 CSS pixels, divided by
+  canvas zoom. Guidelines are overlay lines on the canvas frame (no distance
   digits). Shift-click adds items to the selection. The
   contextual toolbar aligns left/center/right and top/middle/bottom to the
   page or the selection, centers on the page, and distributes three or more
   unlocked items by centers or equal gaps. Dragging one selected item moves
   the whole unlocked selection.
+- Image and video Properties include **Keep original aspect ratio**. Turning it
+  on stores the media's width/height ratio and sets height from the current
+  width. Later width edits, including a width written into the deck, keep that
+  ratio. Text renders past its box; the slide still clips at the page edge.
 - Slide Properties exposes the same incoming transition controls as the rail
   and can choose, replace, or remove a storage-aware background image.
 - Blocking browser alerts are not used. Success toasts auto-dismiss after 2.5

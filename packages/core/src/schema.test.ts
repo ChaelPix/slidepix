@@ -114,6 +114,19 @@ describe("deck schema", () => {
     if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ type: "shape", shadow: { enabled: false } });
   });
 
+  it("derives a locked image height from its width and source ratio", () => {
+    const raw = JSON.parse(serializeDeck(createDeck()));
+    raw.slides[0].elements.push({
+      id: "locked-image", morphKey: "locked-image", type: "image", src: "photo.png",
+      x: 0, y: 0, width: 400, height: 10, z: 1,
+      lockAspectRatio: true, aspectRatio: 2
+    });
+    const parsed = parseDeckText(JSON.stringify(raw));
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ width: 400, height: 200, lockAspectRatio: true });
+  });
+
   it("normalizes a table with editable Markdown cells", () => {
     const deck = createDeck();
     const raw = JSON.parse(serializeDeck(deck));

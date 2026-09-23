@@ -3,11 +3,19 @@ export type PageSize = { width: number; height: number };
 export type SnapGuide = { axis: "x" | "y"; position: number };
 export type SnapMove = { x: number; y: number; guides: SnapGuide[] };
 export type SnapSize = SnapMove & { width: number; height: number };
+export type SnapEdges = { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean };
 
 export const SNAP_SCREEN_PX = 24;
+export const SNAP_RELEASE = 1.5;
 
 export function snapThreshold(zoom: number): number {
   return SNAP_SCREEN_PX / Math.max(zoom, 0.1);
+}
+
+export function resizeEdges(direction: readonly number[]): SnapEdges {
+  const dx = direction[0] ?? 0;
+  const dy = direction[1] ?? 0;
+  return { left: dx < 0, right: dx > 0, top: dy < 0, bottom: dy > 0 };
 }
 
 export function peerBoxes(
@@ -31,20 +39,25 @@ export function snapMove(moving: SnapBox, targets: SnapBox[], page: PageSize, th
   return { x: moving.x + (xSnap?.delta ?? 0), y: moving.y + (ySnap?.delta ?? 0), guides };
 }
 
-export function snapResize(moving: SnapBox, targets: SnapBox[], page: PageSize, threshold: number): SnapSize {
+export function snapResize(
+  moving: SnapBox,
+  targets: SnapBox[],
+  page: PageSize,
+  threshold: number,
+  edges: SnapEdges,
+  hold: SnapGuide[] = [],
+): SnapSize {
   const xs = xStops(targets, page);
   const ys = yStops(targets, page);
-  const left = closestStop(moving.x, xs, threshold);
-  const right = closestStop(moving.x + moving.width, xs, threshold);
-  const top = closestStop(moving.y, ys, threshold);
-  const bottom = closestStop(moving.y + moving.height, ys, threshold);
+  const holdX = hold.find((guide) => guide.axis === "x")?.position;
+  const holdY = hold.find((guide) => guide.axis === "y")?.position;
+  const left = edges.left ? snapEdge(moving.x, xs, threshold, holdX) : undefined;
+  const right = edges.right ? snapEdge(moving.x + moving.width, xs, threshold, holdX) : undefined;
+  const top = edges.top ? snapEdge(moving.y, ys, threshold, holdY) : undefined;
+  const bottom = edges.bottom ? snapEdge(moving.y + moving.height, ys, threshold, holdY) : undefined;
   let { x, y, width, height } = moving;
   const guides: SnapGuide[] = [];
-  if (left !== undefined && right !== undefined) {
-    x = left;
-    width = Math.max(1, right - left);
-    guides.push({ axis: "x", position: left }, { axis: "x", position: right });
-  } else if (left !== undefined) {
+  if (left !== undefined) {
     width = Math.max(1, x + width - left);
     x = left;
     guides.push({ axis: "x", position: left });
@@ -52,11 +65,7 @@ export function snapResize(moving: SnapBox, targets: SnapBox[], page: PageSize, 
     width = Math.max(1, right - x);
     guides.push({ axis: "x", position: right });
   }
-  if (top !== undefined && bottom !== undefined) {
-    y = top;
-    height = Math.max(1, bottom - top);
-    guides.push({ axis: "y", position: top }, { axis: "y", position: bottom });
-  } else if (top !== undefined) {
+  if (top !== undefined) {
     height = Math.max(1, y + height - top);
     y = top;
     guides.push({ axis: "y", position: top });
@@ -87,7 +96,8 @@ function closestDelta(edges: number[], stops: number[], threshold: number): { de
   return best;
 }
 
-function closestStop(value: number, stops: number[], threshold: number): number | undefined {
+function snapEdge(value: number, stops: number[], threshold: number, hold?: number): number | undefined {
+  if (hold !== undefined && Math.abs(value - hold) <= threshold * SNAP_RELEASE) return hold;
   let best: { stop: number; distance: number } | undefined;
   for (const stop of stops) {
     const distance = Math.abs(value - stop);

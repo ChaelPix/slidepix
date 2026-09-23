@@ -90,7 +90,12 @@ Element types are `text`, `image`, `video`, `shape`, and `table`. Shared geometr
 are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior
 includes locking, hiding, optional name, and optional accessibility text.
 Image and video elements also carry `storage: "linked" | "embedded"`; the
-`src` string alone is never enough to decide its security boundary.
+`src` string alone is never enough to decide its security boundary. Optional
+`lockAspectRatio` keeps the source ratio (`aspectRatio`, width divided by
+height). While it is on, width is authoritative and height is rewritten from
+that ratio when the deck is parsed or saved.
+
+Text paints past its box. The slide still clips at its own edges.
 
 Shape fills and strokes accept CSS colors including the literal `transparent`.
 A shape also stores a shadow object (`enabled`, color, X/Y offset, and blur);

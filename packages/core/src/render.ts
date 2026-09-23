@@ -349,7 +349,7 @@ function baseStyles(deck: Deck, mode: string, columns: number): string {
 main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.size.width}px);gap:32px;padding:32px;width:max-content` : ""}}
 .slidepix-slide{position:relative;overflow:hidden;isolation:isolate;page-break-inside:avoid;break-inside:avoid}
 .slidepix-element{position:absolute;transform-origin:center center;overflow:visible}
-.slidepix-text-content{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
+.slidepix-text-content{width:100%;height:100%;display:flex;flex-direction:column;overflow:visible}
 .slidepix-text-content>*:first-child{margin-top:0}.slidepix-text-content>*:last-child{margin-bottom:0}
 .slidepix-text-content h1,.slidepix-text-content h2,.slidepix-text-content h3{line-height:1.08;margin:.25em 0}.slidepix-text-content h1{font-size:1.3em}.slidepix-text-content h2{font-size:1.15em}.slidepix-text-content h3{font-size:1em}
 .slidepix-table-content{width:100%;height:100%;border-collapse:collapse;table-layout:fixed}.slidepix-table-content tr{height:auto}.slidepix-table-content th,.slidepix-table-content td{overflow:hidden}.slidepix-table-cell{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}.slidepix-table-cell>*:first-child{margin-top:0}.slidepix-table-cell>*:last-child{margin-bottom:0}
