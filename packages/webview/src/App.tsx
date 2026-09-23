@@ -20,6 +20,7 @@ import { SlideView } from "./SlideView";
 import { clamp, cropZoomPercent, localPointerDelta, scaleCrop, scaleCropAround, setCropZoom } from "./geometry";
 import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
 import { peerBoxes, resizeEdges, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
+import { railDropIndex } from "./rail";
 import { useDeckStore } from "./store";
 import { toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
@@ -649,7 +650,57 @@ function AlignControls({ count, unlocked, align, distribute }: { count: number; 
 
 function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, mutate, resolveAsset }: { collapsed: boolean; onToggleCollapse(): void; deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
   const [transitionSlideId, setTransitionSlideId] = useState<string>();
+  const [drag, setDrag] = useState<{ id: string; from: number; dy: number; to: number }>();
+  const listRef = useRef<HTMLDivElement>(null);
+  const dragGesture = useRef<{ id: string; from: number; startY: number; pointerId: number; active: boolean } | undefined>(undefined);
+  const suppressClick = useRef(false);
   const addSlide = () => mutate((draft) => draft.slides.push({ id: crypto.randomUUID(), title: `Slide ${draft.slides.length + 1}`, notes: "", hidden: false, hidePageNumber: false, transition: { type: "none", durationMs: 500, easing: "ease-in-out" }, timeline: [], elements: [] }));
+  const marker = drag ? (drag.to > drag.from ? drag.to + 1 : drag.to) : undefined;
+  const entryMidpoints = (dy: number) => [...(listRef.current?.querySelectorAll<HTMLElement>(".rail-entry") ?? [])].map((entry) => {
+    const rect = entry.getBoundingClientRect();
+    const shift = entry.classList.contains("dragging") ? dy : 0;
+    return rect.top - shift + rect.height / 2;
+  });
+  const beginDrag = (event: ReactPointerEvent<HTMLButtonElement>, index: number, id: string) => {
+    if (event.button !== 0) return;
+    suppressClick.current = false;
+    dragGesture.current = { id, from: index, startY: event.clientY, pointerId: event.pointerId, active: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const gesture = dragGesture.current;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const dy = event.clientY - gesture.startY;
+    if (!gesture.active && Math.abs(dy) < 6) return;
+    if (!gesture.active) select(gesture.id);
+    gesture.active = true;
+    const list = listRef.current;
+    if (list) {
+      const bounds = list.getBoundingClientRect();
+      if (event.clientY < bounds.top + 28) list.scrollTop -= 14;
+      else if (event.clientY > bounds.bottom - 28) list.scrollTop += 14;
+    }
+    setDrag({ id: gesture.id, from: gesture.from, dy, to: railDropIndex(entryMidpoints(dy), event.clientY, gesture.from) });
+  };
+  const finishDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const gesture = dragGesture.current;
+    dragGesture.current = undefined;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    if (!gesture.active) {
+      setDrag(undefined);
+      return;
+    }
+    suppressClick.current = true;
+    const to = railDropIndex(entryMidpoints(event.clientY - gesture.startY), event.clientY, gesture.from);
+    setDrag(undefined);
+    if (to === gesture.from) return;
+    mutate((draft) => {
+      const from = draft.slides.findIndex((item) => item.id === gesture.id);
+      if (from < 0 || from === to) return;
+      const [item] = draft.slides.splice(from, 1);
+      if (item) draft.slides.splice(to, 0, item);
+    });
+  };
   return <aside className={`slide-rail${collapsed ? " collapsed" : ""}`}>
     <div className="rail-header">
       <strong>Slides</strong>
@@ -657,18 +708,16 @@ function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, muta
         <span className={`codicon codicon-chevron-${collapsed ? "right" : "left"}`} />
       </button>
     </div>
-    <div className="rail-scroll">
-      {deck.slides.map((slide, index) => <div key={slide.id} className="rail-entry">
+    <div className="rail-scroll" ref={listRef}>
+      {deck.slides.map((slide, index) => <div key={slide.id} className={`rail-entry${drag?.id === slide.id ? " dragging" : ""}${marker === index ? " drop-before" : ""}${marker === deck.slides.length && index === deck.slides.length - 1 ? " drop-after" : ""}`} style={drag?.id === slide.id ? { transform: `translateY(${drag.dy}px)` } : undefined}>
         {index > 0 && <><button className={`transition-gap ${transitionSlideId === slide.id ? "active" : ""} ${slide.transition.type !== "none" ? "has-transition" : ""}`} title="Edit incoming transition" onClick={() => setTransitionSlideId((current) => current === slide.id ? undefined : slide.id)}><span className="codicon codicon-arrow-swap" /> <span>{slide.transition.type === "none" ? "Add transition" : transitionLabel(slide.transition.type)}</span></button>{transitionSlideId === slide.id && <TransitionEditor transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides[index]!.transition, patch))} close={() => setTransitionSlideId(undefined)} />}</>}
-        <button className={`thumbnail ${selectedId === slide.id ? "active" : ""}`} onClick={() => select(slide.id)}>
+        <button className={`thumbnail ${selectedId === slide.id ? "active" : ""}`} title="Drag up or down to reorder" onPointerDown={(event) => beginDrag(event, index, slide.id)} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={() => { dragGesture.current = undefined; setDrag(undefined); }} onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } select(slide.id); }}>
           <span className="slide-index">{index + 1}</span>
           <div className="thumb-clip" style={{ width: 192, height: 108 }}><SlideView deck={deck} slide={slide} scale={0.1} resolveAsset={resolveAsset} /></div>
           <span className="slide-title">{slide.title}{slide.hidden ? " (hidden)" : ""}</span>
         </button>
         <div className="rail-actions">
           <IconButton icon="copy" label="Duplicate" onClick={() => mutate((draft) => draft.slides.splice(index + 1, 0, duplicateSlide(draft.slides[index]!)))} />
-          <IconButton icon="arrow-up" label="Move up" disabled={index === 0} onClick={() => mutate((draft) => { const [item] = draft.slides.splice(index, 1); if (item) draft.slides.splice(index - 1, 0, item); })} />
-          <IconButton icon="arrow-down" label="Move down" disabled={index === deck.slides.length - 1} onClick={() => mutate((draft) => { const [item] = draft.slides.splice(index, 1); if (item) draft.slides.splice(index + 1, 0, item); })} />
           <IconButton icon={slide.hidden ? "eye-closed" : "eye"} label={slide.hidden ? "Show slide" : "Hide slide"} pressed={slide.hidden} onClick={() => mutate((draft) => { draft.slides[index]!.hidden = !draft.slides[index]!.hidden; })} />
           <IconButton icon="trash" label="Delete" disabled={deck.slides.length === 1} onClick={() => mutate((draft) => draft.slides.splice(index, 1))} />
         </div>

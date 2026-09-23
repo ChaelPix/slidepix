@@ -124,6 +124,21 @@ button:disabled { opacity: .45; cursor: default; }
 .slide-rail.collapsed .rail-scroll { display: none; }
 .rail-scroll { overflow: auto; padding: 0 10px 32px; }
 .rail-entry { position: relative; }
+.rail-entry.drop-before::before,
+.rail-entry.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 3px;
+  background: var(--vscode-focusBorder);
+  z-index: 4;
+  pointer-events: none;
+}
+.rail-entry.drop-before::before { top: 0; }
+.rail-entry.drop-after::after { bottom: 0; }
+.rail-entry.dragging { z-index: 3; }
+.rail-entry.dragging .thumbnail { box-shadow: 0 8px 18px #0006; }
 .transition-gap { height: 25px; width: 100%; padding: 0; background: transparent; border: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .transition-gap span { opacity: 0; }
 .transition-gap:hover span, .transition-gap:focus span, .transition-gap.active span, .transition-gap.has-transition span { opacity: 1; }
@@ -136,7 +151,8 @@ button:disabled { opacity: .45; cursor: default; }
 .transition-options button { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px; border-color: transparent; background: transparent; font-size: 8px; }
 .transition-options button .codicon { font-size: 14px; }
 .transition-options button.active { border-color: var(--vscode-focusBorder); background: var(--vscode-list-activeSelectionBackground); }
-.thumbnail { position: relative; width: 100%; padding: 8px; background: transparent; border: 1px solid transparent; text-align: left; }
+.thumbnail { position: relative; width: 100%; padding: 8px; background: transparent; border: 1px solid transparent; text-align: left; cursor: grab; touch-action: none; }
+.thumbnail:active, .rail-entry.dragging .thumbnail { cursor: grabbing; }
 .thumbnail.active { border-color: var(--vscode-focusBorder); background: var(--vscode-list-activeSelectionBackground); }
 .thumb-clip { position: relative; overflow: hidden; background: #000; margin: auto; }
 .thumb-clip .slide { transform-origin: top left; }

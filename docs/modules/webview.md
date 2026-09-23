@@ -117,7 +117,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   right of the context toolbar adjust canvas zoom. Speaker notes can collapse
   to a compact header without changing persisted notes. The slide rail and
   inspector collapse independently from chevrons on their inner edges; both
-  collapsed states stay transient.
+  collapsed states stay transient. Hold a slide thumbnail and drag it up or
+  down to reorder; the deck updates once on release.
 - Checkbox fields use an explicit horizontal row so narrow inspectors do not
   separate the control from its label.
 - Numeric Properties fields use large decrement/increment targets, select their
