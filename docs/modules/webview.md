@@ -14,6 +14,7 @@ webview. The webview has no direct filesystem or Node access.
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
 | `src/align.ts` | Page/selection alignment and equal-gap distribution of element boxes. |
 | `src/snap.ts` | Logical-space edge/center snapping against the page and peer boxes. |
+| `src/shape-batch.ts` | Copies a shape's pose and paint onto same-named shapes on other slides. |
 | `src/store.ts` | Zustand state, single-flight revisioned persistence, semantic external-edit rebasing, immutable mutation helpers, selection, and zoom. |
 | `src/vscode.ts` | Typed adapter around `acquireVsCodeApi`, version stamping, host listener, and browser fallback used during local development. |
 | `src/toasts.ts` | App-wide transient notification events and stack update helpers. |
@@ -72,8 +73,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - A locked item cannot be manipulated from the canvas.
 - Deleting an element also removes timeline steps that target it.
 - Selecting another slide clears element selection.
-- Clicking a transition gap opens a visual editor for the destination slide's
-  incoming transition and duration.
+- Hovering the gap between slides shows **+**, which inserts a blank slide at
+  that index and selects it. The bottom **Add slide** still appends. Clicking
+  a transition gap opens a visual editor for the destination slide's incoming
+  transition and duration. **Apply to all slides** copies that type and
+  duration onto every slide.
 - Selecting an image exposes canvas handles for radius and four-sided edge
   fade. The fade uses the same geometry-derived rounded SVG mask in editor and
   export, so it follows the configured corner radius. Double-clicking, or
@@ -112,7 +116,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   transparent header/cell/border colors. Limits match the core schema.
 - Shape Properties provides explicit transparent fill/border toggles and an
   optional silhouette-aware shadow with color, offsets, and blur. Image borders
-  use the same transparent toggle.
+  use the same transparent toggle. **Batch edit** is off until toggled and
+  resets when another element is selected. While on, color, size, and pose
+  edits — including canvas drag, resize, and rotate — copy onto shapes with
+  the same element name on the other slides. A blank name does not sync, and
+  renaming does not rename the matches.
 - Toolbar Undo/Redo and Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, or Ctrl+Y flush previews,
   then enter one request-ID-based queue. The host keeps a snapshot stack of
   committed decks and restores the previous or next snapshot through
@@ -137,7 +145,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   value on focus, support focused-wheel adjustment, and use Shift for ×10 or
   Alt for ×0.1 nudges. Range properties use a visible card and slider.
 - All persistent changes go through `mutate` or the `preview`/`commit` queue;
-  selections, zoom, open tabs, panel collapse, and modal state stay transient.
+  selections, zoom, open tabs, panel collapse, the batch-edit toggle, and modal
+  state stay transient.
 - Drag and resize snap only while Shift is held, in logical slide units, to
   visible peer left/center/right and top/middle/bottom edges and to the slide
   edges and center. Resize snaps only the dragged edges, and stays on a guide
@@ -155,8 +164,9 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   Text renders past its box; the slide still clips at the page edge.
 - **Element name** is the morph link. The same name on both slides morphs
   that object. A blank name, or the same name twice on one slide, does not.
-- Slide Properties exposes the same incoming transition controls as the rail
-  and can choose, replace, or remove a storage-aware background image.
+- Slide Properties exposes the same incoming transition controls as the rail,
+  including **Apply to all slides**, and can choose, replace, or remove a
+  storage-aware background image.
 - Blocking browser alerts are not used. Success toasts auto-dismiss after 2.5
   seconds, errors remain dismissible, and host-owned exports update a progress
   toast through the versioned protocol.

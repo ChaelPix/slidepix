@@ -22,6 +22,7 @@ import { clamp, cropBoxByEdges, localPointerDelta, panCrop, type CropBox } from 
 import { applyAlign, applyDistribute, type AlignAction, type AlignRelativeTo, type DistributeAction } from "./align";
 import { peerBoxes, resizeEdges, snapMove, snapResize, snapThreshold, type SnapGuide } from "./snap";
 import { railDropIndex } from "./rail";
+import { syncNamedShapes } from "./shape-batch";
 import { useDeckStore } from "./store";
 import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
@@ -48,6 +49,7 @@ export default function App() {
   const [notesCollapsed, setNotesCollapsed] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [batchShapeEdit, setBatchShapeEdit] = useState(false);
   const inlineTextEditor = useRef<InlineTextEditorHandle>(null);
   const pendingTextFormat = useRef<TextFormatCommand | undefined>(undefined);
   const moveableRef = useRef<Moveable | null>(null);
@@ -76,6 +78,7 @@ export default function App() {
   useEffect(() => {
     if (!selected || selected.type !== "image" || selected.id !== croppingId) setCroppingId(undefined);
   }, [selected?.id, selected?.type, croppingId]);
+  useEffect(() => setBatchShapeEdit(false), [selected?.id]);
   useEffect(() => {
     if (editingTextId && (selected?.type !== "text" || selected.id !== editingTextId)) setEditingTextId(undefined);
   }, [editingTextId, selected?.id, selected?.type]);
@@ -392,6 +395,7 @@ export default function App() {
                           node.style.top = `${element.y}px`;
                         }
                       }
+                      if (batchShapeEdit) for (const start of dragOrigins.current) syncNamedShapes(draft, slide.id, start.id);
                     });
                   }}
                   onDragEnd={() => {
@@ -431,6 +435,7 @@ export default function App() {
                       element.height = fitted.height;
                       element.x = fitted.x;
                       element.y = fitted.y;
+                      if (batchShapeEdit) syncNamedShapes(draft, slide.id, dragTarget.id);
                     });
                   }}
                   onResizeEnd={() => {
@@ -440,7 +445,7 @@ export default function App() {
                   }}
                   onRotate={({ rotation, target: elementTarget }) => {
                     elementTarget.style.transform = `rotate(${rotation}deg)`;
-                    store.preview((draft) => { const element = findElement(draft, slide.id, dragTarget.id); if (element) element.rotation = rotation; });
+                    store.preview((draft) => { const element = findElement(draft, slide.id, dragTarget.id); if (element) { element.rotation = rotation; if (batchShapeEdit) syncNamedShapes(draft, slide.id, dragTarget.id); } });
                   }}
                   onRotateEnd={store.commit}
                 />
@@ -471,7 +476,7 @@ export default function App() {
           {!notesCollapsed && <textarea aria-label="Speaker notes" value={slide.notes} onChange={(event) => { store.preview((draft) => { draft.slides.find((item) => item.id === slide.id)!.notes = event.target.value; }); store.scheduleCommit(); }} onBlur={store.commit} />}
         </section>
       </main>
-      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropping={cropping} assetUrl={assetUrl} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={(id) => setCroppingId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
+      <Inspector collapsed={inspectorCollapsed} onToggleCollapse={() => setInspectorCollapsed((value) => !value)} tab={tab} setTab={setTab} deck={deck} slide={slide} element={selected} cropping={cropping} batchShapeEdit={batchShapeEdit} setBatchShapeEdit={setBatchShapeEdit} assetUrl={assetUrl} mutate={store.mutate} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} selectElement={store.selectElement} editText={(id) => { store.commit(); setEditingTextId(undefined); setAdvancedTextId(id); }} editImage={(id) => setCroppingId((current) => current === id ? undefined : id)} relinkMedia={(kind, id) => requestMedia(kind, undefined, id)} chooseBackgroundImage={requestBackgroundImage} />
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
@@ -664,7 +669,15 @@ function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, muta
   const listRef = useRef<HTMLDivElement>(null);
   const dragGesture = useRef<{ id: string; from: number; startY: number; pointerId: number; active: boolean } | undefined>(undefined);
   const suppressClick = useRef(false);
-  const addSlide = () => mutate((draft) => draft.slides.push({ id: crypto.randomUUID(), title: `Slide ${draft.slides.length + 1}`, notes: "", hidden: false, hidePageNumber: false, transition: { type: "none", durationMs: 500, easing: "ease-in-out" }, timeline: [], elements: [] }));
+  const addSlide = (index?: number) => {
+    const id = crypto.randomUUID();
+    mutate((draft) => {
+      const slide = { id, title: `Slide ${draft.slides.length + 1}`, notes: "", hidden: false, hidePageNumber: false, transition: { type: "none" as const, durationMs: 500, easing: "ease-in-out" }, timeline: [], elements: [] };
+      if (index === undefined) draft.slides.push(slide);
+      else draft.slides.splice(index, 0, slide);
+    });
+    select(id);
+  };
   const marker = drag ? (drag.to > drag.from ? drag.to + 1 : drag.to) : undefined;
   const entryMidpoints = (dy: number) => [...(listRef.current?.querySelectorAll<HTMLElement>(".rail-entry") ?? [])].map((entry) => {
     const rect = entry.getBoundingClientRect();
@@ -720,7 +733,8 @@ function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, muta
     </div>
     <div className="rail-scroll" ref={listRef}>
       {deck.slides.map((slide, index) => <div key={slide.id} className={`rail-entry${drag?.id === slide.id ? " dragging" : ""}${marker === index ? " drop-before" : ""}${marker === deck.slides.length && index === deck.slides.length - 1 ? " drop-after" : ""}`} style={drag?.id === slide.id ? { transform: `translateY(${drag.dy}px)` } : undefined}>
-        {index > 0 && <><button className={`transition-gap ${transitionSlideId === slide.id ? "active" : ""} ${slide.transition.type !== "none" ? "has-transition" : ""}`} title="Edit incoming transition" onClick={() => setTransitionSlideId((current) => current === slide.id ? undefined : slide.id)}><span className="codicon codicon-arrow-swap" /> <span>{slide.transition.type === "none" ? "Add transition" : transitionLabel(slide.transition.type)}</span></button>{transitionSlideId === slide.id && <TransitionEditor transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides[index]!.transition, patch))} close={() => setTransitionSlideId(undefined)} />}</>}
+        {index > 0 && <div className="transition-row"><button type="button" className="insert-slide" title="Insert blank slide here" aria-label="Insert blank slide here" onClick={() => addSlide(index)}><span className="codicon codicon-add" /></button><button className={`transition-gap ${transitionSlideId === slide.id ? "active" : ""} ${slide.transition.type !== "none" ? "has-transition" : ""}`} title="Edit incoming transition" onClick={() => setTransitionSlideId((current) => current === slide.id ? undefined : slide.id)}><span className="codicon codicon-arrow-swap" /> <span>{slide.transition.type === "none" ? "Add transition" : transitionLabel(slide.transition.type)}</span></button></div>}
+        {index > 0 && transitionSlideId === slide.id && <TransitionEditor transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides[index]!.transition, patch))} applyAll={() => mutate((draft) => { const transition = { ...draft.slides[index]!.transition }; for (const item of draft.slides) item.transition = { ...transition }; })} close={() => setTransitionSlideId(undefined)} />}
         <button className={`thumbnail ${selectedId === slide.id ? "active" : ""}`} title="Drag up or down to reorder" onPointerDown={(event) => beginDrag(event, index, slide.id)} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={() => { dragGesture.current = undefined; setDrag(undefined); }} onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } select(slide.id); }}>
           <span className="slide-index">{index + 1}</span>
           <div className="thumb-clip" style={{ width: 192, height: 108 }}><SlideView deck={deck} slide={slide} scale={0.1} resolveAsset={resolveAsset} /></div>
@@ -732,22 +746,23 @@ function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, muta
           <IconButton icon="trash" label="Delete" disabled={deck.slides.length === 1} onClick={() => mutate((draft) => draft.slides.splice(index, 1))} />
         </div>
       </div>)}
-      <button className="add-slide-tile" onClick={addSlide}><span className="codicon codicon-add" /><span>Add slide</span></button>
+      <button className="add-slide-tile" onClick={() => addSlide()}><span className="codicon codicon-add" /><span>Add slide</span></button>
     </div>
   </aside>;
 }
 
-function TransitionEditor({ transition, update, close }: { transition: Transition; update(patch: Partial<Transition>): void; close(): void }) {
+function TransitionEditor({ transition, update, applyAll, close }: { transition: Transition; update(patch: Partial<Transition>): void; applyAll(): void; close(): void }) {
   return <div className="transition-editor" onClick={(event) => event.stopPropagation()}>
     <header><strong>Incoming transition</strong><button className="icon-button" aria-label="Close transition editor" onClick={close}><span className="codicon codicon-close" /></button></header>
-    <TransitionControls transition={transition} update={update} />
+    <TransitionControls transition={transition} update={update} applyAll={applyAll} />
   </div>;
 }
 
-function TransitionControls({ transition, update }: { transition: Transition; update(patch: Partial<Transition>): void }) {
+function TransitionControls({ transition, update, applyAll }: { transition: Transition; update(patch: Partial<Transition>): void; applyAll?: () => void }) {
   return <div className="transition-controls">
     <div className="transition-options">{transitionTypes.map((type) => <button key={type} className={transition.type === type ? "active" : ""} title={transitionLabel(type)} onClick={() => update({ type })}><span className={`codicon codicon-${transitionIcon(type)}`} /><span>{transitionLabel(type)}</span></button>)}</div>
     <label>Duration <span>{transition.durationMs} ms</span><input type="range" min="0" max="3000" step="100" value={transition.durationMs} onChange={(event) => update({ durationMs: Number(event.target.value) })} /></label>
+    {applyAll && <button type="button" className="apply-transition" onClick={applyAll}>Apply to all slides</button>}
   </div>;
 }
 
@@ -814,15 +829,29 @@ function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }:
   </div>;
 }
 
-function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropping, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
-  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropping: boolean; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
+function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropping, batchShapeEdit, setBatchShapeEdit, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
+  collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropping: boolean; batchShapeEdit: boolean; setBatchShapeEdit(enabled: boolean): void; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
   const selectedIds = useDeckStore((state) => state.selectedElementIds);
   const update = (patch: Partial<SlideElement>) => element && mutate((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
   const updateContinuous = (patch: Partial<SlideElement>) => {
     if (!element) return;
-    preview((draft) => Object.assign(findElement(draft, slide.id, element.id)!, patch));
+    preview((draft) => {
+      Object.assign(findElement(draft, slide.id, element.id)!, patch);
+      if (batchShapeEdit && element.type === "shape" && !("name" in patch)) syncNamedShapes(draft, slide.id, element.id);
+    });
     scheduleCommit();
+  };
+  const editShape = (fn: (target: Extract<SlideElement, { type: "shape" }>) => void, live = true) => {
+    if (!element) return;
+    const apply = (draft: Deck) => {
+      const target = findElement(draft, slide.id, element.id);
+      if (target?.type !== "shape") return;
+      fn(target);
+      if (batchShapeEdit) syncNamedShapes(draft, slide.id, element.id);
+    };
+    if (live) { preview(apply); scheduleCommit(); }
+    else mutate(apply);
   };
   const continuous = (fn: (draft: Deck) => void) => { preview(fn); scheduleCommit(); };
   return <aside className={`inspector${collapsed ? " collapsed" : ""}`}>
@@ -858,14 +887,17 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
             <span className="inspector-control-label">Vertical alignment</span><AlignmentButtons label="Vertical alignment" value={element.style.verticalAlign} values={["top", "middle", "bottom"]} onChange={(value) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "text") target.style.verticalAlign = value as "top" | "middle" | "bottom"; })} />
           </>}
           {element.type === "shape" && <>
-            <ColorField label="Fill" value={element.fill} allowTransparent onChange={(fill) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.fill = fill; })} onCommit={commit} />
-            <NumberField label="Border width" value={element.strokeWidth} onChange={(strokeWidth) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.strokeWidth = Math.max(0, strokeWidth); })} onCommit={commit} />
-            <ColorField label="Border color" value={element.stroke} allowTransparent onChange={(stroke) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.stroke = stroke; })} onCommit={commit} />
-            <CheckboxField label="Shadow" checked={element.shadow.enabled} onChange={(enabled) => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.enabled = enabled; })} />
+            <h4 className="property-heading">Batch edit</h4>
+            <CheckboxField label="Same name on other slides" checked={batchShapeEdit} onChange={setBatchShapeEdit} />
+            <p className="panel-help">{element.name?.trim() ? "Color, size, and position copy to every other slide’s shape with this name." : "Give this shape an element name first. Only shapes with that same name are updated."}</p>
+            <ColorField label="Fill" value={element.fill} allowTransparent onChange={(fill) => editShape((target) => { target.fill = fill; })} onCommit={commit} />
+            <NumberField label="Border width" value={element.strokeWidth} onChange={(strokeWidth) => editShape((target) => { target.strokeWidth = Math.max(0, strokeWidth); })} onCommit={commit} />
+            <ColorField label="Border color" value={element.stroke} allowTransparent onChange={(stroke) => editShape((target) => { target.stroke = stroke; })} onCommit={commit} />
+            <CheckboxField label="Shadow" checked={element.shadow.enabled} onChange={(enabled) => editShape((target) => { target.shadow.enabled = enabled; }, false)} />
             {element.shadow.enabled && <>
-              <ColorField label="Shadow color" value={element.shadow.color} allowTransparent onChange={(color) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.color = color; })} onCommit={commit} />
-              <div className="field-grid"><NumberField label="Shadow X" value={element.shadow.offsetX} onChange={(offsetX) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetX = offsetX; })} onCommit={commit} /><NumberField label="Shadow Y" value={element.shadow.offsetY} onChange={(offsetY) => continuous((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.offsetY = offsetY; })} onCommit={commit} /></div>
-              <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => preview((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "shape") target.shadow.blur = blur; })} onCommit={commit} />
+              <ColorField label="Shadow color" value={element.shadow.color} allowTransparent onChange={(color) => editShape((target) => { target.shadow.color = color; })} onCommit={commit} />
+              <div className="field-grid"><NumberField label="Shadow X" value={element.shadow.offsetX} onChange={(offsetX) => editShape((target) => { target.shadow.offsetX = offsetX; })} onCommit={commit} /><NumberField label="Shadow Y" value={element.shadow.offsetY} onChange={(offsetY) => editShape((target) => { target.shadow.offsetY = offsetY; })} onCommit={commit} /></div>
+              <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => editShape((target) => { target.shadow.blur = blur; })} onCommit={commit} />
             </>}
           </>}
           {element.type === "table" && <>
@@ -927,7 +959,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
           <h4 className="property-heading">Background image</h4>
           {slide.backgroundImage ? <div className="media-source-card"><span className={`storage-badge ${slide.backgroundImage.storage}`}>{slide.backgroundImage.storage}</span><code title={slide.backgroundImage.src}>{slide.backgroundImage.src}</code><div><button onClick={chooseBackgroundImage}>Replace image…</button><button className="danger-quiet" onClick={() => mutate((draft) => { delete draft.slides.find((item) => item.id === slide.id)!.backgroundImage; })}>Remove</button></div></div> : <button className="edit-text-button" onClick={chooseBackgroundImage}><span className="codicon codicon-file-media" /> Choose background image…</button>}
           <h4 className="property-heading">Transition</h4>
-          <TransitionControls transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.transition, patch))} />
+          <TransitionControls transition={slide.transition} update={(patch) => mutate((draft) => Object.assign(draft.slides.find((item) => item.id === slide.id)!.transition, patch))} applyAll={() => mutate((draft) => { const source = draft.slides.find((item) => item.id === slide.id); if (!source) return; const transition = { ...source.transition }; for (const item of draft.slides) item.transition = { ...transition }; })} />
         </>}
       </>}
       {tab === "layers" && <><h3>Layers</h3><p className="panel-help">Shift-click to add items to the selection for align and distribute.</p>{[...slide.elements].sort((a, b) => b.z - a.z).map((item) => <div className={`layer-row ${selectedIds.includes(item.id) ? "active" : ""}`} key={item.id} onClick={(event) => selectElement(item.id, event.shiftKey)}><span>{item.name ?? `${item.type} ${item.id.slice(0, 4)}`}</span><button title={item.locked ? "Unlock" : "Lock"} aria-label={item.locked ? "Unlock" : "Lock"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.locked = !target.locked; }); }}><span className={`codicon codicon-${item.locked ? "lock" : "unlock"}`} /></button><button title={item.hidden ? "Show" : "Hide"} aria-label={item.hidden ? "Show" : "Hide"} onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.hidden = !target.hidden; }); }}><span className={`codicon codicon-${item.hidden ? "eye-closed" : "eye"}`} /></button><button title="Bring forward" aria-label="Bring forward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z += 1; }); }}><span className="codicon codicon-arrow-up" /></button><button title="Send backward" aria-label="Send backward" onClick={(event) => { event.stopPropagation(); mutate((draft) => { const target = findElement(draft, slide.id, item.id); if (target) target.z -= 1; }); }}><span className="codicon codicon-arrow-down" /></button></div>)}</>}

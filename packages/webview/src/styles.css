@@ -139,7 +139,11 @@ button:disabled { opacity: .45; cursor: default; }
 .rail-entry.drop-after::after { bottom: 0; }
 .rail-entry.dragging { z-index: 3; }
 .rail-entry.dragging .thumbnail { box-shadow: 0 8px 18px #0006; }
-.transition-gap { height: 25px; width: 100%; padding: 0; background: transparent; border: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
+.transition-row { display: flex; align-items: center; gap: 2px; }
+.insert-slide { width: 22px; height: 22px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--vscode-descriptionForeground); opacity: 0; }
+.rail-entry:hover .insert-slide, .insert-slide:focus { opacity: 1; color: var(--vscode-textLink-foreground); }
+.transition-gap { height: 25px; width: auto; flex: 1; padding: 0; background: transparent; border: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
+.apply-transition { width: 100%; margin-top: 8px; padding: 6px; }
 .transition-gap span { opacity: 0; }
 .transition-gap:hover span, .transition-gap:focus span, .transition-gap.active span, .transition-gap.has-transition span { opacity: 1; }
 .transition-gap.active, .transition-gap.has-transition { color: var(--vscode-textLink-foreground); }

@@ -31,8 +31,8 @@
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
-        "type": "none",
-        "durationMs": 0,
+        "type": "slide-down",
+        "durationMs": 650,
         "easing": "ease-in-out"
       },
       "timeline": [
@@ -194,7 +194,7 @@
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
-        "type": "fade",
+        "type": "slide-down",
         "durationMs": 650,
         "easing": "ease-in-out"
       },
@@ -374,7 +374,7 @@
       "hidePageNumber": false,
       "transition": {
         "type": "slide-down",
-        "durationMs": 700,
+        "durationMs": 650,
         "easing": "ease-in-out"
       },
       "timeline": [],
@@ -547,8 +547,8 @@
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
-        "type": "slide-right",
-        "durationMs": 750,
+        "type": "slide-down",
+        "durationMs": 650,
         "easing": "ease-in-out"
       },
       "timeline": [],
@@ -730,8 +730,8 @@
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
-        "type": "slide-up",
-        "durationMs": 700,
+        "type": "slide-down",
+        "durationMs": 650,
         "easing": "ease-in-out"
       },
       "timeline": [],
@@ -856,8 +856,8 @@
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
-        "type": "morph",
-        "durationMs": 1600,
+        "type": "slide-down",
+        "durationMs": 650,
         "easing": "ease-in-out"
       },
       "timeline": [],
@@ -1008,8 +1008,8 @@
       "hidden": false,
       "hidePageNumber": false,
       "transition": {
-        "type": "slide-left",
-        "durationMs": 750,
+        "type": "slide-down",
+        "durationMs": 650,
         "easing": "ease-in-out"
       },
       "timeline": [
@@ -1230,47 +1230,6 @@
             "offsetX": 0,
             "offsetY": 12,
             "blur": 24
-          }
-        }
-      ]
-    },
-    {
-      "id": "13700c8d-a52c-4e66-8641-bac6663bd977",
-      "title": "Slide 8",
-      "notes": "",
-      "hidden": false,
-      "hidePageNumber": false,
-      "transition": {
-        "type": "none",
-        "durationMs": 500,
-        "easing": "ease-in-out"
-      },
-      "timeline": [],
-      "elements": [
-        {
-          "id": "24d457ae-74ad-4edb-8a3a-e4bb427a4674",
-          "morphKey": "909b0e35-ac15-4aa3-8429-780f9d3b6526",
-          "x": 214,
-          "y": 280,
-          "width": 1256,
-          "height": 1064,
-          "rotation": 0,
-          "opacity": 1,
-          "z": 0,
-          "locked": false,
-          "hidden": false,
-          "name": "text-24d4",
-          "type": "text",
-          "markdown": "## 3D Gaussian Splatting\nIntroduced in 2023 by Kerbl, it uses the same general idea, but the Gaussians are no longer fixed. Their position, size, orientation, color and opacity are optimized from multiple images.\n\n**In simple terms: we start with many 3D blobs, project them into the camera views, and iteratively move and reshape them until the rendered images match the real images.**\n\nTo reconstruct the scene, we need a set of camera images and, for each image, the corresponding camera pose in a common world reference frame.\n\nFor each frame $i$, we therefore need:\n- the RGB image $I_i$\n- the camera pose ${}^{W}\\mathbf{T}_{C_i} \\in SE(3)$\nwhere ${}^{W}\\mathbf{T}_{C_i}$ represents the pose of camera $C_i$ in the world frame $W$.",
-          "style": {
-            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
-            "fontSize": 27,
-            "fontWeight": 400,
-            "color": "#111827",
-            "textAlign": "left",
-            "verticalAlign": "top",
-            "lineHeight": 1.2,
-            "padding": 8
           }
         }
       ]
