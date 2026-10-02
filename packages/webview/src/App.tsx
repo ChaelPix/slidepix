@@ -482,9 +482,9 @@ export default function App() {
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
-      <div id="hidden-export-container" style={{ position: "absolute", left: "-9999px", top: 0, opacity: 0, pointerEvents: "none" }}>
+      <div id="hidden-export-container" aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, width: 0, height: 0, overflow: "hidden", zIndex: -1 }}>
         {deck.slides.map((s) => (
-          <div key={s.id} id={`export-slide-${s.id}`} style={{ width: deck.size.width, height: deck.size.height, overflow: "hidden", position: "relative" }}>
+          <div key={s.id} id={`export-slide-${s.id}`} style={{ width: deck.size.width, height: deck.size.height, overflow: "hidden", position: "relative", flexShrink: 0 }}>
             <SlideView deck={deck} slide={s} resolveAsset={assetUrl} />
           </div>
         ))}
@@ -542,9 +542,11 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
     notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
     try {
       if (command === "exportPng") {
+        const deck = useDeckStore.getState().deck;
+        if (!deck) throw new Error("No deck");
         const node = document.getElementById(`export-slide-${slide.id}`);
-        if (!node) throw new Error("Slide not found");
-        const dataUrl = await toPng(node);
+        if (!node) throw new Error("Slide not found in DOM. Try re-opening the editor.");
+        const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, cacheBust: true });
         postMessage({ type: "saveExport", format: "png", data: dataUrl } as any);
       } else if (command === "exportPdf") {
         const deck = useDeckStore.getState().deck;
@@ -559,18 +561,25 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         const pdf = new jsPDF({ orientation, unit: "pt", format: [wPt, hPt], compress: true });
         for (const [i, s] of visibleSlides.entries()) {
           const node = document.getElementById(`export-slide-${s.id}`);
-          if (!node) throw new Error(`DOM node not found for slide ${s.id}. Try re-opening the editor.`);
-          const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height });
+          if (!node) throw new Error(`DOM node not found for slide ${i + 1}. Try re-opening the editor.`);
+          const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, cacheBust: true });
           if (i > 0) pdf.addPage([wPt, hPt], orientation);
           pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
         }
         const bytes = pdf.output("arraybuffer");
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
-        postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${b64}` } as any);
+        // Chunked btoa to avoid stack overflow on large ArrayBuffers
+        const u8 = new Uint8Array(bytes);
+        let b64 = "";
+        const chunkSize = 0x8000;
+        for (let i = 0; i < u8.length; i += chunkSize) {
+          b64 += String.fromCharCode(...u8.subarray(i, i + chunkSize));
+        }
+        postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${btoa(b64)}` } as any);
       }
       notifyToast({ id: requestId, kind: "success", message: `Exported ${label}` });
     } catch (error) {
-      notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}` });
+      const detail = error instanceof Error ? error.message : String(error);
+      notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}: ${detail}` });
     }
   };
   return <header className="toolbar-shell">
