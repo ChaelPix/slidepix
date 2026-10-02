@@ -27,6 +27,8 @@ import { useDeckStore } from "./store";
 import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
+import { toPng } from "html-to-image";
+import { jsPDF } from "jspdf";
 
 type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
@@ -480,6 +482,13 @@ export default function App() {
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
+      <div id="hidden-export-container" style={{ position: "absolute", left: "-9999px", top: 0, opacity: 0, pointerEvents: "none" }}>
+        {deck.slides.map((s) => (
+          <div key={s.id} id={`export-slide-${s.id}`} style={{ width: deck.size.width, height: deck.size.height, overflow: "hidden", position: "relative" }}>
+            <SlideView deck={deck} slide={s} resolveAsset={assetUrl} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -522,10 +531,47 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   };
   const updateElement = (fn: (target: SlideElement) => void) => element && mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target) fn(target); });
   const textLike = element?.type === "text" || element?.type === "table" ? element : undefined;
-  const exportDeck = (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb", label: string, slideIds?: string[]) => {
+  const exportDeck = async (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb", label: string, slideIds?: string[]) => {
+    if (command === "exportPptx" || command === "exportWeb") {
+      const requestId = crypto.randomUUID();
+      notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
+      postMessage({ type: "command", command, requestId, slideIds });
+      return;
+    }
     const requestId = crypto.randomUUID();
     notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
-    postMessage({ type: "command", command, requestId, slideIds });
+    try {
+      if (command === "exportPng") {
+        const node = document.getElementById(`export-slide-${slide.id}`);
+        if (!node) throw new Error("Slide not found");
+        const dataUrl = await toPng(node);
+        postMessage({ type: "saveExport", format: "png", data: dataUrl } as any);
+      } else if (command === "exportPdf") {
+        const deck = useDeckStore.getState().deck;
+        if (!deck) throw new Error("No deck");
+        const visibleSlides = deck.slides.filter(s => !s.hidden);
+        if (visibleSlides.length === 0) throw new Error("No visible slides to export");
+        // Use points (pt) so jsPDF handles large pixel dimensions correctly.
+        // 1 px = 0.75 pt at 96 dpi; we keep slides at exact pt dimensions so images fit.
+        const wPt = deck.size.width * 0.75;
+        const hPt = deck.size.height * 0.75;
+        const orientation = deck.size.width >= deck.size.height ? "landscape" : "portrait";
+        const pdf = new jsPDF({ orientation, unit: "pt", format: [wPt, hPt], compress: true });
+        for (const [i, s] of visibleSlides.entries()) {
+          const node = document.getElementById(`export-slide-${s.id}`);
+          if (!node) throw new Error(`DOM node not found for slide ${s.id}. Try re-opening the editor.`);
+          const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height });
+          if (i > 0) pdf.addPage([wPt, hPt], orientation);
+          pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
+        }
+        const bytes = pdf.output("arraybuffer");
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+        postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${b64}` } as any);
+      }
+      notifyToast({ id: requestId, kind: "success", message: `Exported ${label}` });
+    } catch (error) {
+      notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}` });
+    }
   };
   return <header className="toolbar-shell">
     <div className="toolbar toolbar-primary">

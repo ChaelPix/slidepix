@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
-import { loadDeck, renderSlidesToPng, selectSlides } from "./tools";
+import { loadDeck, selectSlides } from "./tools";
 
 const selectorSchema = {
   deckPath: z.string().min(1).describe("Absolute path to a .slidepix.json deck"),
@@ -44,24 +44,7 @@ function buildServer(): McpServer {
     })), null, 2) }] };
   });
 
-  server.registerTool("render_slides", {
-    description: "Render one or more SlidePix slides into one PNG contact sheet for visual review.",
-    inputSchema: z.object({
-      ...selectorSchema,
-      layout: z.enum(["grid", "row", "column"]).default("grid"),
-      columns: z.number().int().positive().max(10).optional(),
-      scale: z.number().min(0.1).max(3).default(1)
-    })
-  }, async ({ deckPath, slideIds, indices, layout, columns, scale }) => {
-    const deck = await loadDeck(deckPath);
-    const slides = selectSlides(deck, slideIds, indices);
-    if (!slides.length) throw new Error("No slides selected.");
-    const image = await renderSlidesToPng(deckPath, deck, slides, { layout, columns, scale });
-    return { content: [
-      { type: "image", data: image.toString("base64"), mimeType: "image/png" },
-      { type: "text", text: `Rendered ${slides.length} slide${slides.length === 1 ? "" : "s"} from ${deck.metadata.title}.` }
-    ] };
-  });
+
 
   return server;
 }

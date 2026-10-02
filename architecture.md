@@ -39,7 +39,7 @@ base / ours / theirs ── @slidepix/core semantic merge ── validated canon
 @slidepix/core schema + renderer
        ├── editor canvas/thumbnails
        ├── audience and presenter server
-       ├── PDF/PNG through pinned Chromium
+       ├── PDF/PNG through system browser (Chrome/Edge)
        ├── native editable PPTX through semantic OOXML conversion
        ├── standalone offline web folder
        └── read-only MCP inspection/rendering
@@ -87,7 +87,7 @@ Detailed ownership and method contracts:
 8. Presentation HTTP and WebSocket services bind only to `127.0.0.1` and require
    an unguessable per-session token.
 9. MCP v0.1 stays read-only. Its tools must not write a deck or its assets.
-10. Chromium is OS-specific, consented, pinned, and stored outside the VSIX.
+10. PDF/PNG exports rely on the user's existing Chrome or Edge browser (zero-download).
 11. Every document replacement names its exact base revision. Stale edits are
     semantically rebased or surfaced as conflicts; they are never applied
     blindly over newer source.
@@ -117,7 +117,7 @@ Edit source files, then regenerate outputs with the documented commands.
 | `pnpm package` | Performs a full workspace build and creates the VSIX. |
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
 | `packages/extension/scripts/vendor-playwright.mjs` | Copies the installed `playwright-core` package into the extension bundle. |
-| `scripts/render-smoke.mjs [deck] [output]` | Uses installed Chromium to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
+| `scripts/render-smoke.mjs [deck] [output]` | Uses system Chrome/Edge to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
 | `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { parseDeckText, serializeDeck, type Deck, type HostToWebviewMessage, type WebviewToHostMessage } from "@slidepix/core";
 import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
-import { exportPdf, exportPng } from "./renderer";
+
 import { exportPptx } from "./pptx-export-command";
 import { exportWeb } from "./web-export-command";
 import { PresentationServer } from "./presentation";
@@ -155,12 +155,23 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (message.command === "openTextEditor") return void vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
       const parsed = parseDeckText(document.getText());
       if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
-      if (message.command === "exportPdf") return this.runExport(panel, message.requestId, "PDF export", () => exportPdf(this.context, parsed.deck, document.uri.fsPath));
-      if (message.command === "exportPng") return this.runExport(panel, message.requestId, "PNG export", () => exportPng(this.context, parsed.deck, document.uri.fsPath, message.slideIds));
       if (message.command === "exportPptx") return this.runExport(panel, message.requestId, "PowerPoint export", () => exportPptx(this.context, parsed.deck, document.uri.fsPath));
       if (message.command === "exportWeb") return this.runExport(panel, message.requestId, "Web export", () => exportWeb(parsed.deck, document.uri.fsPath));
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);
+    }
+    const msg = message as any;
+    if (msg.type === "saveExport") {
+      const destination = await vscode.window.showSaveDialog({
+        filters: msg.format === "pdf" ? { PDF: ["pdf"] } : { PNG: ["png"] },
+        defaultUri: vscode.Uri.file(document.uri.fsPath.replace(/\.slidepix\.json$/i, msg.format === "pdf" ? ".pdf" : ".png"))
+      });
+      if (destination) {
+        const buffer = Buffer.from(msg.data.replace(/^data:[^;]+;base64,/, ""), "base64");
+        await vscode.workspace.fs.writeFile(destination, buffer);
+        void vscode.window.showInformationMessage(`Exported ${msg.format.toUpperCase()}`);
+      }
+      return;
     }
   }
 

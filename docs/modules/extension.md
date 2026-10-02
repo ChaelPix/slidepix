@@ -143,8 +143,7 @@ panel and out of audience HTML.
 
 ## `src/renderer.ts`
 
-- `installRenderer(context, forcePrompt?)` stores a pinned Chromium build under
-  extension global storage and asks for consent before downloading.
+- `launchSystemBrowser()` finds the user's existing Google Chrome or Microsoft Edge installation through Playwright channels, requiring no heavy binary downloads.
 - `exportPdf(context, deck, deckPath)` prints `/print` at exact logical page
   size with backgrounds and caps the PDF page range to the visible-slide count,
   preventing Chromium from retaining a trailing blank pagination page.
@@ -153,7 +152,7 @@ panel and out of audience HTML.
   multi-slide contact sheet.
 
 Both exporters must close the browser and server in `finally`. Playwright Core
-is vendored into the VSIX; OS-specific Chromium is not.
+is vendored into the VSIX; it connects to the system's Edge/Chrome browser.
 
 ## `src/pptx-export.ts` and `src/pptx-export-command.ts`
 

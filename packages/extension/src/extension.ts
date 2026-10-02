@@ -4,7 +4,6 @@ import * as vscode from "vscode";
 import { createDeck, parseDeckText, serializeDeck } from "@slidepix/core";
 import { uniqueDeckFilename } from "./create-deck";
 import { SlidePixEditorProvider, VIEW_TYPE } from "./editor";
-import { exportPdf, exportPng, installRenderer } from "./renderer";
 import { exportPptx } from "./pptx-export-command";
 import { exportWeb } from "./web-export-command";
 import { configureGitCollaboration, removeGitCollaboration, resolveGitConflict } from "./git-collaboration";
@@ -15,13 +14,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     editor.register(),
     vscode.commands.registerCommand("slidepix.createDeck", (selected?: vscode.Uri) => createDeckCommand(selected, editor)),
-    vscode.commands.registerCommand("slidepix.exportPdf", () => withDeck(editor, (deck, document) => exportPdf(context, deck, document.uri.fsPath))),
-    vscode.commands.registerCommand("slidepix.exportPng", () => withDeck(editor, (deck, document) => exportPng(context, deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.exportPptx", () => withDeck(editor, (deck, document) => exportPptx(context, deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.exportWeb", () => withDeck(editor, (deck, document) => exportWeb(deck, document.uri.fsPath))),
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),
     vscode.commands.registerCommand("slidepix.presenter", () => editor.currentDocument() && editor.present(editor.currentDocument()!, true)),
-    vscode.commands.registerCommand("slidepix.installRenderer", () => installRenderer(context)),
     vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context)),
     vscode.commands.registerCommand("slidepix.configureGitCollaboration", () => reportGitError("configure Git collaboration", () => configureGitCollaboration(context, editor.currentDocument()))),
     vscode.commands.registerCommand("slidepix.removeGitCollaboration", () => reportGitError("remove Git collaboration", () => removeGitCollaboration(context, editor.currentDocument()))),
@@ -85,8 +81,6 @@ async function withDeck(editor: SlidePixEditorProvider, action: (deck: import("@
 }
 
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
-  const renderer = await installRenderer(context);
-  if (!renderer) return;
   const server = slidepixMcpProcess(
     process.execPath,
     vscode.Uri.joinPath(context.extensionUri, "dist", "mcp.cjs").fsPath,
