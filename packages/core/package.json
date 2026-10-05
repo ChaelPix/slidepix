@@ -12,6 +12,10 @@
     "./assets": {
       "types": "./dist/assets.d.ts",
       "import": "./dist/assets.js"
+    },
+    "./manim": {
+      "types": "./dist/manim.d.ts",
+      "import": "./dist/manim.js"
     }
   },
   "scripts": {

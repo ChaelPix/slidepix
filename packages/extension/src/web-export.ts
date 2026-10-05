@@ -76,7 +76,12 @@ function collectMediaReferences(deck: Deck): Map<string, MediaReference> {
     if (slide.hidden) continue;
     if (slide.backgroundImage) references.set(mediaKey(slide.backgroundImage.src, slide.backgroundImage.storage), { reference: slide.backgroundImage.src, storage: slide.backgroundImage.storage });
     for (const element of slide.elements) {
-      if (element.hidden || (element.type !== "image" && element.type !== "video")) continue;
+      if (element.hidden) continue;
+      if (element.type === "manim") {
+        if (element.outputMedia) references.set(mediaKey(element.outputMedia.src, element.outputMedia.storage), { reference: element.outputMedia.src, storage: element.outputMedia.storage });
+        continue;
+      }
+      if (element.type !== "image" && element.type !== "video") continue;
       references.set(mediaKey(element.src, element.storage), { reference: element.src, storage: element.storage });
       if (element.type === "video" && element.poster) {
         references.set(mediaKey(element.poster, "embedded"), { reference: element.poster, storage: "embedded" });

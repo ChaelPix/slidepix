@@ -16,7 +16,7 @@ import xml from "highlight.js/lib/languages/xml";
 // markdown-it-katex does not publish TypeScript declarations.
 // @ts-ignore The plugin follows MarkdownIt's standard PluginSimple shape.
 import markdownItKatex from "markdown-it-katex";
-import { morphMatchToken, type Deck, type ImageElement, type MediaStorage, type Slide, type SlideElement } from "./schema.js";
+import { morphMatchToken, type Deck, type ImageElement, type ManimElement, type MediaStorage, type Slide, type SlideElement } from "./schema.js";
 
 for (const [name, language] of Object.entries({ bash, c, cpp, css: cssLanguage, java, javascript, json, markdown: markdownLanguage, python, rust, typescript, xml })) {
   hljs.registerLanguage(name, language);
@@ -353,6 +353,8 @@ function renderElement(element: SlideElement, elements: readonly SlideElement[],
       const poster = element.poster ? ` poster="${attr(resolveAsset(element.poster, "embedded"))}"` : "";
       return `<div ${common}><video src="${attr(resolveAsset(element.src, element.storage))}"${poster}${autoplay}${muted}${loop}${controls} playsinline style="${attr(`border-radius:${element.borderRadius}px`)}"></video></div>`;
     }
+    case "manim":
+      return `<div ${common}>${manimMarkup(element, resolveAsset)}</div>`;
     case "shape": {
       const clip = element.shape === "triangle" ? "clip-path:polygon(50% 0,100% 100%,0 100%);" : "";
       const radius = element.shape === "ellipse" ? "50%" : `${element.borderRadius}px`;
@@ -375,6 +377,22 @@ function renderElement(element: SlideElement, elements: readonly SlideElement[],
       return `<div ${common}><table class="slidepix-table-content" style="${attr(style)}"><tbody>${rows}</tbody></table></div>`;
     }
   }
+}
+
+function manimMarkup(element: ManimElement, resolveAsset: AssetResolver): string {
+  const media = element.outputMedia;
+  if (media) {
+    if (element.output === "image") {
+      return `<div class="slidepix-image-clip" style="${attr("border-radius:0;border:0")}"><img src="${attr(resolveAsset(media.src, media.storage))}" alt="${attr(element.alt ?? "")}" style="${attr("width:100%;height:100%;left:0;top:0")}"></div>`;
+    }
+    const autoplay = element.playback.mode === "autoplay" ? " autoplay" : "";
+    const muted = element.playback.muted ? " muted" : "";
+    const loop = element.playback.loop ? " loop" : "";
+    const controls = element.playback.controls ? " controls" : "";
+    return `<video src="${attr(resolveAsset(media.src, media.storage))}"${autoplay}${muted}${loop}${controls} playsinline style="width:100%;height:100%;object-fit:contain"></video>`;
+  }
+  const label = element.scene?.trim() || "Manim";
+  return `<div class="slidepix-manim-placeholder"><span>${attr(label)}</span></div>`;
 }
 
 function imageMarkup(element: ImageElement, resolveAsset: AssetResolver): string {
@@ -406,7 +424,8 @@ main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.si
 .katex{display:inline-block;font-size:1em;white-space:nowrap}.katex-display{display:block;margin:.4em 0;text-align:center}.katex-html{display:none!important}.katex-mathml{display:inline-block}.katex-display .katex-mathml{display:block}.katex-mathml annotation{display:none}
 .slidepix-image-clip,.slidepix-image-clip img,.slidepix-video video,.slidepix-shape-content{position:absolute;width:100%;height:100%}
 .slidepix-image-clip{overflow:hidden}.slidepix-image-clip img{max-width:none;object-fit:fill}
-.slidepix-video video{object-fit:cover}.slidepix-shape-content{inset:0}
+.slidepix-video video,.slidepix-manim video{object-fit:contain}.slidepix-manim-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:2px dashed #94a3b8;background:#f8fafc;color:#475569;font:600 28px/1.2 system-ui,sans-serif;text-align:center;padding:16px}
+.slidepix-shape-content{inset:0}
 .slidepix-page-number{position:absolute;right:32px;bottom:20px;z-index:2147483647}
 @page{size:${deck.size.width}px ${deck.size.height}px;margin:0}
 @media print{html,body{background:transparent}.slidepix-slide{margin:0}}

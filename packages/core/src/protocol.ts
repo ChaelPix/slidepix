@@ -9,6 +9,10 @@ export type HostToWebviewMessage =
   | { version: 2; type: "historyResult"; requestId: string; command: "undo" | "redo"; ok: boolean; revision: string; text: string; deck?: Deck; error?: string; canUndo?: boolean; canRedo?: boolean }
   | { version: 2; type: "assetImported"; requestId: string; reference?: string; storage?: "embedded" | "linked"; error?: string }
   | { version: 2; type: "fontSelected"; requestId: string; family?: string; error?: string }
+  | { version: 2; type: "manimScriptSelected"; requestId: string; script?: string; scenes?: string[]; error?: string }
+  | { version: 2; type: "manimScriptCreated"; requestId: string; script?: string; scene?: string; scenes?: string[]; error?: string }
+  | { version: 2; type: "manimScenesListed"; requestId: string; scenes?: string[]; contentFingerprint?: string; error?: string }
+  | { version: 2; type: "manimRenderResult"; requestId: string; ok: boolean; elementId: string; settingsFingerprint?: string; error?: string }
   | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string };
 
 export type WebviewToHostMessage =
@@ -20,6 +24,11 @@ export type WebviewToHostMessage =
   | { version: 2; type: "linkMedia"; requestId: string; kind: "image" | "video"; uri: string }
   | { version: 2; type: "embedMedia"; elementIds?: string[] }
   | { version: 2; type: "selectFont"; requestId: string; current: string }
+  | { version: 2; type: "selectManimScript"; requestId: string; elementId: string }
+  | { version: 2; type: "createManimScript"; requestId: string; elementId: string }
+  | { version: 2; type: "openManimScript"; script: string }
+  | { version: 2; type: "listManimScenes"; requestId: string; script: string }
+  | { version: 2; type: "renderManim"; requestId: string; elementId: string }
   | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[]; requestId?: string }
   | { version: 2; type: "saveExport"; format: "pdf" | "png"; data: string }
   | { version: 2; type: "log"; level: "info" | "warn" | "error"; message: string };

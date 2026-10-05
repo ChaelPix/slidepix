@@ -47,6 +47,7 @@ Private command helpers:
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
 | `selectFont` | Scans platform font directories, opens a native searchable quick picker, and returns the selected CSS family through the versioned protocol. |
+| Manim host messages | `selectManimScript`, `createManimScript`, `openManimScript`, `listManimScenes`, and `renderManim` keep `.py` sources workspace-linked, run Manim Community through `manim-host.ts` / `manim-render.ts`, embed rendered media with `WorkspaceEdit`, and report progress through `notify`. |
 | `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP, including `connect-src` limited to `webview.cspSource`, `data:`, and `blob:` so export inlining can fetch already-allowed local assets. |
 
 `src/document-history.ts` owns the capped snapshot stack used by undo/redo.
@@ -95,7 +96,11 @@ spaces and marker fallback. `src/document-history.test.ts` covers snapshot
 undo/redo, redo invalidation, and the history cap. `src/mcp-config.test.ts`
 covers the Codex table replacement and JSON merges that keep other servers.
 
-## `src/fonts.ts`
+## `src/manim-host.ts` and `src/manim-render.ts` own Manim argv construction,
+scene discovery, subprocess rendering, and deck updates. `src/manim-render.test.ts`
+covers argv and scene parsing without invoking a real `manim` binary.
+
+`src/fonts.ts`
 
 `discoverSystemFontFamilies()` scans bounded platform font directories without
 loading font binaries. `fontFamilyFromFilename()` derives searchable family

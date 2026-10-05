@@ -146,6 +146,42 @@ describe("deck schema", () => {
     if (parsed.ok) expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({ width: 400, height: 10, lockAspectRatio: true, aspectRatio: 2 });
   });
 
+  it("round trips a manim element with defaults", () => {
+    const deck = createDeck();
+    const raw = JSON.parse(serializeDeck(deck));
+    raw.slides[0].elements.push({
+      id: "manim-1",
+      morphKey: "manim-morph",
+      type: "manim",
+      x: 480,
+      y: 270,
+      width: 960,
+      height: 540,
+      rotation: 0,
+      opacity: 1,
+      z: 1,
+      locked: false,
+      hidden: false,
+      script: "demo.manim.py",
+      scene: "SlidePixScene",
+      output: "video",
+      quality: "medium",
+      transparent: false,
+      outputMedia: { src: "abc123.mp4", storage: "embedded" }
+    });
+    const parsed = parseDeckText(JSON.stringify(raw));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({
+      type: "manim",
+      output: "video",
+      quality: "medium",
+      playback: { mode: "manual", controls: true },
+      lockAspectRatio: true
+    });
+    expect(serializeDeck(parsed.deck)).toContain("\"type\": \"manim\"");
+  });
+
   it("normalizes a table with editable Markdown cells", () => {
     const deck = createDeck();
     const raw = JSON.parse(serializeDeck(deck));

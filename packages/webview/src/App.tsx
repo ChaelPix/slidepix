@@ -15,7 +15,9 @@ import {
   type MediaStorage,
   type Slide,
   type SlideElement,
-  type Transition
+  type Transition,
+  manimRenderFingerprint,
+  manimSettingsFingerprint
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
 import { clamp, cropBoxByEdges, localPointerDelta, panCrop, type CropBox } from "./geometry";
@@ -35,6 +37,11 @@ const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "sl
 type MediaResult = { reference: string; storage: MediaStorage };
 const pendingAssets = new Map<string, (result?: MediaResult, error?: string) => void>();
 const pendingFonts = new Map<string, (family?: string, error?: string) => void>();
+const pendingManimScripts = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScriptSelected" }>) => void>();
+const pendingManimCreates = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScriptCreated" }>) => void>();
+const pendingManimScenes = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScenesListed" }>) => void>();
+const pendingManimRenders = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderResult" }>) => void>();
+const manimRenderedFingerprints = new Map<string, string>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
 type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
 type TextFormatCommand = "bold" | "italic" | "unordered-list" | "ordered-list";
@@ -90,6 +97,15 @@ export default function App() {
     pendingTextFormat.current = undefined;
     requestAnimationFrame(() => inlineTextEditor.current?.format(command));
   }, [editingText?.id]);
+  useEffect(() => {
+    if (!slide || selected?.type !== "manim" || !selected.outputMedia) return;
+    const url = (() => {
+      const base = store.linkedSourceUri;
+      if (!base) return selected.outputMedia!.src;
+      try { return new URL(selected.outputMedia!.src.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`).toString(); } catch { return selected.outputMedia!.src; }
+    })();
+    void measureMediaAspect(url, selected.output === "video" ? "video" : "image").then((aspectRatio) => lockMediaAspect(slide.id, selected.id, aspectRatio, store.mutate));
+  }, [slide?.id, selected?.id, selected?.type === "manim" ? selected.outputMedia?.src : undefined, selected?.type === "manim" ? selected.output : undefined, store.linkedSourceUri]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -225,6 +241,29 @@ export default function App() {
     cells: [["Header 1", "Header 2", "Header 3"], ["", "", ""], ["", "", ""]],
     style: { fontFamily: deck.theme.fontFamily, fontSize: 30, fontWeight: 400, color: deck.theme.foreground, headerFill: "#e0e7ff", cellFill: "#ffffff", borderColor: "#94a3b8", borderWidth: 2, textAlign: "left", verticalAlign: "middle", padding: 10 }
   }));
+  const addManim = (output: "image" | "video") => {
+    const width = deck.size.width / 2;
+    const height = width * 9 / 16;
+    const common = baseElement(slide.elements.length, "manim");
+    store.mutate((draft) => {
+      draft.slides.find((item) => item.id === slide.id)!.elements.push({
+        ...common,
+        type: "manim",
+        x: (deck.size.width - width) / 2,
+        y: (deck.size.height - height) / 2,
+        width,
+        height,
+        output,
+        quality: "medium",
+        transparent: false,
+        lockAspectRatio: true,
+        playback: { mode: "manual", muted: false, loop: false, controls: true }
+      });
+    });
+    store.selectElement(common.id);
+    setInspectorCollapsed(false);
+    setTab("properties");
+  };
   const copyElement = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
     if (!selectedElements.length || isTextEntryTarget(event.target)) return;
     event.preventDefault();
@@ -282,6 +321,7 @@ export default function App() {
         addTable={addTable}
         chooseImage={() => requestMedia("image")}
         chooseVideo={() => requestMedia("video")}
+        addManim={addManim}
         hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
         historyBusy={Boolean(store.historyPending)}
         canUndo={store.canUndo || store.dirty}
@@ -493,7 +533,7 @@ export default function App() {
   );
 }
 
-function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
+function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, addManim, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
   slide: Slide;
   element?: SlideElement;
   selectedElements: SlideElement[];
@@ -502,6 +542,7 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   addTable(): void;
   chooseImage(): void;
   chooseVideo(): void;
+  addManim(output: "image" | "video"): void;
   hasLinkedMedia: boolean;
   historyBusy: boolean;
   canUndo: boolean;
@@ -614,6 +655,10 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
           { icon: "symbol-structure", label: "Rectangle", onClick: () => addShape("rectangle") },
           { icon: "circle-large-outline", label: "Circle", onClick: () => addShape("ellipse") },
           { icon: "triangle-up", label: "Triangle", onClick: () => addShape("triangle") }
+        ]} />
+        <RibbonMenu icon="run-all" label="Manim" items={[
+          { icon: "file-media", label: "Still image", onClick: () => addManim("image") },
+          { icon: "device-camera-video", label: "Video", onClick: () => addManim("video") }
         ]} />
       </div></div>
       <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
@@ -888,6 +933,142 @@ function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }:
   </div>;
 }
 
+function ManimInspector({ slideId, element, mutate, preview, scheduleCommit, commit }: {
+  slideId: string;
+  element: Extract<SlideElement, { type: "manim" }>;
+  mutate(fn: (deck: Deck) => void): void;
+  preview(fn: (deck: Deck) => void): void;
+  scheduleCommit(): void;
+  commit(): void;
+}) {
+  const [scenes, setScenes] = useState<string[]>([]);
+  const [contentFingerprint, setContentFingerprint] = useState<string>();
+  const [rendering, setRendering] = useState(false);
+  const renderedFingerprint = manimRenderedFingerprints.get(element.id);
+  const stale = Boolean(
+    element.outputMedia
+    && renderedFingerprint
+    && contentFingerprint
+    && renderedFingerprint !== manimRenderFingerprint(manimSettingsFingerprint(element), contentFingerprint)
+  );
+  const status = rendering
+    ? "Rendering…"
+    : !element.outputMedia
+      ? "Not rendered yet"
+      : stale
+        ? "Render is out of date"
+        : "Rendered";
+
+  useEffect(() => {
+    if (!element.script) {
+      setScenes([]);
+      setContentFingerprint(undefined);
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    pendingManimScenes.set(requestId, (message) => {
+      if (message.error) return void showError(message.error);
+      setScenes(message.scenes ?? []);
+      if (message.contentFingerprint) setContentFingerprint(message.contentFingerprint);
+    });
+    postMessage({ type: "listManimScenes", requestId, script: element.script });
+    return () => { pendingManimScenes.delete(requestId); };
+  }, [element.id, element.script]);
+
+  const chooseScript = () => {
+    const requestId = crypto.randomUUID();
+    pendingManimScripts.set(requestId, (message) => {
+      if (message.error) return void showError(message.error);
+      if (!message.script) return;
+      mutate((draft) => {
+        const target = findElement(draft, slideId, element.id);
+        if (target?.type !== "manim") return;
+        target.script = message.script;
+        if (!target.scene && message.scenes?.length === 1) target.scene = message.scenes[0];
+      });
+    });
+    postMessage({ type: "selectManimScript", requestId, elementId: element.id });
+  };
+
+  const createScript = () => {
+    const requestId = crypto.randomUUID();
+    pendingManimCreates.set(requestId, (message) => {
+      if (message.error) showError(message.error);
+    });
+    postMessage({ type: "createManimScript", requestId, elementId: element.id });
+  };
+
+  const renderScene = () => {
+    const requestId = crypto.randomUUID();
+    setRendering(true);
+    pendingManimRenders.set(requestId, (message) => {
+      setRendering(false);
+      if (message.error) return void showError(message.error);
+      if (message.ok && message.settingsFingerprint) manimRenderedFingerprints.set(element.id, message.settingsFingerprint);
+    });
+    postMessage({ type: "renderManim", requestId, elementId: element.id });
+  };
+
+  const updateManim = (fn: (target: Extract<SlideElement, { type: "manim" }>) => void, live = true) => {
+    const apply = (draft: Deck) => {
+      const target = findElement(draft, slideId, element.id);
+      if (target?.type !== "manim") return;
+      fn(target);
+    };
+    if (live) { preview(apply); scheduleCommit(); }
+    else mutate(apply);
+  };
+
+  const canRender = Boolean(element.script?.trim() && element.scene?.trim());
+
+  return <>
+    <h4 className="property-heading">Manim</h4>
+    <div className="media-source-card">
+      <code title={element.script ?? ""}>{element.script ?? "No script selected"}</code>
+      <div>
+        <button type="button" onClick={chooseScript}>Choose…</button>
+        <button type="button" onClick={createScript}>Create script…</button>
+        {element.script && <button type="button" onClick={() => postMessage({ type: "openManimScript", script: element.script! })}>Open</button>}
+      </div>
+    </div>
+    <label>Scene
+      {scenes.length > 1
+        ? <select value={element.scene ?? ""} onChange={(event) => updateManim((target) => { target.scene = event.target.value; }, false)}>
+          <option value="">Select a scene…</option>
+          {scenes.map((scene) => <option key={scene} value={scene}>{scene}</option>)}
+        </select>
+        : <input autoComplete="off" value={element.scene ?? ""} placeholder="SceneClass" onChange={(event) => updateManim((target) => { target.scene = event.target.value; })} onBlur={commit} />}
+    </label>
+    <label>Output<select value={element.output} onChange={(event) => updateManim((target) => { target.output = event.target.value as "image" | "video"; }, false)}>
+      <option value="image">Still image</option>
+      <option value="video">Video</option>
+    </select></label>
+    <label>Quality<select value={element.quality} onChange={(event) => updateManim((target) => { target.quality = event.target.value as typeof element.quality; }, false)}>
+      <option value="low">Low</option>
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="production">Production</option>
+    </select></label>
+    <CheckboxField label="Transparent background" checked={element.transparent} onChange={(transparent) => updateManim((target) => { target.transparent = transparent; }, false)} />
+    {element.output === "video" && <>
+      <label>Playback<select value={element.playback.mode} onChange={(event) => updateManim((target) => { target.playback.mode = event.target.value as "manual" | "autoplay"; }, false)}><option value="manual">Manual</option><option value="autoplay">Autoplay</option></select></label>
+      <CheckboxField label="Muted" checked={element.playback.muted} onChange={(muted) => updateManim((target) => { target.playback.muted = muted; }, false)} />
+      <CheckboxField label="Loop" checked={element.playback.loop} onChange={(loop) => updateManim((target) => { target.playback.loop = loop; }, false)} />
+      <CheckboxField label="Controls" checked={element.playback.controls} onChange={(controls) => updateManim((target) => { target.playback.controls = controls; }, false)} />
+    </>}
+    {element.outputMedia && <div className="media-source-card"><span className="storage-badge embedded">embedded</span><code title={element.outputMedia.src}>{element.outputMedia.src}</code></div>}
+    <p className="panel-help manim-status">{status}</p>
+    <button className="edit-text-button" type="button" disabled={!canRender || rendering} onClick={renderScene}>{rendering ? "Rendering…" : "Render"}</button>
+    <CheckboxField label="Keep original aspect ratio" checked={element.lockAspectRatio} onChange={(locked) => {
+      if (!locked) return updateManim((target) => { target.lockAspectRatio = false; }, false);
+      updateManim((target) => {
+        target.lockAspectRatio = true;
+        target.aspectRatio = target.width / Math.max(1, target.height);
+      }, false);
+    }} />
+  </>;
+}
+
 function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropping, batchShapeEdit, setBatchShapeEdit, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
   collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropping: boolean; batchShapeEdit: boolean; setBatchShapeEdit(enabled: boolean): void; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
@@ -959,6 +1140,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
               <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => editShape((target) => { target.shadow.blur = blur; })} onCommit={commit} />
             </>}
           </>}
+          {element.type === "manim" && <ManimInspector slideId={slide.id} element={element} mutate={mutate} preview={preview} scheduleCommit={scheduleCommit} commit={commit} />}
           {element.type === "table" && <>
             <div className="table-size-actions">
               <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows + 1, target.columns); })}><span className="codicon codicon-add" /> Row</button>
@@ -1274,7 +1456,21 @@ function deleteElements(slideId: string, elementIds: string[], mutate: (fn: (dec
   });
   select();
 }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string, history?: { canUndo?: boolean; canRedo?: boolean }) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri, { canUndo: message.canUndo, canRedo: message.canRedo }); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message }); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string, history?: { canUndo?: boolean; canRedo?: boolean }) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) {
+  if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri, { canUndo: message.canUndo, canRedo: message.canRedo });
+  else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri);
+  else if (message.type === "documentEditResult") handleEditResult(message);
+  else if (message.type === "historyResult") handleHistoryResult(message);
+  else if (message.type === "assetImported") {
+    pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error);
+    pendingAssets.delete(message.requestId);
+  } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error);
+  else if (message.type === "manimScriptSelected") { pendingManimScripts.get(message.requestId)?.(message); pendingManimScripts.delete(message.requestId); }
+  else if (message.type === "manimScriptCreated") { pendingManimCreates.get(message.requestId)?.(message); pendingManimCreates.delete(message.requestId); }
+  else if (message.type === "manimScenesListed") { pendingManimScenes.get(message.requestId)?.(message); pendingManimScenes.delete(message.requestId); }
+  else if (message.type === "manimRenderResult") { pendingManimRenders.get(message.requestId)?.(message); pendingManimRenders.delete(message.requestId); }
+  else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message });
+}
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");

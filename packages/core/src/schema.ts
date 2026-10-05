@@ -111,6 +111,37 @@ export const videoElementSchema = baseElementSchema.extend({
   })
 });
 
+export const manimQualitySchema = z.enum(["low", "medium", "high", "production"]);
+
+export const manimOutputMediaSchema = z.object({
+  src: z.string().min(1),
+  storage: z.literal("embedded")
+});
+
+const videoPlaybackSchema = z.object({
+  mode: z.enum(["autoplay", "manual"]).default("manual"),
+  muted: z.boolean().default(false),
+  loop: z.boolean().default(false),
+  controls: z.boolean().default(true)
+});
+
+export const manimElementSchema = baseElementSchema.extend({
+  type: z.literal("manim"),
+  script: z.string().min(1).optional(),
+  scene: z.string().min(1).optional(),
+  output: z.enum(["image", "video"]).default("image"),
+  quality: manimQualitySchema.default("medium"),
+  transparent: z.boolean().default(false),
+  outputMedia: manimOutputMediaSchema.optional(),
+  ...mediaAspectFields,
+  playback: videoPlaybackSchema.default({
+    mode: "manual",
+    muted: false,
+    loop: false,
+    controls: true
+  })
+});
+
 export const shapeElementSchema = baseElementSchema.extend({
   type: z.literal("shape"),
   shape: z.enum(["rectangle", "ellipse", "triangle"]),
@@ -158,6 +189,7 @@ export const elementSchema = z.discriminatedUnion("type", [
   textElementSchema,
   imageElementSchema,
   videoElementSchema,
+  manimElementSchema,
   shapeElementSchema,
   tableElementSchema
 ]);
@@ -265,6 +297,9 @@ export function morphMatchToken(element: SlideElement, elements: readonly SlideE
 export type TextElement = z.infer<typeof textElementSchema>;
 export type ImageElement = z.infer<typeof imageElementSchema>;
 export type VideoElement = z.infer<typeof videoElementSchema>;
+export type ManimElement = z.infer<typeof manimElementSchema>;
+export type ManimQuality = z.infer<typeof manimQualitySchema>;
+export type ManimOutputMedia = z.infer<typeof manimOutputMediaSchema>;
 export type ShapeElement = z.infer<typeof shapeElementSchema>;
 export type TableElement = z.infer<typeof tableElementSchema>;
 export type MediaStorage = z.infer<typeof mediaStorageSchema>;

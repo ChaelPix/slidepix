@@ -837,6 +837,181 @@
                     },
                     "type": {
                       "type": "string",
+                      "const": "manim"
+                    },
+                    "script": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scene": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "output": {
+                      "default": "image",
+                      "type": "string",
+                      "enum": [
+                        "image",
+                        "video"
+                      ]
+                    },
+                    "quality": {
+                      "default": "medium",
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "production"
+                      ]
+                    },
+                    "transparent": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "outputMedia": {
+                      "type": "object",
+                      "properties": {
+                        "src": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "storage": {
+                          "type": "string",
+                          "const": "embedded"
+                        }
+                      },
+                      "required": [
+                        "src",
+                        "storage"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "lockAspectRatio": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "aspectRatio": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "playback": {
+                      "default": {
+                        "mode": "manual",
+                        "muted": false,
+                        "loop": false,
+                        "controls": true
+                      },
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "default": "manual",
+                          "type": "string",
+                          "enum": [
+                            "autoplay",
+                            "manual"
+                          ]
+                        },
+                        "muted": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "loop": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "controls": {
+                          "default": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "muted",
+                        "loop",
+                        "controls"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "morphKey",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "rotation",
+                    "opacity",
+                    "z",
+                    "locked",
+                    "hidden",
+                    "type",
+                    "output",
+                    "quality",
+                    "transparent",
+                    "lockAspectRatio",
+                    "playback"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "morphKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "rotation": {
+                      "default": 0,
+                      "type": "number"
+                    },
+                    "opacity": {
+                      "default": 1,
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "z": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "locked": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "hidden": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
                       "const": "shape"
                     },
                     "shape": {

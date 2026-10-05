@@ -13,6 +13,15 @@ import { revisionForText } from "./document-revision";
 import { emptyDocumentHistory, historyFlags, recordDocumentEdit, redoDocument, undoDocument, type DocumentHistory } from "./document-history";
 import type { ExportResult } from "./export-result";
 import { EditorResolveRecovery } from "./editor-recovery";
+import {
+  applyManimRender,
+  applyManimScript,
+  createStarterScript,
+  findManimElement,
+  listScenesForScript,
+  relativeDeckReference,
+  runManimRender
+} from "./manim-host";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -148,6 +157,11 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "linkMedia") return this.resolveMedia(document, panel, message, vscode.Uri.parse(message.uri));
     if (message.type === "embedMedia") return this.embedMedia(document, message.elementIds);
     if (message.type === "selectFont") return this.selectFont(panel, message);
+    if (message.type === "selectManimScript") return this.selectManimScript(document, panel, message);
+    if (message.type === "createManimScript") return this.createManimScript(document, panel, message);
+    if (message.type === "openManimScript") return this.openManimScript(document, message);
+    if (message.type === "listManimScenes") return this.listManimScenes(document, panel, message);
+    if (message.type === "renderManim") return this.renderManim(document, panel, message);
     if (message.type === "command") {
       if (message.command === "undo" || message.command === "redo") return this.applyHistory(document, panel, message.command);
       if (message.command === "save") return void document.save();
@@ -322,6 +336,123 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       }
     } catch (error) {
       response.error = error instanceof Error ? error.message : "Could not add media";
+    }
+    await panel.webview.postMessage(response);
+  }
+
+  private manimExecutable(): string {
+    return vscode.workspace.getConfiguration("slidepix").get<string>("manim.executable", "manim").trim() || "manim";
+  }
+
+  private async selectManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectManimScript" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 2, type: "manimScriptSelected", requestId: message.requestId };
+    try {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        canSelectFiles: true,
+        canSelectFolders: false,
+        filters: { Python: ["py"] },
+        defaultUri: workspaceRootUris(document)[0]
+      });
+      if (!picked?.[0]) return void panel.webview.postMessage(response);
+      const resolved = path.resolve(picked[0].fsPath);
+      const roots = linkedRoots(document);
+      if (!roots.some((root) => isInside(root, resolved))) throw new Error("Manim scripts must stay inside an open workspace root.");
+      response.script = relativeDeckReference(document.uri.fsPath, resolved);
+      const listed = await listScenesForScript(document.uri.fsPath, response.script, roots);
+      response.scenes = listed.scenes;
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Could not choose a Manim script";
+    }
+    await panel.webview.postMessage(response);
+  }
+
+  private async createManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "createManimScript" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 2, type: "manimScriptCreated", requestId: message.requestId };
+    try {
+      const created = await createStarterScript(document.uri.fsPath);
+      response.script = created.reference;
+      response.scene = created.scene;
+      response.scenes = created.scenes;
+      const baseText = document.getText();
+      const baseRevision = revisionForText(baseText);
+      const parsed = parseDeckText(baseText);
+      if (!parsed.ok) throw new Error(parsed.message);
+      applyManimScript(parsed.deck, message.elementId, created.reference, created.scene);
+      if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
+        throw new Error("The deck changed before the starter script could be linked.");
+      }
+      this.recordHistory(document.uri, baseText, document.getText());
+      await vscode.window.showTextDocument(vscode.Uri.file(created.absolutePath), { viewColumn: vscode.ViewColumn.Beside });
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Could not create a Manim script";
+    }
+    await panel.webview.postMessage(response);
+  }
+
+  private async openManimScript(document: vscode.TextDocument, message: Extract<WebviewToHostMessage, { type: "openManimScript" }>): Promise<void> {
+    try {
+      const absolutePath = resolveMediaPath(document.uri.fsPath, message.script, "linked", linkedRoots(document));
+      await vscode.window.showTextDocument(vscode.Uri.file(absolutePath), { viewColumn: vscode.ViewColumn.Beside });
+    } catch (error) {
+      void vscode.window.showErrorMessage(error instanceof Error ? error.message : "Could not open the Manim script.");
+    }
+  }
+
+  private async listManimScenes(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "listManimScenes" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 2, type: "manimScenesListed", requestId: message.requestId };
+    try {
+      const listed = await listScenesForScript(document.uri.fsPath, message.script, linkedRoots(document));
+      response.scenes = listed.scenes;
+      response.contentFingerprint = listed.contentFingerprint;
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Could not inspect the Manim script";
+    }
+    await panel.webview.postMessage(response);
+  }
+
+  private async renderManim(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "renderManim" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 2, type: "manimRenderResult", requestId: message.requestId, ok: false, elementId: message.elementId };
+    const notify = async (status: "progress" | "success" | "error" | "dismiss", text?: string) => {
+      await panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status, message: text } satisfies HostToWebviewMessage);
+    };
+    await notify("progress", "Rendering Manim…");
+    const baseText = document.getText();
+    const baseRevision = revisionForText(baseText);
+    const parsed = parseDeckText(baseText);
+    if (!parsed.ok) {
+      response.error = parsed.message;
+      await notify("error", response.error);
+      return void panel.webview.postMessage(response);
+    }
+    const located = findManimElement(parsed.deck, message.elementId);
+    if (!located) {
+      response.error = "Manim element not found.";
+      await notify("error", response.error);
+      return void panel.webview.postMessage(response);
+    }
+    try {
+      const rendered = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: "Rendering Manim scene…" },
+        () => runManimRender({
+          deckPath: document.uri.fsPath,
+          element: located.element,
+          executable: this.manimExecutable(),
+          allowedLinkedRoots: linkedRoots(document)
+        })
+      );
+      const embeddedReference = await storeEmbeddedBytes(document.uri.fsPath, rendered.bytes, rendered.fileName, "");
+      applyManimRender(parsed.deck, message.elementId, embeddedReference);
+      if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
+        throw new Error("The deck changed while Manim was rendering. Retry Render after reviewing the latest deck.");
+      }
+      this.recordHistory(document.uri, baseText, document.getText());
+      response.ok = true;
+      response.settingsFingerprint = rendered.settingsFingerprint;
+      await notify("success", "Manim render complete.");
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Manim render failed.";
+      await notify("error", response.error);
     }
     await panel.webview.postMessage(response);
   }

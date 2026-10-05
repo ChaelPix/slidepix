@@ -3,6 +3,33 @@ import { parsePresentationMarkdown, renderDeckDocument, renderMarkdown, renderPr
 import { createDeck, duplicateSlide, elementSchema } from "./schema.js";
 
 describe("shared document rendering", () => {
+  it("renders manim placeholders and rendered output", () => {
+    const deck = createDeck("Manim");
+    const slide = deck.slides[0]!;
+    slide.elements.push(elementSchema.parse({
+      id: "manim-1",
+      morphKey: "manim-morph",
+      type: "manim",
+      x: 100,
+      y: 100,
+      width: 640,
+      height: 360,
+      rotation: 0,
+      opacity: 1,
+      z: 1,
+      locked: false,
+      hidden: false,
+      scene: "Intro",
+      output: "image"
+    }));
+    expect(renderDeckDocument(deck)).toContain("slidepix-manim-placeholder");
+    expect(renderDeckDocument(deck)).toContain("Intro");
+
+    const rendered = slide.elements.find((item) => item.id === "manim-1");
+    if (rendered?.type === "manim") rendered.outputMedia = { src: "render.png", storage: "embedded" };
+    expect(renderDeckDocument(deck)).toContain('src="render.png"');
+  });
+
   it("renders a selected presenter frame with a viewport fitting runtime", () => {
     const deck = createDeck("Frame test");
     const second = duplicateSlide(deck.slides[0]!);

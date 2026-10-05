@@ -253,7 +253,9 @@ button:disabled { opacity: .45; cursor: default; }
 .slidepix-code .hljs-comment, .slidepix-code .hljs-quote { color: #94a3b8; font-style: italic; }
 .slidepix-code .hljs-meta { color: #fb923c; }
 .slidepix-code .hljs-variable, .slidepix-code .hljs-params { color: #e2e8f0; }
-.image-clip, .image-clip img, .slide-element video, .shape-content { position: absolute; width: 100%; height: 100%; }
+.image-clip, .image-clip img, .slide-element video, .slide-element .manim-output, .shape-content { position: absolute; width: 100%; height: 100%; }
+.manim-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--vscode-input-border, #94a3b8); background: var(--vscode-editor-background, #f8fafc); color: var(--vscode-foreground, #475569); font: 600 28px/1.2 var(--vscode-font-family, system-ui, sans-serif); text-align: center; padding: 16px; }
+.slide-element .manim-output { object-fit: contain; }
 .image-clip { overflow: hidden; }
 .image-clip img { max-width: none; object-fit: fill; }
 .slide-element video { object-fit: cover; }

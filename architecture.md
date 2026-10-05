@@ -19,6 +19,7 @@ the task; this keeps context small while making ownership explicit.
 | Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change MCP tools or selection rules | `packages/mcp/src/server.ts` and `packages/mcp/src/tools.ts` | [MCP module](docs/modules/mcp.md) |
+| Change Manim slide elements or rendering | `packages/core/src/schema.ts` and `packages/extension/src/manim-host.ts` | [Core module](docs/modules/core.md), [Extension module](docs/modules/extension.md), [Webview module](docs/modules/webview.md) |
 | Set up a Linux/macOS toolchain, compile, and install a local VSIX | [Install guide](docs/install.md) | [Development guide](docs/development.md) |
 | Change build/package/release work | root and package `package.json` files | [Development guide](docs/development.md) |
 
@@ -152,6 +153,8 @@ Do not assume every planned feature is complete. Current known gaps include:
 - the text source editor is a textarea; CodeMirror and syntax-highlighted code
   output are not integrated;
 - automated VS Code custom-editor integration and Cursor smoke tests are still
-  missing.
+  missing;
+- Manim requires Manim Community (`slidepix.manim.executable`, default `manim`)
+  on the host machine; the extension does not install Python or Manim.
 
 When implementing a gap, update this list in the same change.

@@ -131,6 +131,20 @@ function ElementView({
           style={{ borderRadius: element.borderRadius }}
         />
       )}
+      {element.type === "manim" && (
+        element.outputMedia
+          ? element.output === "image"
+            ? <img className="manim-output" src={resolveAsset(element.outputMedia.src, element.outputMedia.storage)} alt={element.alt ?? element.scene ?? "Manim"} />
+            : <video
+                className="manim-output"
+                src={resolveAsset(element.outputMedia.src, element.outputMedia.storage)}
+                autoPlay={interactive && element.playback.mode === "autoplay"}
+                muted={element.playback.muted}
+                loop={element.playback.loop}
+                controls={interactive && element.playback.controls}
+              />
+          : <div className="manim-placeholder"><span>{element.scene?.trim() || "Manim"}</span></div>
+      )}
       {element.type === "shape" && (
         <div
           className="shape-content"

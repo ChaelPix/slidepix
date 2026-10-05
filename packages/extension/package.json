@@ -136,7 +136,17 @@
         "mac": "cmd+shift+f5",
         "when": "activeCustomEditorId == slidepix.deckEditor"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "SlidePix",
+      "properties": {
+        "slidepix.manim.executable": {
+          "type": "string",
+          "default": "manim",
+          "description": "Executable used to render Manim Community scenes from SlidePix."
+        }
+      }
+    }
   },
   "scripts": {
     "generate-schema": "node ./scripts/generate-schema.mjs",
