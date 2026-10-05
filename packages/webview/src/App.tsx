@@ -546,15 +546,16 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         if (!deck) throw new Error("No deck");
         const node = document.getElementById(`export-slide-${slide.id}`);
         if (!node) throw new Error("Slide not found in DOM. Try re-opening the editor.");
-        const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, cacheBust: true });
-        postMessage({ type: "saveExport", format: "png", data: dataUrl } as any);
+        const restore = await inlineImages(node);
+        try {
+          const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, skipFonts: true });
+          postMessage({ type: "saveExport", format: "png", data: dataUrl } as any);
+        } finally { restore(); }
       } else if (command === "exportPdf") {
         const deck = useDeckStore.getState().deck;
         if (!deck) throw new Error("No deck");
         const visibleSlides = deck.slides.filter(s => !s.hidden);
         if (visibleSlides.length === 0) throw new Error("No visible slides to export");
-        // Use points (pt) so jsPDF handles large pixel dimensions correctly.
-        // 1 px = 0.75 pt at 96 dpi; we keep slides at exact pt dimensions so images fit.
         const wPt = deck.size.width * 0.75;
         const hPt = deck.size.height * 0.75;
         const orientation = deck.size.width >= deck.size.height ? "landscape" : "portrait";
@@ -562,24 +563,24 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         for (const [i, s] of visibleSlides.entries()) {
           const node = document.getElementById(`export-slide-${s.id}`);
           if (!node) throw new Error(`DOM node not found for slide ${i + 1}. Try re-opening the editor.`);
-          const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, cacheBust: true });
-          if (i > 0) pdf.addPage([wPt, hPt], orientation);
-          pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
+          const restore = await inlineImages(node);
+          try {
+            const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, skipFonts: true });
+            if (i > 0) pdf.addPage([wPt, hPt], orientation);
+            pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
+          } finally { restore(); }
         }
         const bytes = pdf.output("arraybuffer");
-        // Chunked btoa to avoid stack overflow on large ArrayBuffers
         const u8 = new Uint8Array(bytes);
         let b64 = "";
-        const chunkSize = 0x8000;
-        for (let i = 0; i < u8.length; i += chunkSize) {
-          b64 += String.fromCharCode(...u8.subarray(i, i + chunkSize));
-        }
+        for (let i = 0; i < u8.length; i += 0x8000) b64 += String.fromCharCode(...u8.subarray(i, i + 0x8000));
         postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${btoa(b64)}` } as any);
       }
       notifyToast({ id: requestId, kind: "success", message: `Exported ${label}` });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}: ${detail}` });
+      const detail = describeExportError(error);
+      postMessage({ type: "log", level: "error", message: `Export ${label} failed:\n${detail}` });
+      notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}: ${detail.split("\n")[0]}` });
     }
   };
   return <header className="toolbar-shell">

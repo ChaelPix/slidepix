@@ -21,6 +21,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly sessions = new Map<string, PresentationServer>();
   private readonly histories = new Map<string, DocumentHistory>();
   private activeDocument?: vscode.TextDocument;
+  private outputChannel?: vscode.OutputChannel;
   private readonly recovery = new EditorResolveRecovery<vscode.Tab>({
     isResolved: (key) => this.panels.has(key),
     hasDocument: (key) => vscode.workspace.textDocuments.some((document) => document.uri.toString() === key),
@@ -173,6 +174,22 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       }
       return;
     }
+    if (message.type === "log") {
+      const channel = this.getOutputChannel();
+      const ts = new Date().toISOString();
+      const prefix = message.level === "error" ? "[ERROR]" : message.level === "warn" ? "[WARN] " : "[INFO] ";
+      channel.appendLine(`${ts} ${prefix} ${message.message}`);
+      if (message.level === "error") channel.show(true);
+      return;
+    }
+  }
+
+  private getOutputChannel(): vscode.OutputChannel {
+    if (!this.outputChannel) {
+      this.outputChannel = vscode.window.createOutputChannel("SlidePix");
+      this.context.subscriptions.push(this.outputChannel);
+    }
+    return this.outputChannel;
   }
 
   private async runExport(panel: vscode.WebviewPanel, requestId: string | undefined, label: string, exportAction: () => Promise<ExportResult>): Promise<void> {

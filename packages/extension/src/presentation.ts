@@ -143,6 +143,11 @@ function cssValue(value: string): string {
 }
 
 function send(response: import("node:http").ServerResponse, status: number, contentType: string, body: string | Uint8Array): void {
-  response.writeHead(status, { "Content-Type": contentType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  response.writeHead(status, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Access-Control-Allow-Origin": "*"
+  });
   response.end(body);
 }
