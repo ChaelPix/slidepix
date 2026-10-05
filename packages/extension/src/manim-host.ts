@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { DEFAULT_MANIM_SCENE_NAME, MANIM_STARTER_SCRIPT, type Deck, type ManimElement } from "@slidepix/core";
 import { resolveMediaPath } from "@slidepix/core/assets";
-import { buildManimArgv, discoverManimScenes, findRenderedMedia, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
+import { buildManimArgv, discoverManimScenes, findRenderedMedia, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
 
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
@@ -47,10 +47,10 @@ export async function listScenesForScript(deckPath: string, scriptReference: str
 export async function runManimRender(options: {
   deckPath: string;
   element: ManimElement;
-  executable: string;
+  launch: ManimLaunch;
   allowedLinkedRoots: string[];
 }): Promise<{ bytes: Uint8Array; fileName: string; settingsFingerprint: string }> {
-  const { deckPath, element, executable, allowedLinkedRoots } = options;
+  const { deckPath, element, launch, allowedLinkedRoots } = options;
   if (!element.script?.trim()) throw new Error("Choose a Manim script before rendering.");
   if (!element.scene?.trim()) throw new Error("Enter a scene class name before rendering.");
   const { absolutePath, source } = await readManimScript(deckPath, element.script, allowedLinkedRoots);
@@ -61,8 +61,7 @@ export async function runManimRender(options: {
 
   const mediaDir = await mkdtemp(path.join(os.tmpdir(), "slidepix-manim-"));
   const outputName = `slidepix-${element.id.replaceAll(/[^a-z0-9-]/gi, "").slice(0, 24) || "render"}`;
-  const argv = buildManimArgv({
-    executable,
+  const invocation = buildManimArgv(launch, {
     scriptPath: absolutePath,
     scene: element.scene,
     output: element.output,
@@ -73,7 +72,7 @@ export async function runManimRender(options: {
   });
 
   try {
-    await execManim(argv);
+    await execManim(invocation);
     const rendered = await findRenderedMedia(mediaDir, outputName);
     if (!rendered) throw new Error("Manim finished without producing a media file.");
     const bytes = await readFile(rendered);
@@ -88,14 +87,23 @@ export async function runManimRender(options: {
   }
 }
 
-async function execManim(argv: string[]): Promise<void> {
-  const [command, ...args] = argv;
+async function execManim(invocation: ManimLaunch): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command!, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: invocation.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
     let stderr = "";
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-    child.on("error", (error) => reject(error));
+    child.on("error", (error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error("Could not find Manim. Install Manim Community, add it to PATH, or use a repo .venv (SlidePix will run uv run manim automatically)."));
+        return;
+      }
+      reject(error);
+    });
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(stderr.trim() || `Manim exited with code ${code ?? "unknown"}.`));

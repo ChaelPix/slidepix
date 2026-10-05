@@ -142,8 +142,8 @@
       "properties": {
         "slidepix.manim.executable": {
           "type": "string",
-          "default": "manim",
-          "description": "Executable used to render Manim Community scenes from SlidePix."
+          "default": "",
+          "description": "Manim launcher (for example manim, /path/to/.venv/bin/manim, or uv run manim). Leave empty to auto-detect .venv/bin/manim near the deck, then uv run manim."
         }
       }
     }

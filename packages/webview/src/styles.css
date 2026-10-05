@@ -181,6 +181,7 @@ button:disabled { opacity: .45; cursor: default; }
 .canvas-scale { position: absolute; inset: 0; transform-origin: top left; }
 .slide { position: absolute; left: 0; top: 0; overflow: hidden; isolation: isolate; transform-origin: top left; }
 .slide-element { position: absolute; transform-origin: center center; }
+.slide-element:has(.manim-frame) { overflow: hidden; }
 .slide-element[data-element-id]:has(.slidepix-text-content) { cursor: text; }
 .slide-element.selected { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .align-controls { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--vscode-panel-border); }
@@ -253,8 +254,10 @@ button:disabled { opacity: .45; cursor: default; }
 .slidepix-code .hljs-comment, .slidepix-code .hljs-quote { color: #94a3b8; font-style: italic; }
 .slidepix-code .hljs-meta { color: #fb923c; }
 .slidepix-code .hljs-variable, .slidepix-code .hljs-params { color: #e2e8f0; }
-.image-clip, .image-clip img, .slide-element video, .slide-element .manim-output, .shape-content { position: absolute; width: 100%; height: 100%; }
-.manim-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--vscode-input-border, #94a3b8); background: var(--vscode-editor-background, #f8fafc); color: var(--vscode-foreground, #475569); font: 600 28px/1.2 var(--vscode-font-family, system-ui, sans-serif); text-align: center; padding: 16px; }
+.image-clip, .image-clip img, .slide-element video, .slide-element .manim-frame, .slide-element .manim-output, .shape-content { position: absolute; width: 100%; height: 100%; }
+.manim-frame { inset: 0; }
+.manim-placeholder { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 2px solid var(--vscode-focusBorder, #64748b); background: color-mix(in srgb, var(--vscode-editor-background, #f8fafc) 92%, var(--vscode-foreground, #334155) 8%); color: var(--vscode-foreground, #334155); text-align: center; padding: 16px; }
+.manim-placeholder-label { display: block; max-width: 100%; font-size: clamp(14px, 2.8vmin, 30px); font-weight: 600; line-height: 1.25; font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); word-break: break-word; }
 .slide-element .manim-output { object-fit: contain; }
 .image-clip { overflow: hidden; }
 .image-clip img { max-width: none; object-fit: fill; }

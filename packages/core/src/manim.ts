@@ -25,6 +25,13 @@ export const MANIM_QUALITY_FLAG: Record<ManimQuality, string> = {
 
 export const DEFAULT_MANIM_SCENE_NAME = "SlidePixScene";
 
+export function manimScriptFileLabel(script?: string): string {
+  const trimmed = script?.trim();
+  if (!trimmed) return "manim.py";
+  const parts = trimmed.split(/[/\\]/);
+  return parts.at(-1) || trimmed;
+}
+
 export const MANIM_STARTER_SCRIPT = `from manim import *
 
 

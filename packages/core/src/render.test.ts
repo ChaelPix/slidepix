@@ -19,11 +19,31 @@ describe("shared document rendering", () => {
       z: 1,
       locked: false,
       hidden: false,
+      script: "scenes/intro.manim.py",
       scene: "Intro",
       output: "image"
     }));
     expect(renderDeckDocument(deck)).toContain("slidepix-manim-placeholder");
-    expect(renderDeckDocument(deck)).toContain("Intro");
+    expect(renderDeckDocument(deck)).toContain("intro.manim.py");
+
+    slide.elements.push(elementSchema.parse({
+      id: "manim-2",
+      morphKey: "manim-morph-2",
+      type: "manim",
+      x: 100,
+      y: 500,
+      width: 640,
+      height: 360,
+      rotation: 0,
+      opacity: 1,
+      z: 2,
+      locked: false,
+      hidden: false,
+      script: "clip.manim.py",
+      scene: "MotionClip",
+      output: "video"
+    }));
+    expect(renderDeckDocument(deck)).toContain("clip.manim.py");
 
     const rendered = slide.elements.find((item) => item.id === "manim-1");
     if (rendered?.type === "manim") rendered.outputMedia = { src: "render.png", storage: "embedded" };

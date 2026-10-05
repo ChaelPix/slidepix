@@ -1,5 +1,5 @@
-import { renderMarkdown, roundedEdgeFadeMask, type Deck, type MediaStorage, type Slide, type SlideElement } from "@slidepix/core";
-import type { CSSProperties, MouseEvent } from "react";
+import { manimScriptFileLabel, renderMarkdown, roundedEdgeFadeMask, type Deck, type MediaStorage, type Slide, type SlideElement } from "@slidepix/core";
+import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
 type Props = {
   deck: Deck;
@@ -131,20 +131,7 @@ function ElementView({
           style={{ borderRadius: element.borderRadius }}
         />
       )}
-      {element.type === "manim" && (
-        element.outputMedia
-          ? element.output === "image"
-            ? <img className="manim-output" src={resolveAsset(element.outputMedia.src, element.outputMedia.storage)} alt={element.alt ?? element.scene ?? "Manim"} />
-            : <video
-                className="manim-output"
-                src={resolveAsset(element.outputMedia.src, element.outputMedia.storage)}
-                autoPlay={interactive && element.playback.mode === "autoplay"}
-                muted={element.playback.muted}
-                loop={element.playback.loop}
-                controls={interactive && element.playback.controls}
-              />
-          : <div className="manim-placeholder"><span>{element.scene?.trim() || "Manim"}</span></div>
-      )}
+      {element.type === "manim" && <ManimView element={element} interactive={interactive} resolveAsset={resolveAsset} />}
       {element.type === "shape" && (
         <div
           className="shape-content"
@@ -190,6 +177,58 @@ function ElementView({
             })}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+function ManimView({
+  element,
+  interactive,
+  resolveAsset
+}: {
+  element: Extract<SlideElement, { type: "manim" }>;
+  interactive: boolean;
+  resolveAsset: (source: string, storage: MediaStorage) => string;
+}) {
+  const [mediaFailed, setMediaFailed] = useState(false);
+  const media = element.outputMedia;
+  const mediaSrc = media?.src ? resolveAsset(media.src, media.storage) : "";
+
+  useEffect(() => {
+    setMediaFailed(false);
+  }, [media?.src, element.script, element.output]);
+
+  if (!media?.src || mediaFailed) {
+    return (
+      <div className="manim-frame">
+        <div className="manim-placeholder" aria-label="Manim script preview">
+          <span className="manim-placeholder-label">{manimScriptFileLabel(element.script)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="manim-frame">
+      {element.output === "image" ? (
+        <img
+          className="manim-output"
+          src={mediaSrc}
+          alt={element.alt ?? element.scene ?? "Manim"}
+          onError={() => setMediaFailed(true)}
+        />
+      ) : (
+        <video
+          className="manim-output"
+          src={mediaSrc}
+          preload="metadata"
+          autoPlay={interactive && element.playback.mode === "autoplay"}
+          muted={element.playback.muted}
+          loop={element.playback.loop}
+          controls={interactive && element.playback.controls}
+          onError={() => setMediaFailed(true)}
+        />
       )}
     </div>
   );

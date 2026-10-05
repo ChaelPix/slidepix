@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
 import type { ManimElement, ManimQuality } from "@slidepix/core";
 import { MANIM_QUALITY_FLAG, manimRenderFingerprint, manimSettingsFingerprint } from "@slidepix/core/manim";
 
+export type ManimLaunch = {
+  command: string;
+  args: string[];
+  cwd?: string;
+};
+
 export type ManimRenderOptions = {
-  executable: string;
   scriptPath: string;
   scene: string;
   output: ManimElement["output"];
@@ -14,6 +20,58 @@ export type ManimRenderOptions = {
   mediaDir: string;
   outputName: string;
 };
+
+export function findVenvManimNear(startDirectory: string, exists: (target: string) => boolean = existsSync): string | undefined {
+  let directory = path.resolve(startDirectory);
+  const { root } = path.parse(directory);
+  while (true) {
+    const candidate = path.join(directory, ".venv", "bin", "manim");
+    if (exists(candidate)) return candidate;
+    if (directory === root) break;
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return undefined;
+}
+
+export function findUvWorkspaceRoot(startDirectory: string, exists: (target: string) => boolean = existsSync): string | undefined {
+  let directory = path.resolve(startDirectory);
+  const { root } = path.parse(directory);
+  while (true) {
+    if (exists(path.join(directory, ".venv"))) return directory;
+    if (directory === root) break;
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return undefined;
+}
+
+export function resolveManimLaunch(
+  deckPath: string,
+  configuredExecutable = "",
+  exists: (target: string) => boolean = existsSync
+): ManimLaunch {
+  const configured = configuredExecutable.trim();
+  if (configured) {
+    if (configured.includes(" ")) {
+      const tokens = configured.split(/\s+/).filter(Boolean);
+      return { command: tokens[0]!, args: tokens.slice(1) };
+    }
+    return { command: configured, args: [] };
+  }
+  const deckDirectory = path.dirname(path.resolve(deckPath));
+  const venvManim = findVenvManimNear(deckDirectory, exists);
+  if (venvManim) return { command: venvManim, args: [] };
+  const uvRoot = findUvWorkspaceRoot(deckDirectory, exists);
+  if (uvRoot) return { command: "uv", args: ["run", "manim"], cwd: uvRoot };
+  return { command: "manim", args: [] };
+}
+
+export function assembleManimInvocation(launch: ManimLaunch, renderArgs: string[]): ManimLaunch {
+  return { command: launch.command, args: [...launch.args, ...renderArgs], cwd: launch.cwd };
+}
 
 const SCENE_PATTERN = /^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*Scene[^)]*\)\s*:/gm;
 const MEDIA_EXTENSIONS = new Set([".png", ".mp4", ".webm", ".gif", ".mov"]);
@@ -34,7 +92,7 @@ export function renderFingerprintForElement(element: ManimElement, scriptSource:
   return manimRenderFingerprint(manimSettingsFingerprint(element), scriptContentFingerprint(scriptSource));
 }
 
-export function buildManimArgv(options: ManimRenderOptions): string[] {
+export function buildManimRenderArgs(options: ManimRenderOptions): string[] {
   const quality = MANIM_QUALITY_FLAG[options.quality];
   const format = options.output === "image"
     ? "png"
@@ -42,7 +100,6 @@ export function buildManimArgv(options: ManimRenderOptions): string[] {
       ? "webm"
       : "mp4";
   const argv = [
-    options.executable,
     "render",
     quality,
     "--media_dir",
@@ -54,6 +111,10 @@ export function buildManimArgv(options: ManimRenderOptions): string[] {
   if (options.output === "image") argv.push("-s");
   argv.push(options.scriptPath, options.scene);
   return argv;
+}
+
+export function buildManimArgv(launch: ManimLaunch, options: ManimRenderOptions): ManimLaunch {
+  return assembleManimInvocation(launch, buildManimRenderArgs(options));
 }
 
 export async function findRenderedMedia(mediaDir: string, outputName: string): Promise<string | undefined> {

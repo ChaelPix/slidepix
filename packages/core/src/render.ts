@@ -16,6 +16,7 @@ import xml from "highlight.js/lib/languages/xml";
 // markdown-it-katex does not publish TypeScript declarations.
 // @ts-ignore The plugin follows MarkdownIt's standard PluginSimple shape.
 import markdownItKatex from "markdown-it-katex";
+import { manimScriptFileLabel } from "./manim.js";
 import { morphMatchToken, type Deck, type ImageElement, type ManimElement, type MediaStorage, type Slide, type SlideElement } from "./schema.js";
 
 for (const [name, language] of Object.entries({ bash, c, cpp, css: cssLanguage, java, javascript, json, markdown: markdownLanguage, python, rust, typescript, xml })) {
@@ -391,8 +392,8 @@ function manimMarkup(element: ManimElement, resolveAsset: AssetResolver): string
     const controls = element.playback.controls ? " controls" : "";
     return `<video src="${attr(resolveAsset(media.src, media.storage))}"${autoplay}${muted}${loop}${controls} playsinline style="width:100%;height:100%;object-fit:contain"></video>`;
   }
-  const label = element.scene?.trim() || "Manim";
-  return `<div class="slidepix-manim-placeholder"><span>${attr(label)}</span></div>`;
+  const label = manimScriptFileLabel(element.script);
+  return `<div class="slidepix-manim-placeholder"><span class="slidepix-manim-placeholder-label">${attr(label)}</span></div>`;
 }
 
 function imageMarkup(element: ImageElement, resolveAsset: AssetResolver): string {
@@ -424,7 +425,7 @@ main{${contact ? `display:grid;grid-template-columns:repeat(${columns},${deck.si
 .katex{display:inline-block;font-size:1em;white-space:nowrap}.katex-display{display:block;margin:.4em 0;text-align:center}.katex-html{display:none!important}.katex-mathml{display:inline-block}.katex-display .katex-mathml{display:block}.katex-mathml annotation{display:none}
 .slidepix-image-clip,.slidepix-image-clip img,.slidepix-video video,.slidepix-shape-content{position:absolute;width:100%;height:100%}
 .slidepix-image-clip{overflow:hidden}.slidepix-image-clip img{max-width:none;object-fit:fill}
-.slidepix-video video,.slidepix-manim video{object-fit:contain}.slidepix-manim-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:2px dashed #94a3b8;background:#f8fafc;color:#475569;font:600 28px/1.2 system-ui,sans-serif;text-align:center;padding:16px}
+.slidepix-video video,.slidepix-manim video{object-fit:contain}.slidepix-manim-placeholder{position:absolute;inset:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border:2px solid #64748b;background:#f1f5f9;color:#334155;text-align:center;padding:16px}.slidepix-manim-placeholder-label{display:block;max-width:100%;font-size:clamp(16px,2.8vmin,30px);font-weight:600;line-height:1.25;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word}
 .slidepix-shape-content{inset:0}
 .slidepix-page-number{position:absolute;right:32px;bottom:20px;z-index:2147483647}
 @page{size:${deck.size.width}px ${deck.size.height}px;margin:0}

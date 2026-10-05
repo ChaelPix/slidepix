@@ -120,6 +120,7 @@ Edit source files, then regenerate outputs with the documented commands.
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
 | `scripts/render-smoke.mjs [deck] [output]` | Uses the installed Google Chrome or Microsoft Edge to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
 | `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
+| `scripts/build-manim-demo.mjs [intro.png motion.mp4]` | Rebuilds `examples/slidepix-manim-demo.slidepix.json` via `uv run manim`, or embeds pre-rendered paths. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 
 See [docs/install.md](docs/install.md) for Linux/macOS (zsh) toolchain setup,

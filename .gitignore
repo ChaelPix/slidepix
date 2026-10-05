@@ -6,3 +6,6 @@ packages/extension/vendor/
 .DS_Store
 test-results/
 coverage/
+__pycache__/
+*.pyc
+.venv/

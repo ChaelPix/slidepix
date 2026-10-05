@@ -22,6 +22,7 @@ import {
   relativeDeckReference,
   runManimRender
 } from "./manim-host";
+import { resolveManimLaunch } from "./manim-render";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -340,8 +341,9 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     await panel.webview.postMessage(response);
   }
 
-  private manimExecutable(): string {
-    return vscode.workspace.getConfiguration("slidepix").get<string>("manim.executable", "manim").trim() || "manim";
+  private manimLaunch(document: vscode.TextDocument) {
+    const configured = vscode.workspace.getConfiguration("slidepix").get<string>("manim.executable", "") ?? "";
+    return resolveManimLaunch(document.uri.fsPath, configured);
   }
 
   private async selectManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectManimScript" }>): Promise<void> {
@@ -437,7 +439,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
         () => runManimRender({
           deckPath: document.uri.fsPath,
           element: located.element,
-          executable: this.manimExecutable(),
+          launch: this.manimLaunch(document),
           allowedLinkedRoots: linkedRoots(document)
         })
       );
