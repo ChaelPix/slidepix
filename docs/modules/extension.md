@@ -47,7 +47,7 @@ Private command helpers:
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
 | `selectFont` | Scans platform font directories, opens a native searchable quick picker, and returns the selected CSS family through the versioned protocol. |
-| `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP. |
+| `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP, including `connect-src` limited to `webview.cspSource`, `data:`, and `blob:` so export inlining can fetch already-allowed local assets. |
 
 `src/document-history.ts` owns the capped snapshot stack used by undo/redo.
 
@@ -60,10 +60,13 @@ with an explicit encoding, which forces workbench synchronization, then closes
 and reopens the tab once per 10 s cooldown. Failures are reported, not
 swallowed. `src/editor-recovery.test.ts` covers the decision rules.
 
-Webview-triggered exports carry an optional request ID. The provider reports
-completion or failure through a typed `notify` message so the editor can replace
-its non-blocking progress toast; command-palette exports keep their native VS
-Code notifications.
+Webview-triggered PowerPoint and web exports carry an optional request ID. The
+provider reports completion or failure through a typed `notify` message so the
+editor can replace its non-blocking progress toast; command-palette exports
+keep their native VS Code notifications. Toolbar PDF/PNG capture sends
+`saveExport` with a data URI; the provider writes the chosen file through
+`workspace.fs`. `log` messages append to the SlidePix output channel and show
+it on errors.
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's autosave/external-change lifecycle.

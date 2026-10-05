@@ -27,8 +27,8 @@ import { useDeckStore } from "./store";
 import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
-import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
+import { captureSlidePng, describeExportError, inlineImages } from "./export-capture";
 
 type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
@@ -482,7 +482,7 @@ export default function App() {
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
-      <div id="hidden-export-container" aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, width: 0, height: 0, overflow: "hidden", zIndex: -1 }}>
+      <div id="hidden-export-container" aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0, zIndex: -1, pointerEvents: "none", opacity: 0 }}>
         {deck.slides.map((s) => (
           <div key={s.id} id={`export-slide-${s.id}`} style={{ width: deck.size.width, height: deck.size.height, overflow: "hidden", position: "relative", flexShrink: 0 }}>
             <SlideView deck={deck} slide={s} resolveAsset={assetUrl} />
@@ -548,8 +548,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         if (!node) throw new Error("Slide not found in DOM. Try re-opening the editor.");
         const restore = await inlineImages(node);
         try {
-          const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, skipFonts: true });
-          postMessage({ type: "saveExport", format: "png", data: dataUrl } as any);
+          const dataUrl = await captureSlidePng(node, deck.size.width, deck.size.height);
+          postMessage({ type: "saveExport", format: "png", data: dataUrl });
         } finally { restore(); }
       } else if (command === "exportPdf") {
         const deck = useDeckStore.getState().deck;
@@ -565,7 +565,7 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
           if (!node) throw new Error(`DOM node not found for slide ${i + 1}. Try re-opening the editor.`);
           const restore = await inlineImages(node);
           try {
-            const dataUrl = await toPng(node, { width: deck.size.width, height: deck.size.height, skipFonts: true });
+            const dataUrl = await captureSlidePng(node, deck.size.width, deck.size.height);
             if (i > 0) pdf.addPage([wPt, hPt], orientation);
             pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
           } finally { restore(); }
@@ -574,12 +574,13 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         const u8 = new Uint8Array(bytes);
         let b64 = "";
         for (let i = 0; i < u8.length; i += 0x8000) b64 += String.fromCharCode(...u8.subarray(i, i + 0x8000));
-        postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${btoa(b64)}` } as any);
+        postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${btoa(b64)}` });
       }
       notifyToast({ id: requestId, kind: "success", message: `Exported ${label}` });
     } catch (error) {
-      const detail = describeExportError(error);
-      postMessage({ type: "log", level: "error", message: `Export ${label} failed:\n${detail}` });
+      let detail = "Unknown export error";
+      try { detail = describeExportError(error); } catch { detail = String(error); }
+      try { postMessage({ type: "log", level: "error", message: `Export ${label} failed:\n${detail}` }); } catch { /* Host logging is best-effort. */ }
       notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}: ${detail.split("\n")[0]}` });
     }
   };

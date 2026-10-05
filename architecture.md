@@ -15,6 +15,7 @@ the task; this keeps context small while making ownership explicit.
 | Change save/undo/external-edit behavior | `packages/extension/src/editor.ts` | [Extension module](docs/modules/extension.md) |
 | Change commands or extension contributions | `packages/extension/src/extension.ts` and `packages/extension/package.json` | [Extension module](docs/modules/extension.md), `packages/extension/src/create-deck.ts` |
 | Change presentation or presenter mode | `packages/extension/src/presentation.ts` | [Extension module](docs/modules/extension.md) |
+| Change editor PDF/PNG capture | `packages/webview/src/export-capture.ts` | [Webview module](docs/modules/webview.md) |
 | Change PDF/PNG export or browser installation | `packages/extension/src/renderer.ts` | [Extension module](docs/modules/extension.md) |
 | Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |

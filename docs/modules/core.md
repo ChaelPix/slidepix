@@ -124,7 +124,9 @@ exhaustively on both sides. Bump the protocol only for an incompatible wire
 change, not for every new compatible message.
 
 Export commands include the compatible `exportPptx` member; adding it did not
-change protocol version 2.
+change protocol version 2. Toolbar PDF/PNG capture sends a compatible
+`saveExport` payload (data URI plus format) so the host can show a save dialog
+without changing protocol version 2.
 
 Host `notify` messages update a webview toast by stable notification ID. Export
 commands may include a request ID so host completion or failure replaces the

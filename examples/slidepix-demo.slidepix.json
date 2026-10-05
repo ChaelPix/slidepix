@@ -507,7 +507,7 @@
             "color": "#111827",
             "textAlign": "left",
             "verticalAlign": "top",
-            "lineHeight": 1.18,
+            "lineHeight": 0.7,
             "padding": 6
           }
         },
@@ -1147,7 +1147,7 @@
             "color": "#111827",
             "textAlign": "left",
             "verticalAlign": "top",
-            "lineHeight": 1.18,
+            "lineHeight": 0.7,
             "padding": 6
           }
         },

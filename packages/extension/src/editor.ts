@@ -161,16 +161,15 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);
     }
-    const msg = message as any;
-    if (msg.type === "saveExport") {
+    if (message.type === "saveExport") {
       const destination = await vscode.window.showSaveDialog({
-        filters: msg.format === "pdf" ? { PDF: ["pdf"] } : { PNG: ["png"] },
-        defaultUri: vscode.Uri.file(document.uri.fsPath.replace(/\.slidepix\.json$/i, msg.format === "pdf" ? ".pdf" : ".png"))
+        filters: message.format === "pdf" ? { PDF: ["pdf"] } : { PNG: ["png"] },
+        defaultUri: vscode.Uri.file(document.uri.fsPath.replace(/\.slidepix\.json$/i, message.format === "pdf" ? ".pdf" : ".png"))
       });
       if (destination) {
-        const buffer = Buffer.from(msg.data.replace(/^data:[^;]+;base64,/, ""), "base64");
+        const buffer = Buffer.from(message.data.replace(/^data:[^;]+;base64,/, ""), "base64");
         await vscode.workspace.fs.writeFile(destination, buffer);
-        void vscode.window.showInformationMessage(`Exported ${msg.format.toUpperCase()}`);
+        void vscode.window.showInformationMessage(`Exported ${message.format.toUpperCase()}`);
       }
       return;
     }
@@ -369,7 +368,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     const script = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "webview.js"));
     const style = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "webview.css"));
     const media = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media"));
-    return `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; media-src ${webview.cspSource} blob:; font-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body data-media="${media}"><script nonce="${nonce}" type="module" src="${script}"></script></body></html>`;
+    return `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; media-src ${webview.cspSource} blob:; font-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} data: blob:;"><link rel="stylesheet" href="${style}"></head><body data-media="${media}"><script nonce="${nonce}" type="module" src="${script}"></script></body></html>`;
   }
 }
 

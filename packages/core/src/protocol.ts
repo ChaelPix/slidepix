@@ -21,4 +21,5 @@ export type WebviewToHostMessage =
   | { version: 2; type: "embedMedia"; elementIds?: string[] }
   | { version: 2; type: "selectFont"; requestId: string; current: string }
   | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[]; requestId?: string }
+  | { version: 2; type: "saveExport"; format: "pdf" | "png"; data: string }
   | { version: 2; type: "log"; level: "info" | "warn" | "error"; message: string };
