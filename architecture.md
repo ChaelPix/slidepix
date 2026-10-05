@@ -15,7 +15,7 @@ the task; this keeps context small while making ownership explicit.
 | Change save/undo/external-edit behavior | `packages/extension/src/editor.ts` | [Extension module](docs/modules/extension.md) |
 | Change commands or extension contributions | `packages/extension/src/extension.ts` and `packages/extension/package.json` | [Extension module](docs/modules/extension.md), `packages/extension/src/create-deck.ts` |
 | Change presentation or presenter mode | `packages/extension/src/presentation.ts` | [Extension module](docs/modules/extension.md) |
-| Change editor PDF/PNG capture | `packages/webview/src/export-capture.ts` and `packages/extension/src/pdf-video.ts` | [Webview module](docs/modules/webview.md), [Extension module](docs/modules/extension.md) |
+| Change editor PDF/PNG capture | `packages/webview/src/export-capture.ts` | [Webview module](docs/modules/webview.md) |
 | Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change MCP tools or selection rules | `packages/mcp/src/server.ts` and `packages/mcp/src/tools.ts` | [MCP module](docs/modules/mcp.md) |
@@ -39,7 +39,7 @@ base / ours / theirs ── @slidepix/core semantic merge ── validated canon
 @slidepix/core schema + renderer
        ├── editor canvas/thumbnails
        ├── audience and presenter server
-       ├── PDF/PNG captured in the editor, with playable embedded video in the PDF
+       ├── PDF/PNG captured in the editor; a video is its first frame plus a play control
        ├── native editable PPTX through semantic OOXML conversion
        ├── standalone offline web folder
        └── read-only MCP inspection
@@ -87,9 +87,9 @@ Detailed ownership and method contracts:
 8. Presentation HTTP and WebSocket services bind only to `127.0.0.1` and require
    an unguessable per-session token.
 9. MCP v0.1 stays read-only. Its tools must not write a deck or its assets.
-10. PDF and PNG exports are captured in the editor webview. A PDF embeds each
-    visible video as a playable screen annotation; viewers without PDF media
-    playback still show the captured poster or frame.
+10. PDF and PNG exports are captured in the editor webview. A video is painted
+    as its first frame with a play control. The PDF does not contain a playable
+    media stream.
 11. Every document replacement names its exact base revision. Stale edits are
     semantically rebased or surfaced as conflicts; they are never applied
     blindly over newer source.

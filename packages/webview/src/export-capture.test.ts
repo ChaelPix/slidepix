@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cssUrls, describeExportError, inlineImages, urlToDataUri, withTimeout } from "./export-capture";
+import { cssUrls, describeExportError, firstPresentedTime, frameIsBlank, inlineImages, playHud, urlToDataUri, withTimeout } from "./export-capture";
 
 const PNG_BYTES = Uint8Array.from([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137,
@@ -25,6 +25,31 @@ describe("describeExportError", () => {
     });
     expect(describeExportError(event)).toMatch(/HTMLImageElement error event \(src=.*photo\.png/);
     expect(describeExportError(event)).not.toContain("[object Event]");
+  });
+});
+
+describe("first video frame", () => {
+  it("asks for the first presented time instead of the unloaded zero frame", () => {
+    expect(firstPresentedTime(15)).toBeCloseTo(1 / 30);
+    expect(firstPresentedTime(0)).toBe(0.04);
+    expect(firstPresentedTime(Number.NaN)).toBe(0.04);
+  });
+
+  it("treats an all-black bitmap as blank and a lit bitmap as a real frame", () => {
+    expect(frameIsBlank(new Uint8ClampedArray([0, 0, 0, 255, 0, 0, 0, 255]))).toBe(true);
+    expect(frameIsBlank(new Uint8ClampedArray([200, 20, 20, 255, 0, 0, 0, 255]))).toBe(false);
+  });
+});
+
+describe("playHud", () => {
+  it("centers a play triangle that points to the right", () => {
+    const hud = playHud(400, 300);
+    expect(hud.cx).toBe(200);
+    expect(hud.cy).toBe(150);
+    expect(hud.radius).toBeCloseTo(42);
+    expect(hud.triangle[1][0]).toBeGreaterThan(hud.triangle[0][0]);
+    expect(hud.triangle[0][1]).toBeLessThan(hud.cy);
+    expect(hud.triangle[2][1]).toBeGreaterThan(hud.cy);
   });
 });
 

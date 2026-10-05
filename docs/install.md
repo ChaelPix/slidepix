@@ -101,7 +101,7 @@ pnpm build
 
 `pnpm install` downloads workspace dependencies. `pnpm build` compiles `@slidepix/core`,
 the React webview, the MCP server, and the VS Code extension, and writes generated
-schema, `dist`, `media`, and vendored Playwright Core files. Do not hand-edit those
+schema, `dist`, `media`. Do not hand-edit those
 outputs.
 
 Optional checks after a first build:

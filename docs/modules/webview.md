@@ -12,7 +12,7 @@ webview. The webview has no direct filesystem or Node access.
 | `src/main.tsx` | React entry point and stylesheet loading. |
 | `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, command dispatch, and toolbar PDF/PNG capture. |
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
-| `src/export-capture.ts` | Pre-inlines images, CSS backgrounds, and video posters or frames to data URIs, then rasterizes a slide with `html-to-image`. The extension then embeds the video file in the PDF. |
+| `src/export-capture.ts` | Pre-inlines images and CSS backgrounds, replaces each video with its first frame plus a play control, then rasterizes the slide with `html-to-image`. |
 | `src/align.ts` | Page/selection alignment and equal-gap distribution of element boxes. |
 | `src/snap.ts` | Logical-space edge/center snapping against the page and peer boxes. |
 | `src/shape-batch.ts` | Copies a shape's pose and paint onto same-named shapes on other slides. |
@@ -184,6 +184,6 @@ Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
 `src/store.test.ts` covers write serialization, debounce, rebasing, conflicts,
-failed edits, deferred document commands, and host undo availability. `src/export-capture.test.ts` covers image error-event formatting, CSS `url()` extraction, capture timeouts, and data-URI inlining. `src/align.test.ts` covers page
+failed edits, deferred document commands, and host undo availability. `src/export-capture.test.ts` covers image error-event formatting, CSS `url()` extraction, capture timeouts, data-URI inlining, and the video play control. `src/align.test.ts` covers page
 and selection alignment plus distribution. `src/snap.test.ts` covers edge
 snapping and the zoom-aware catch radius.

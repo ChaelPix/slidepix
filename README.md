@@ -159,8 +159,8 @@ independently; its name must match the deck.
 - If an image or video is missing, confirm the matching `.assets` folder was
   copied with the deck.
 - Browser video support depends on the operating system codec. MP4/H.264 and
-  WebM are the safest choices. A PDF shows that frame or poster on the page and
-  embeds the video file for viewers that can play PDF screen annotations.
+  WebM are the safest choices. A PDF shows the first video frame with a play
+  control; it does not contain a playable video.
 
 ## AI review with MCP
 
