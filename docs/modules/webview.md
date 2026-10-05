@@ -114,6 +114,8 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - The Insert ribbon's Shape control uses the same themed dropdown as Export.
   Manim uses the same pattern: **Still image** or **Video** inserts a centered
   box and opens Manim properties for script, scene, quality, and **Render**.
+  Until a render exists, image and video Manim elements both show the same
+  bordered placeholder with the linked `.py` filename centered in the box.
   The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,
   add/remove row and column actions, a header toggle, typography, and
   transparent header/cell/border colors. Limits match the core schema.

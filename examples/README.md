@@ -1,4 +1,22 @@
-# SlidePix product demo
+# SlidePix examples
+
+## Manim demo
+
+`slidepix-manim-demo.slidepix.json` shows linked Manim Community scripts and
+embedded renders:
+
+- `slidepix-manim-demo.manim.py` — `IntroStill` (PNG) and `MotionClip` (MP4)
+- `slidepix-manim-demo.assets/` — content-addressed render output
+
+Open `slidepix-manim-demo.slidepix.json` in SlidePix: renders are already
+embedded, so no terminal setup is required. After editing
+`slidepix-manim-demo.manim.py`, use **Render** on each Manim element in the
+properties panel.
+
+Maintainers can regenerate committed assets with
+`node scripts/build-manim-demo.mjs` (uses the repo `uv` environment).
+
+## Product demo
 
 `slidepix-demo.slidepix.json` is the canonical light-theme product demo and
 visual-regression deck. It intentionally covers Markdown, LaTeX, highlighted

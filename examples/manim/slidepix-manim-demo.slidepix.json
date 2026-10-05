@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "id": "slidepix-manim-demo",
+  "metadata": {
+    "title": "SlidePix Manim demo",
+    "author": "SlidePix",
+    "description": "Minimal deck showing linked Manim Community scripts and embedded renders."
+  },
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "theme": {
+    "background": "#ffffff",
+    "foreground": "#111827",
+    "accent": "#2563eb",
+    "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+  },
+  "pageNumbers": {
+    "enabled": true,
+    "color": "#64748b",
+    "fontSize": 24
+  },
+  "layouts": {},
+  "slides": [
+    {
+      "id": "manim-01",
+      "title": "Manim in SlidePix",
+      "background": "#ffffff",
+      "notes": "The .py file stays linked in the workspace; rendered PNG or MP4 bytes live in slidepix-manim-demo.assets/.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "fade",
+        "durationMs": 500,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "m01-title",
+          "morphKey": "m01-title",
+          "x": 120,
+          "y": 120,
+          "width": 1680,
+          "height": 200,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "# Manim scenes in your deck",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 72,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "m01-copy",
+          "morphKey": "m01-copy",
+          "x": 120,
+          "y": 360,
+          "width": 900,
+          "height": 420,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "copy",
+          "type": "text",
+          "markdown": "Insert **Manim** from the toolbar, edit `slidepix-manim-demo.manim.py`, then click **Render** in the properties panel.\n\n- Linked script in the workspace\n- Rendered PNG/MP4 embedded in `.assets/`\n- Before the first render, the canvas shows the script filename in a bordered box",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 34,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.25,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "manim-02",
+      "title": "Still frame",
+      "background": "#f8fafc",
+      "notes": "IntroStill is exported with Manim's still (-s) PNG path.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 600,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "m02-label",
+          "morphKey": "m02-label",
+          "x": 120,
+          "y": 90,
+          "width": 600,
+          "height": 80,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "label",
+          "type": "text",
+          "markdown": "## Still image (`IntroStill`)",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 44,
+            "fontWeight": 650,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.15,
+            "padding": 6
+          }
+        },
+        {
+          "id": "m02-still",
+          "morphKey": "m02-still",
+          "x": 92,
+          "y": 200,
+          "width": 1220,
+          "height": 708,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "intro-still",
+          "type": "manim",
+          "script": "slidepix-manim-demo-2.manim.py",
+          "scene": "SlidePixScene",
+          "output": "image",
+          "quality": "low",
+          "transparent": false,
+          "outputMedia": {
+            "src": "ca1d06b6069ef0ecbd713be78cc141314d4f4a4053f527a47b64cdcf26ac853d.png",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.774891774891775,
+          "playback": {
+            "mode": "manual",
+            "muted": false,
+            "loop": false,
+            "controls": true
+          }
+        },
+        {
+          "id": "b0497a6f-2ea9-4c43-a222-f9c750143a7f",
+          "morphKey": "4d9aa8f4-ecd3-4a09-8edc-5b1fe2758fde",
+          "x": 92,
+          "y": 170,
+          "width": 1138,
+          "height": 640.125,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "image-b049",
+          "alt": "",
+          "type": "image",
+          "src": "../slidepix-demo.assets/3362e868c0b5c134abc45d61bc47298dfdbfbf0bd497f8605e93305840ef4497.png",
+          "storage": "linked",
+          "crop": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1
+          },
+          "borderRadius": 0,
+          "edgeFade": 0,
+          "border": {
+            "width": 0,
+            "color": "transparent"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777
+        }
+      ]
+    },
+    {
+      "id": "manim-03",
+      "title": "Motion clip",
+      "background": "#ffffff",
+      "notes": "MotionClip is a short MP4 rendered at low quality for a small repo footprint.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 600,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "m03-label",
+          "morphKey": "m03-label",
+          "x": 120,
+          "y": 90,
+          "width": 700,
+          "height": 80,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "label",
+          "type": "text",
+          "markdown": "## Video (`MotionClip`)",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 44,
+            "fontWeight": 650,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.15,
+            "padding": 6
+          }
+        },
+        {
+          "id": "m03-video",
+          "morphKey": "m03-video",
+          "x": 120,
+          "y": 200,
+          "width": 960,
+          "height": 540,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "motion-clip",
+          "type": "manim",
+          "script": "slidepix-manim-demo.manim.py",
+          "scene": "MotionClip",
+          "output": "video",
+          "quality": "medium",
+          "transparent": false,
+          "outputMedia": {
+            "src": "fe651f519b33b8e139ae7af1e2e0398881378a62726d53c40fcf0bb543022b38.mp4",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777,
+          "playback": {
+            "mode": "manual",
+            "muted": false,
+            "loop": true,
+            "controls": true
+          }
+        },
+        {
+          "id": "m03-copy",
+          "morphKey": "m03-copy",
+          "x": 1150,
+          "y": 252,
+          "width": 680,
+          "height": 360,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "hint",
+          "type": "text",
+          "markdown": "Playback options (loop, mute, controls) are stored on the Manim element like a normal video.\n\nAfter editing the Python scene, select the Manim box and click **Render** again to refresh the embedded clip.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 30,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.3,
+            "padding": 8
+          }
+        }
+      ]
+    }
+  ]
+}
