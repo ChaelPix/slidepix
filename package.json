@@ -3,13 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.29.3",
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/AntoinePerrin25/slidepix"
-  },
   "scripts": {
     "build": "pnpm --filter @slidepix/core build && pnpm --filter @slidepix/webview build && pnpm --filter @slidepix/mcp build && pnpm --filter slidepix build",
     "dev": "pnpm --parallel --filter @slidepix/webview --filter @slidepix/extension dev",
