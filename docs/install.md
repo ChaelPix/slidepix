@@ -150,8 +150,5 @@ After install, run **SlidePix: Create Deck** from the Command Palette
 For local extension development, `pnpm build` (or `pnpm dev`) plus **F5** in VS
 Code is enough; see [Debug the extension](development.md#debug-the-extension).
 Re-run `pnpm package` and the VSIX install only when you want the built
-extension in your normal Ubuntu/macOS editor.
-
-PDF, PNG, MCP rendering, and `scripts/render-smoke.mjs` still need a later
-**SlidePix: Install Export Renderer** consent download. That Chromium binary is
-not part of `pnpm install` or the VSIX.
+extension in your normal Ubuntu/macOS editor. PDF and PNG export run in the
+editor webview and do not need a separate renderer download.

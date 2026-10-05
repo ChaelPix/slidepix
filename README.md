@@ -158,10 +158,9 @@ independently; its name must match the deck.
   editor and resolve the markers manually.
 - If an image or video is missing, confirm the matching `.assets` folder was
   copied with the deck.
-- If PDF or PNG export fails before producing a file, run
-  **SlidePix: Install Export Renderer** from the Command Palette and retry.
 - Browser video support depends on the operating system codec. MP4/H.264 and
-  WebM are the safest choices.
+  WebM are the safest choices. A PDF shows that frame or poster on the page and
+  embeds the video file for viewers that can play PDF screen annotations.
 
 ## AI review with MCP
 
@@ -171,8 +170,8 @@ keeps its own config: `~/.cursor/mcp.json`, the VS Code profile `mcp.json`,
 `~/.codex/config.toml`, `~/.claude.json`, and the Claude Desktop config.
 Existing servers in those files stay. A file that is not valid is left unchanged.
 
-After adding it, start a new chat in the app you want to use. That chat can call `list_slides`,
-`inspect_slides`, and `render_slides` with an absolute deck path. Those tools
+After adding it, start a new chat in the app you want to use. That chat can call `list_slides`
+and `inspect_slides` with an absolute deck path. Those tools
 never modify the deck. Enable **slidepix** in MCP settings if the editor asks.
 The chat that was already open will not see a server added after it started.
 

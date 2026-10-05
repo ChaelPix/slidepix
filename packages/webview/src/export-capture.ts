@@ -78,6 +78,60 @@ export async function inlineImages(root: HTMLElement): Promise<() => void> {
   };
 }
 
+export async function inlineVideos(root: HTMLElement): Promise<() => void> {
+  const restores: Array<() => void> = [];
+  for (const video of [...root.querySelectorAll("video")]) {
+    const still = await videoStillDataUri(video);
+    if (!still) continue;
+    const image = document.createElement("img");
+    image.src = still;
+    image.alt = "";
+    image.style.position = "absolute";
+    image.style.inset = "0";
+    image.style.width = "100%";
+    image.style.height = "100%";
+    image.style.objectFit = "cover";
+    image.style.borderRadius = video.style.borderRadius;
+    video.replaceWith(image);
+    restores.push(() => image.replaceWith(video));
+  }
+  return () => {
+    for (const restore of restores.reverse()) restore();
+  };
+}
+
+async function videoStillDataUri(video: HTMLVideoElement): Promise<string | undefined> {
+  const poster = video.getAttribute("poster") || video.poster;
+  if (poster) {
+    try { return DATA_URL.test(poster) ? poster : await urlToDataUri(poster); } catch { /* A decoded frame can still stand in. */ }
+  }
+  return drawnVideoFrame(video);
+}
+
+async function drawnVideoFrame(video: HTMLVideoElement): Promise<string | undefined> {
+  try {
+    video.muted = true;
+    video.playsInline = true;
+    if (video.readyState < 2) {
+      if (video.networkState === HTMLMediaElement.NETWORK_EMPTY) video.load();
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        video.addEventListener("loadeddata", () => resolve(), { once: true });
+        video.addEventListener("error", () => reject(new Error(`Video failed to load: ${video.currentSrc || video.src}`)), { once: true });
+      }), 8_000, `Video frame timed out: ${video.currentSrc || video.src}`);
+    }
+    if (!video.videoWidth || !video.videoHeight) return undefined;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return undefined;
+    context.drawImage(video, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.92);
+  } catch {
+    return undefined;
+  }
+}
+
 async function waitForImage(img: HTMLImageElement): Promise<void> {
   if (img.complete && img.naturalWidth > 0) {
     try { await img.decode(); } catch { /* SVG/decode failures still allow canvas or fetch. */ }

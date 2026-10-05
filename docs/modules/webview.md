@@ -12,7 +12,7 @@ webview. The webview has no direct filesystem or Node access.
 | `src/main.tsx` | React entry point and stylesheet loading. |
 | `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, command dispatch, and toolbar PDF/PNG capture. |
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
-| `src/export-capture.ts` | Pre-inlines `<img>` and CSS `background-image` URLs to data URIs, then rasterizes a slide with `html-to-image`. This avoids the library refetching webview assets (which fails in the sandbox and rejects with a raw `Event`). |
+| `src/export-capture.ts` | Pre-inlines images, CSS backgrounds, and video posters or frames to data URIs, then rasterizes a slide with `html-to-image`. The extension then embeds the video file in the PDF. |
 | `src/align.ts` | Page/selection alignment and equal-gap distribution of element boxes. |
 | `src/snap.ts` | Logical-space edge/center snapping against the page and peer boxes. |
 | `src/shape-batch.ts` | Copies a shape's pose and paint onto same-named shapes on other slides. |

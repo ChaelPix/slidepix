@@ -83,8 +83,7 @@ async function withDeck(editor: SlidePixEditorProvider, action: (deck: import("@
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
   const server = slidepixMcpProcess(
     process.execPath,
-    vscode.Uri.joinPath(context.extensionUri, "dist", "mcp.cjs").fsPath,
-    vscode.Uri.joinPath(context.globalStorageUri, "playwright").fsPath
+    vscode.Uri.joinPath(context.extensionUri, "dist", "mcp.cjs").fsPath
   );
   const userDirectory = path.resolve(context.globalStorageUri.fsPath, "..", "..");
   const targets = mcpTargets(os.homedir(), userDirectory, process.platform);
@@ -106,7 +105,7 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
     }
   }
   if (!written.length) return void vscode.window.showErrorMessage(`SlidePix could not install MCP. ${failed.join(" ")}`);
-  const summary = `SlidePix MCP was added for ${written.length} app${written.length === 1 ? "" : "s"}. Start a new chat to use list_slides, inspect_slides, and render_slides.`;
+  const summary = `SlidePix MCP was added for ${written.length} app${written.length === 1 ? "" : "s"}. Start a new chat to use list_slides and inspect_slides.`;
   void vscode.window.showInformationMessage(failed.length ? `${summary} Skipped: ${failed.join(" ")}` : summary);
 }
 

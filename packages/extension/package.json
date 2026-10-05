@@ -83,10 +83,6 @@
         "icon": "$(multiple-windows)"
       },
       {
-        "command": "slidepix.installRenderer",
-        "title": "SlidePix: Install Export Renderer"
-      },
-      {
         "command": "slidepix.configureMcp",
         "title": "SlidePix: Configure MCP"
       },
@@ -154,6 +150,7 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "@slidepix/core": "workspace:*",
     "jszip": "3.10.2",
+    "pdf-lib": "1.17.1",
     "pptxgenjs": "4.0.1",
     "ws": "^8.18.3",
     "zod": "^4.1.5"

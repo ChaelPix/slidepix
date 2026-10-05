@@ -4,7 +4,8 @@ import * as vscode from "vscode";
 import { parseDeckText, serializeDeck, type Deck, type HostToWebviewMessage, type WebviewToHostMessage } from "@slidepix/core";
 import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
 
-import { exportPptx } from "./pptx-export-command";
+import { exportPptx, workspaceRoots } from "./pptx-export-command";
+import { embedDeckVideos } from "./pdf-video";
 import { exportWeb } from "./web-export-command";
 import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
@@ -167,9 +168,23 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
         defaultUri: vscode.Uri.file(document.uri.fsPath.replace(/\.slidepix\.json$/i, message.format === "pdf" ? ".pdf" : ".png"))
       });
       if (destination) {
-        const buffer = Buffer.from(message.data.replace(/^data:[^;]+;base64,/, ""), "base64");
-        await vscode.workspace.fs.writeFile(destination, buffer);
-        void vscode.window.showInformationMessage(`Exported ${message.format.toUpperCase()}`);
+        let bytes = Buffer.from(message.data.replace(/^data:[^;]+;base64,/, ""), "base64");
+        let detail = `Exported ${message.format.toUpperCase()}`;
+        if (message.format === "pdf") {
+          const parsed = parseDeckText(document.getText());
+          if (parsed.ok) {
+            const embedded = await embedDeckVideos(bytes, parsed.deck, document.uri.fsPath, workspaceRoots(document.uri.fsPath));
+            bytes = Buffer.from(embedded.bytes);
+            if (embedded.embedded) detail = `Exported PDF with ${embedded.embedded} playable video${embedded.embedded === 1 ? "" : "s"}`;
+            if (embedded.warnings.length) {
+              const channel = this.getOutputChannel();
+              channel.appendLine(`${new Date().toISOString()} [WARN] ${embedded.warnings.join("\n")}`);
+              channel.show(true);
+            }
+          }
+        }
+        await vscode.workspace.fs.writeFile(destination, bytes);
+        void vscode.window.showInformationMessage(detail);
       }
       return;
     }

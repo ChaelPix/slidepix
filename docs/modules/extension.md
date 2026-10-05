@@ -22,9 +22,9 @@ Private command helpers:
   Explorer both skip the save dialog and filename prompt.
 - `withDeck(editor, action)` requires an active deck, validates current text,
   and only invokes the action for a valid document.
-- `configureMcp(context)` installs the renderer, then adds a `slidepix` stdio
-  server for Cursor (`~/.cursor/mcp.json`), VS Code (profile `mcp.json`),
-  Codex (`~/.codex/config.toml`), Claude Code (`~/.claude.json`), and Claude
+- `configureMcp(context)` adds a `slidepix` stdio server for Cursor
+  (`~/.cursor/mcp.json`), VS Code (profile `mcp.json`), Codex
+  (`~/.codex/config.toml`), Claude Code (`~/.claude.json`), and Claude
   Desktop. Other servers and unrelated settings in those files are kept. A
   malformed file is skipped and reported.
 - Git collaboration commands configure/remove only repository-local settings
@@ -65,8 +65,8 @@ provider reports completion or failure through a typed `notify` message so the
 editor can replace its non-blocking progress toast; command-palette exports
 keep their native VS Code notifications. Toolbar PDF/PNG capture sends
 `saveExport` with a data URI; the provider writes the chosen file through
-`workspace.fs`. `log` messages append to the SlidePix output channel and show
-it on errors.
+`workspace.fs` and, for PDF, embeds visible videos through `embedDeckVideos`.
+`log` messages append to the SlidePix output channel and show it on errors.
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's autosave/external-change lifecycle.
@@ -144,18 +144,15 @@ depending on the VS Code runtime, so its current/next double-buffer behavior is
 unit-testable in `src/presenter.test.ts`. Keep speaker notes in this private
 panel and out of audience HTML.
 
-## `src/renderer.ts`
+## `src/pdf-video.ts`
 
-- `launchSystemBrowser()` finds the user's existing Google Chrome or Microsoft Edge installation through Playwright channels, requiring no heavy binary downloads.
-- `exportPdf(context, deck, deckPath)` prints `/print` at exact logical page
-  size with backgrounds and caps the PDF page range to the visible-slide count,
-  preventing Chromium from retaining a trailing blank pagination page.
-- `exportPng(context, deck, deckPath, slideIds?)` screenshots the single slide
-  element at exact logical dimensions, or the full `/contact` page for a
-  multi-slide contact sheet.
-
-Both exporters must close the browser and server in `finally`. Playwright Core
-is vendored into the VSIX; it connects to the system's Edge/Chrome browser.
+`embedDeckVideos(pdfBytes, deck, deckPath, allowedLinkedRoots)` leaves a PDF
+unchanged when it has no visible video. Otherwise it embeds each visible video
+file, resolved with `resolveMediaPath`, as a PDF screen annotation with a
+rendition action. Autoplay videos also start from the page-open action. The
+annotation rectangle uses the slide box converted into PDF user space. Hidden
+slides and hidden elements are omitted. Mute and loop preferences are not
+represented by this PDF media action.
 
 ## `src/pptx-export.ts` and `src/pptx-export-command.ts`
 
@@ -183,10 +180,6 @@ is vendored into the VSIX; it connects to the system's Edge/Chrome browser.
 - Hidden slides and elements are omitted. System fonts are referenced rather
   than embedded; unsupported CSS easing and browser-only details use the closest
   native PowerPoint equivalent and produce structured warnings.
-
-`src/playwright.ts` is the VS Code-independent loader for the vendored
-Playwright Core package, allowing renderer-backed exporters to remain directly
-unit-testable.
 
 ## `src/web-export.ts` and `src/web-export-command.ts`
 

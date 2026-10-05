@@ -12,7 +12,7 @@ const selectorSchema = {
 function buildServer(): McpServer {
   const server = new McpServer(
     { name: "slidepix", version: "0.1.0" },
-    { instructions: "Use list_slides before inspect_slides or render_slides when slide identifiers are not already known. These tools are read-only." }
+    { instructions: "Use list_slides before inspect_slides when slide identifiers are not already known. These tools are read-only." }
   );
 
   server.registerTool("list_slides", {

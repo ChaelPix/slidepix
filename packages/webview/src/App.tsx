@@ -28,7 +28,7 @@ import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelec
 import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
 import { jsPDF } from "jspdf";
-import { captureSlidePng, describeExportError, inlineImages } from "./export-capture";
+import { captureSlidePng, describeExportError, inlineImages, inlineVideos } from "./export-capture";
 
 type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
@@ -482,7 +482,7 @@ export default function App() {
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
-      <div id="hidden-export-container" aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0, zIndex: -1, pointerEvents: "none", opacity: 0 }}>
+      <div id="hidden-export-container" aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0, zIndex: -1, pointerEvents: "none" }}>
         {deck.slides.map((s) => (
           <div key={s.id} id={`export-slide-${s.id}`} style={{ width: deck.size.width, height: deck.size.height, overflow: "hidden", position: "relative", flexShrink: 0 }}>
             <SlideView deck={deck} slide={s} resolveAsset={assetUrl} />
@@ -546,11 +546,12 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         if (!deck) throw new Error("No deck");
         const node = document.getElementById(`export-slide-${slide.id}`);
         if (!node) throw new Error("Slide not found in DOM. Try re-opening the editor.");
-        const restore = await inlineImages(node);
+        const restoreVideos = await inlineVideos(node);
+        const restoreImages = await inlineImages(node);
         try {
           const dataUrl = await captureSlidePng(node, deck.size.width, deck.size.height);
           postMessage({ type: "saveExport", format: "png", data: dataUrl });
-        } finally { restore(); }
+        } finally { restoreImages(); restoreVideos(); }
       } else if (command === "exportPdf") {
         const deck = useDeckStore.getState().deck;
         if (!deck) throw new Error("No deck");
@@ -563,12 +564,13 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         for (const [i, s] of visibleSlides.entries()) {
           const node = document.getElementById(`export-slide-${s.id}`);
           if (!node) throw new Error(`DOM node not found for slide ${i + 1}. Try re-opening the editor.`);
-          const restore = await inlineImages(node);
+          const restoreVideos = await inlineVideos(node);
+          const restoreImages = await inlineImages(node);
           try {
             const dataUrl = await captureSlidePng(node, deck.size.width, deck.size.height);
             if (i > 0) pdf.addPage([wPt, hPt], orientation);
             pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
-          } finally { restore(); }
+          } finally { restoreImages(); restoreVideos(); }
         }
         const bytes = pdf.output("arraybuffer");
         const u8 = new Uint8Array(bytes);

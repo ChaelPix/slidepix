@@ -30,10 +30,9 @@ source. Tests therefore work in a fresh checkout before `packages/core/dist`
 exists; do not remove those aliases or make `pnpm test` depend on stale build
 output.
 
-No browser is downloaded by `pnpm install` or embedded in the VSIX. PDF, PNG,
-MCP rendering, and the smoke script need a Chromium binary installed through
-**SlidePix: Install Export Renderer** or Playwright with
-`PLAYWRIGHT_BROWSERS_PATH` pointing to that installation.
+No browser is downloaded by `pnpm install` or embedded in the VSIX. PDF and PNG
+export run inside the editor webview. `scripts/render-smoke.mjs` needs Google
+Chrome or Microsoft Edge already installed on the machine.
 
 ## Debug the extension
 
@@ -74,6 +73,6 @@ Cursor before publishing it.
 
 ## Generated-output discipline
 
-Never patch `dist`, `media`, vendored Playwright, or the generated JSON Schema.
+Never patch `dist`, `media`, or the generated JSON Schema.
 Change their sources and rebuild. The complete generated-file table and all
 script responsibilities are in [architecture.md](../architecture.md).
