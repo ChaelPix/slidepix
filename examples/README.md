@@ -2,24 +2,8 @@
 
 ## Manim demo
 
-`slidepix-manim-demo.slidepix.json` shows linked Manim Community scripts and
-embedded renders:
-
-- `slidepix-manim-demo.manim.py` — `IntroStill` (PNG) and `MotionClip` (MP4)
-- `slidepix-manim-demo.assets/` — content-addressed render output
-
-Open `slidepix-manim-demo.slidepix.json` in SlidePix: renders are already
-embedded, so no terminal setup is required. After editing
-`slidepix-manim-demo.manim.py`, use **Render** on each Manim element in the
-properties panel.
-
-Maintainers can regenerate committed assets with
-`node scripts/build-manim-demo.mjs` (uses the repo `uv` environment).
-
-## Fourier
-
-`manim/fourier.slidepix.json` is a short French talk on the Fourier transform.
-Scenes live in `manim/fourier.manim.py`:
+`manim/fourier.slidepix.json` is the Manim demo: a short French talk on the
+Fourier transform. Scenes live in `manim/fourier.manim.py`:
 
 - `HarmonicsStill` — three odd harmonics and their sum (PNG)
 - `BuildSquare` — partial sums toward a square wave (MP4)
@@ -27,8 +11,10 @@ Scenes live in `manim/fourier.manim.py`:
 - `RectPulse` — a pulse of height A on `[0, X]`, and the sinc that widens as X shrinks (MP4)
 - `EpicycleDraw` — rotating radii whose last point traces a closed outline (MP4)
 
-Renders are already embedded in `manim/fourier.assets/`. After editing a scene,
-select the Manim element and click **Render**.
+Rendered media is referenced from `manim/fourier.assets/`. That directory is
+gitignored, so a fresh clone shows the script name until you click **Render**.
+**Render all** in the Manim menu refreshes every scene. After editing a scene,
+select its Manim element and click **Render**.
 
 ## Product demo
 
