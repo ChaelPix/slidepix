@@ -11,34 +11,41 @@ import { mcpTargets, mergeMcpTarget, slidepixMcpProcess, type McpTarget } from "
 
 export function activate(context: vscode.ExtensionContext): void {
   const editor = new SlidePixEditorProvider(context);
+  editor.showLog();
   context.subscriptions.push(
     editor.register(),
     vscode.commands.registerCommand("slidepix.createDeck", (selected?: vscode.Uri) => createDeckCommand(selected, editor)),
-    vscode.commands.registerCommand("slidepix.exportPptx", () => withDeck(editor, (deck, document) => exportPptx(context, deck, document.uri.fsPath))),
-    vscode.commands.registerCommand("slidepix.exportWeb", () => withDeck(editor, (deck, document) => exportWeb(deck, document.uri.fsPath))),
+    vscode.commands.registerCommand("slidepix.exportPptx", () => { editor.log("command exportPptx"); return withDeck(editor, (deck, document) => exportPptx(context, deck, document.uri.fsPath)); }),
+    vscode.commands.registerCommand("slidepix.exportWeb", () => { editor.log("command exportWeb"); return withDeck(editor, (deck, document) => exportWeb(deck, document.uri.fsPath)); }),
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),
     vscode.commands.registerCommand("slidepix.presenter", () => editor.currentDocument() && editor.present(editor.currentDocument()!, true)),
-    vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context)),
-    vscode.commands.registerCommand("slidepix.configureGitCollaboration", () => reportGitError("configure Git collaboration", () => configureGitCollaboration(context, editor.currentDocument()))),
-    vscode.commands.registerCommand("slidepix.removeGitCollaboration", () => reportGitError("remove Git collaboration", () => removeGitCollaboration(context, editor.currentDocument()))),
-    vscode.commands.registerCommand("slidepix.resolveGitConflict", () => reportGitError("resolve the Git conflict", () => resolveGitConflict(editor.currentDocument())))
+    vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context, editor)),
+    vscode.commands.registerCommand("slidepix.configureGitCollaboration", () => reportGitError(editor, "configure Git collaboration", () => configureGitCollaboration(context, editor.currentDocument()))),
+    vscode.commands.registerCommand("slidepix.removeGitCollaboration", () => reportGitError(editor, "remove Git collaboration", () => removeGitCollaboration(context, editor.currentDocument()))),
+    vscode.commands.registerCommand("slidepix.resolveGitConflict", () => reportGitError(editor, "resolve the Git conflict", () => resolveGitConflict(editor.currentDocument())))
   );
 }
 
 export function deactivate(): void {}
 
-async function reportGitError(action: string, operation: () => Promise<void>): Promise<void> {
+async function reportGitError(editor: SlidePixEditorProvider, action: string, operation: () => Promise<void>): Promise<void> {
+  editor.log(`command ${action}`);
   try {
     await operation();
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    editor.log(`could not ${action}: ${detail}`, "error");
     void vscode.window.showErrorMessage(`SlidePix could not ${action}: ${detail}`);
   }
 }
 
 async function createDeckCommand(selected: vscode.Uri | undefined, editor: SlidePixEditorProvider): Promise<void> {
+  editor.log("command createDeck");
   const directory = await deckCreationDirectory(selected, editor);
-  if (!directory) return void vscode.window.showWarningMessage("Open a workspace folder before creating a SlidePix deck.");
+  if (!directory) {
+    editor.log("createDeck: no workspace folder", "warn");
+    return void vscode.window.showWarningMessage("Open a workspace folder before creating a SlidePix deck.");
+  }
   const destination = await uniqueUntitledDeckUri(directory);
   await vscode.workspace.fs.writeFile(destination, Buffer.from(serializeDeck(createDeck()), "utf8"));
   await vscode.commands.executeCommand("vscode.openWith", destination, VIEW_TYPE);
@@ -74,13 +81,20 @@ function asFileUri(value: unknown): vscode.Uri | undefined {
 
 async function withDeck(editor: SlidePixEditorProvider, action: (deck: import("@slidepix/core").Deck, document: vscode.TextDocument) => Promise<unknown>): Promise<void> {
   const document = editor.currentDocument();
-  if (!document) return void vscode.window.showWarningMessage("Open a SlidePix deck first.");
+  if (!document) {
+    editor.log("command requires an open deck", "warn");
+    return void vscode.window.showWarningMessage("Open a SlidePix deck first.");
+  }
   const parsed = parseDeckText(document.getText());
-  if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
+  if (!parsed.ok) {
+    editor.log(parsed.message, "error");
+    return void vscode.window.showErrorMessage(parsed.message);
+  }
   await action(parsed.deck, document);
 }
 
-async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
+async function configureMcp(context: vscode.ExtensionContext, editor: SlidePixEditorProvider): Promise<void> {
+  editor.log("command configureMcp");
   const server = slidepixMcpProcess(
     process.execPath,
     vscode.Uri.joinPath(context.extensionUri, "dist", "mcp.cjs").fsPath
@@ -92,7 +106,10 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
     "Add",
     "Cancel"
   );
-  if (choice !== "Add") return;
+  if (choice !== "Add") {
+    editor.log("configureMcp dismissed");
+    return;
+  }
   const written: string[] = [];
   const failed: string[] = [];
   for (const target of targets) {
@@ -104,8 +121,12 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
       failed.push(`${target.filePath}: ${detail}`);
     }
   }
-  if (!written.length) return void vscode.window.showErrorMessage(`SlidePix could not install MCP. ${failed.join(" ")}`);
+  if (!written.length) {
+    editor.log(`configureMcp failed: ${failed.join(" ")}`, "error");
+    return void vscode.window.showErrorMessage(`SlidePix could not install MCP. ${failed.join(" ")}`);
+  }
   const summary = `SlidePix MCP was added for ${written.length} app${written.length === 1 ? "" : "s"}. Start a new chat to use list_slides and inspect_slides.`;
+  editor.log(summary);
   void vscode.window.showInformationMessage(failed.length ? `${summary} Skipped: ${failed.join(" ")}` : summary);
 }
 

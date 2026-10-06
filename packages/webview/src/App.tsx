@@ -289,11 +289,14 @@ export default function App() {
   };
   const renderAllManim = () => {
     const requestId = crypto.randomUUID();
+    notifyToast({ id: requestId, kind: "progress", message: "Rendering all Manim scenes…" });
     pendingManimRenderAll.set(requestId, (message) => {
       for (const result of message.results ?? []) {
         if (result.settingsFingerprint) manimRenderedFingerprints.set(result.elementId, result.settingsFingerprint);
       }
-      if (message.error && message.error !== "Manim render cancelled.") showError(message.error);
+      if (message.ok) notifyToast({ id: requestId, kind: "success", message: `Rendered ${message.rendered} Manim scene${message.rendered === 1 ? "" : "s"}.` });
+      else if (message.error && message.error !== "Manim render cancelled.") notifyToast({ id: requestId, kind: "error", message: message.error });
+      else notifyToast({ id: requestId, kind: "dismiss" });
     });
     postMessage({ type: "renderAllManim", requestId });
   };
@@ -357,7 +360,10 @@ export default function App() {
         addManim={addManim}
         setManimQuality={setManimQuality}
         renderAllManim={renderAllManim}
-        setupManim={() => postMessage({ type: "setupManim" })}
+        setupManim={() => {
+          notifyToast({ id: "manim-setup", kind: "progress", message: "Opening Manim setup…" });
+          postMessage({ type: "setupManim" });
+        }}
         hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
         historyBusy={Boolean(store.historyPending)}
         canUndo={store.canUndo || store.dirty}

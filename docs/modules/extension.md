@@ -8,9 +8,11 @@ PDF, PNG, PowerPoint, and standalone web exports.
 
 ## `src/extension.ts`
 
-`activate(context)` constructs one `SlidePixEditorProvider` and registers every
-public command. Command IDs must stay aligned with `package.json` contributions
-and webview command union members.
+`activate(context)` constructs one `SlidePixEditorProvider`, opens the SlidePix
+output channel, and registers every public command. Command IDs must stay
+aligned with `package.json` contributions and webview command union members.
+Deck open/close, commands, Manim setup, and failed edits are written to that
+channel. Successful document replacements are not logged on every keystroke.
 
 Private command helpers:
 

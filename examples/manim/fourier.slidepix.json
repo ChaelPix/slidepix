@@ -231,7 +231,7 @@
           "x": 170,
           "y": 124,
           "width": 1580,
-          "height": 889,
+          "height": 888.75,
           "rotation": 0,
           "opacity": 1,
           "z": 1,
@@ -246,7 +246,7 @@
           "quality": "medium",
           "transparent": false,
           "outputMedia": {
-            "src": "2943fa5321534f0c395d87398d832f1b244528182f75d298c4d533b13959467d.png",
+            "src": "d5f8d8f87e73acac0c371218a22783c5dd9b25c26a5e4e7396f594c8338323b4.png",
             "storage": "embedded"
           },
           "lockAspectRatio": true,
@@ -321,7 +321,7 @@
           "quality": "medium",
           "transparent": false,
           "outputMedia": {
-            "src": "7930df0c721ecf4ee223f8c8471b21ee5ba9408f1bde5f1eb90d239439aeb422.mp4",
+            "src": "d0535f4a57ae02fcb2faf5fbe7ac2840f51ce0a48a989a5a720086535fc6dd1e.mp4",
             "storage": "embedded"
           },
           "lockAspectRatio": true,
@@ -407,7 +407,7 @@
           "x": 48,
           "y": 150,
           "width": 1180,
-          "height": 664,
+          "height": 663.75,
           "rotation": 0,
           "opacity": 1,
           "z": 1,

@@ -6,23 +6,31 @@ import { formatManimLogChunk, resolveManimLaunch, uvInstallCommand, venvManimCan
 
 export async function ensureManimLaunch(deckPath: string, configuredExecutable: string, log: (text: string) => void): Promise<ManimLaunch | undefined> {
   const resolved = resolveManimLaunch(deckPath, configuredExecutable);
-  if (await manimLaunchWorks(resolved)) return resolved;
+  log(`Checking Manim: ${resolved.command} ${resolved.args.join(" ")}${resolved.cwd ? ` (cwd ${resolved.cwd})` : ""}\n`);
+  if (await manimLaunchWorks(resolved)) {
+    log("Manim is available.\n");
+    return resolved;
+  }
+  log("Manim was not found. Opening setup.\n");
   return promptManimSetup(deckPath, log);
 }
 
 export async function promptManimSetup(deckPath: string, log: (text: string) => void): Promise<ManimLaunch | undefined> {
-  const choice = await vscode.window.showInformationMessage(
-    "SlidePix could not find a working Manim Community executable.",
-    "Find Manim…",
-    "Install Manim",
-    "Install uv"
+  const choice = await vscode.window.showQuickPick(
+    [
+      { label: "Find Manim…", description: "Browse, or use .venv/bin/manim or .venv/Scripts/manim.exe" },
+      { label: "Install Manim", description: "Install uv if needed, then uv tool install manim" },
+      { label: "Install uv", description: "Install Astral uv" }
+    ],
+    { title: "Set up Manim", placeHolder: "Choose how SlidePix should find Manim Community", ignoreFocusOut: true }
   );
-  if (choice === "Find Manim…") return chooseManimExecutable(deckPath);
-  if (choice === "Install uv") {
+  log(`Manim setup choice: ${choice?.label ?? "dismissed"}\n`);
+  if (choice?.label === "Find Manim…") return chooseManimExecutable(deckPath);
+  if (choice?.label === "Install uv") {
     await installUv(log, false);
     return undefined;
   }
-  if (choice === "Install Manim") return installManim(deckPath, log);
+  if (choice?.label === "Install Manim") return installManim(deckPath, log);
   return undefined;
 }
 

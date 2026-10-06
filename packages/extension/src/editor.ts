@@ -46,6 +46,19 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
+  showLog(): void {
+    const channel = this.getOutputChannel();
+    channel.show(true);
+    const version = String((this.context.extension.packageJSON as { version?: string }).version ?? "unknown");
+    this.log(`SlidePix ${version} activated`);
+  }
+
+  log(message: string, level: "info" | "warn" | "error" = "info"): void {
+    const prefix = level === "error" ? "ERROR" : level === "warn" ? "WARN" : "INFO";
+    this.getOutputChannel().appendLine(`${new Date().toISOString()} ${prefix} ${message}`);
+    if (level === "error") this.getOutputChannel().show(true);
+  }
+
   private watchTab(tab: vscode.Tab): void {
     if (!tab.isActive || !(tab.input instanceof vscode.TabInputCustom) || tab.input.viewType !== VIEW_TYPE || tab.input.uri.scheme !== "file") return;
     this.recovery.watch(tab.input.uri.toString(), tab);
@@ -75,22 +88,34 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       ]
     };
     panel.webview.html = this.webviewHtml(panel.webview);
+    this.log(`opened ${document.uri.fsPath}`);
     panel.onDidChangeViewState(() => { if (panel.active) this.activeDocument = document; });
     panel.onDidDispose(() => {
       set.delete(panel);
       if (!set.size) {
         this.panels.delete(key);
         this.histories.delete(key);
+        this.log(`closed ${document.uri.fsPath}`);
       }
     });
-    panel.webview.onDidReceiveMessage((message: WebviewToHostMessage) => void this.receive(document, panel, message));
+    panel.webview.onDidReceiveMessage((message: WebviewToHostMessage) => {
+      void this.receive(document, panel, message).catch((error: unknown) => {
+        const text = error instanceof Error ? error.message : String(error);
+        this.log(`webview message failed: ${text}`, "error");
+        void vscode.window.showErrorMessage(`SlidePix: ${text}`);
+      });
+    });
   }
 
   currentDocument(): vscode.TextDocument | undefined { return this.activeDocument; }
 
   async present(document: vscode.TextDocument, presenter = false): Promise<void> {
+    this.log(presenter ? "command presenter" : "command present");
     const parsed = parseDeckText(document.getText());
-    if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
+    if (!parsed.ok) {
+      this.log(parsed.message, "error");
+      return void vscode.window.showErrorMessage(parsed.message);
+    }
     const key = document.uri.toString();
     this.sessions.get(key)?.dispose();
     let presenterPanel: vscode.WebviewPanel | undefined;
@@ -132,8 +157,13 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async receive(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: WebviewToHostMessage): Promise<void> {
     if (!message || message.version !== 2) {
+      this.log(`rejected webview message version ${message && "version" in message ? String(message.version) : "missing"}`, "error");
       panel.webview.html = this.webviewHtml(panel.webview);
       return;
+    }
+    if (message.type !== "replaceDocument") {
+      const detail = message.type === "command" ? `command ${message.command}` : message.type;
+      this.log(`<- ${detail}`);
     }
     if (message.type === "ready") return this.postDeck(document, panel);
     if (message.type === "replaceDocument") {
@@ -151,6 +181,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       const applied = await replaceDocument(document, message.text, currentRevision);
       const nextText = document.getText();
       if (applied) this.recordHistory(document.uri, currentText, nextText);
+      else this.log("replaceDocument rejected: VS Code did not apply the edit", "warn");
       await panel.webview.postMessage(editResult(message.requestId, applied, nextText, applied ? undefined : "applyFailed", applied ? undefined : "VS Code rejected the document edit.", this.historyState(document.uri)));
       return;
     }
@@ -169,7 +200,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "listManimScenes") return this.listManimScenes(document, panel, message);
     if (message.type === "renderManim") return this.renderManim(document, panel, message);
     if (message.type === "renderAllManim") return this.renderAllManim(document, panel, message);
-    if (message.type === "setupManim") return this.setupManim(document);
+    if (message.type === "setupManim") return this.setupManim(document, panel);
     if (message.type === "command") {
       if (message.command === "undo" || message.command === "redo") return this.applyHistory(document, panel, message.command);
       if (message.command === "save") return void document.save();
@@ -360,14 +391,21 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     return ensureManimLaunch(document.uri.fsPath, configured, log.append);
   }
 
-  private async setupManim(document: vscode.TextDocument): Promise<void> {
+  private async setupManim(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
     const log = this.manimLog();
     log.channel.show(true);
+    this.log("opening Manim setup");
+    const notify = (status: "progress" | "success" | "error" | "dismiss", text?: string) => panel.webview.postMessage({ version: 2, type: "notify", notificationId: "manim-setup", status, message: text } satisfies HostToWebviewMessage);
     try {
-      await promptManimSetup(document.uri.fsPath, log.append);
+      const launch = await promptManimSetup(document.uri.fsPath, (text) => {
+        log.append(text);
+      });
+      this.log(launch ? `Manim setup ready: ${launch.command} ${launch.args.join(" ")}` : "Manim setup finished without a saved launcher");
+      await notify(launch ? "success" : "dismiss", launch ? `Manim is ready: ${launch.command}` : undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not set up Manim.";
-      log.append(`\n${message}\n`);
+      this.log(message, "error");
+      await notify("error", message);
       void vscode.window.showErrorMessage(message);
     }
   }
@@ -489,6 +527,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       }
     }
     response.skipped = skipped;
+    this.log(`render all: ${ready.length} ready, ${skipped} skipped`);
     if (!ready.length) {
       response.error = skipped ? "No Manim element has both a script and a scene." : "This deck has no Manim elements.";
       await panel.webview.postMessage(response);
@@ -515,7 +554,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     const log = this.manimLog();
     log.channel.show(true);
     const launch = await this.manimLaunch(document);
-    if (!launch) return { results: [], cancelled: true };
+    if (!launch) return { results: [], cancelled: false, error: "Manim setup was dismissed." };
     const results: { elementId: string; settingsFingerprint: string }[] = [];
     let cancelled = false;
     let reported = 0;
