@@ -132,69 +132,31 @@
           }
         },
         {
-          "id": "m02-still",
-          "morphKey": "m02-still",
-          "x": 92,
-          "y": 200,
-          "width": 1266,
-          "height": 712,
+          "id": "b83d864e-0daf-4235-addb-91232cedb540",
+          "morphKey": "c4a0b351-062f-4368-b9ba-2c453d84b2e7",
+          "x": 72.9753,
+          "y": 247.004,
+          "width": 845,
+          "height": 499,
           "rotation": 0,
           "opacity": 1,
           "z": 1,
           "locked": false,
           "hidden": false,
-          "name": "intro-still",
+          "name": "manim-b83d",
           "type": "manim",
-          "script": "slidepix-manim-demo-2.manim.py",
-          "scene": "SlidePixScene",
           "output": "image",
           "orientation": "horizontal",
-          "quality": "low",
+          "quality": "medium",
           "transparent": false,
-          "outputMedia": {
-            "src": "ca1d06b6069ef0ecbd713be78cc141314d4f4a4053f527a47b64cdcf26ac853d.png",
-            "storage": "embedded"
-          },
           "lockAspectRatio": true,
-          "aspectRatio": 1.774891774891775,
+          "aspectRatio": 1.7777777777777777,
           "playback": {
             "mode": "manual",
             "muted": false,
             "loop": false,
             "controls": true
           }
-        },
-        {
-          "id": "b0497a6f-2ea9-4c43-a222-f9c750143a7f",
-          "morphKey": "4d9aa8f4-ecd3-4a09-8edc-5b1fe2758fde",
-          "x": 92,
-          "y": 170,
-          "width": 1138,
-          "height": 640.125,
-          "rotation": 0,
-          "opacity": 1,
-          "z": 2,
-          "locked": false,
-          "hidden": false,
-          "name": "image-b049",
-          "alt": "",
-          "type": "image",
-          "src": "../slidepix-demo.assets/3362e868c0b5c134abc45d61bc47298dfdbfbf0bd497f8605e93305840ef4497.png",
-          "storage": "linked",
-          "crop": {
-            "x": 0,
-            "y": 0,
-            "width": 1,
-            "height": 1
-          },
-          "borderRadius": 0,
-          "edgeFade": 0,
-          "border": {
-            "width": 0,
-            "color": "transparent"
-          },
-          "lockAspectRatio": true,
-          "aspectRatio": 1.7777777777777777
         }
       ]
     },
@@ -236,39 +198,6 @@
             "verticalAlign": "top",
             "lineHeight": 1.15,
             "padding": 6
-          }
-        },
-        {
-          "id": "m03-video",
-          "morphKey": "m03-video",
-          "x": 120,
-          "y": 200,
-          "width": 960,
-          "height": 540,
-          "rotation": 0,
-          "opacity": 1,
-          "z": 1,
-          "locked": false,
-          "hidden": false,
-          "name": "motion-clip",
-          "type": "manim",
-          "script": "slidepix-manim-demo.manim.py",
-          "scene": "MotionClip",
-          "output": "video",
-          "orientation": "horizontal",
-          "quality": "medium",
-          "transparent": false,
-          "outputMedia": {
-            "src": "fe651f519b33b8e139ae7af1e2e0398881378a62726d53c40fcf0bb543022b38.mp4",
-            "storage": "embedded"
-          },
-          "lockAspectRatio": true,
-          "aspectRatio": 1.7777777777777777,
-          "playback": {
-            "mode": "manual",
-            "muted": false,
-            "loop": true,
-            "controls": true
           }
         },
         {
