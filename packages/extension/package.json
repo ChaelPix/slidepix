@@ -143,7 +143,7 @@
         "slidepix.manim.executable": {
           "type": "string",
           "default": "",
-          "description": "Manim launcher (for example manim, /path/to/.venv/bin/manim, or uv run manim). Leave empty to auto-detect .venv/bin/manim near the deck, then uv run manim."
+          "description": "Manim launcher (for example manim, .venv/bin/manim, .venv/Scripts/manim.exe, or uv run manim). Leave empty to search a nearby virtualenv, then uv run manim. Use Set up Manim in the editor to browse for it or install uv and Manim."
         }
       }
     }

@@ -17,12 +17,16 @@ import {
   applyManimRender,
   applyManimScript,
   createStarterScript,
+  deleteManimScript,
   findManimElement,
   listScenesForScript,
+  ManimCancelled,
   relativeDeckReference,
-  runManimRender
+  runManimRender,
+  takenManimOutputStems,
+  type ManimRenderHooks
 } from "./manim-host";
-import { resolveManimLaunch } from "./manim-render";
+import { ensureManimLaunch, promptManimSetup } from "./manim-setup";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -32,6 +36,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly histories = new Map<string, DocumentHistory>();
   private activeDocument?: vscode.TextDocument;
   private outputChannel?: vscode.OutputChannel;
+  private manimRenderInFlight = false;
   private readonly recovery = new EditorResolveRecovery<vscode.Tab>({
     isResolved: (key) => this.panels.has(key),
     hasDocument: (key) => vscode.workspace.textDocuments.some((document) => document.uri.toString() === key),
@@ -163,6 +168,8 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "openManimScript") return this.openManimScript(document, message);
     if (message.type === "listManimScenes") return this.listManimScenes(document, panel, message);
     if (message.type === "renderManim") return this.renderManim(document, panel, message);
+    if (message.type === "renderAllManim") return this.renderAllManim(document, panel, message);
+    if (message.type === "setupManim") return this.setupManim(document);
     if (message.type === "command") {
       if (message.command === "undo" || message.command === "redo") return this.applyHistory(document, panel, message.command);
       if (message.command === "save") return void document.save();
@@ -341,9 +348,28 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     await panel.webview.postMessage(response);
   }
 
-  private manimLaunch(document: vscode.TextDocument) {
+  private manimLog(): { channel: vscode.OutputChannel; append: (text: string) => void } {
+    const channel = this.getOutputChannel();
+    return { channel, append: (text) => channel.append(text) };
+  }
+
+  private async manimLaunch(document: vscode.TextDocument) {
     const configured = vscode.workspace.getConfiguration("slidepix").get<string>("manim.executable", "") ?? "";
-    return resolveManimLaunch(document.uri.fsPath, configured);
+    const log = this.manimLog();
+    log.channel.show(true);
+    return ensureManimLaunch(document.uri.fsPath, configured, log.append);
+  }
+
+  private async setupManim(document: vscode.TextDocument): Promise<void> {
+    const log = this.manimLog();
+    log.channel.show(true);
+    try {
+      await promptManimSetup(document.uri.fsPath, log.append);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not set up Manim.";
+      log.append(`\n${message}\n`);
+      void vscode.window.showErrorMessage(message);
+    }
   }
 
   private async selectManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectManimScript" }>): Promise<void> {
@@ -371,8 +397,11 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async createManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "createManimScript" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimScriptCreated", requestId: message.requestId };
+    let createdPath: string | undefined;
+    let linked = false;
     try {
       const created = await createStarterScript(document.uri.fsPath);
+      createdPath = created.absolutePath;
       response.script = created.reference;
       response.scene = created.scene;
       response.scenes = created.scenes;
@@ -384,9 +413,11 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
         throw new Error("The deck changed before the starter script could be linked.");
       }
+      linked = true;
       this.recordHistory(document.uri, baseText, document.getText());
       await vscode.window.showTextDocument(vscode.Uri.file(created.absolutePath), { viewColumn: vscode.ViewColumn.Beside });
     } catch (error) {
+      if (createdPath && !linked) await deleteManimScript(createdPath).catch(() => undefined);
       response.error = error instanceof Error ? error.message : "Could not create a Manim script";
     }
     await panel.webview.postMessage(response);
@@ -419,44 +450,138 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       await panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status, message: text } satisfies HostToWebviewMessage);
     };
     await notify("progress", "Rendering Manim…");
-    const baseText = document.getText();
-    const baseRevision = revisionForText(baseText);
-    const parsed = parseDeckText(baseText);
-    if (!parsed.ok) {
-      response.error = parsed.message;
-      await notify("error", response.error);
-      return void panel.webview.postMessage(response);
-    }
-    const located = findManimElement(parsed.deck, message.elementId);
-    if (!located) {
-      response.error = "Manim element not found.";
-      await notify("error", response.error);
-      return void panel.webview.postMessage(response);
-    }
     try {
-      const rendered = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: "Rendering Manim scene…" },
-        () => runManimRender({
-          deckPath: document.uri.fsPath,
-          element: located.element,
-          launch: this.manimLaunch(document),
-          allowedLinkedRoots: linkedRoots(document)
-        })
-      );
-      const embeddedReference = await storeEmbeddedBytes(document.uri.fsPath, rendered.bytes, rendered.fileName, "");
-      applyManimRender(parsed.deck, message.elementId, embeddedReference);
-      if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
-        throw new Error("The deck changed while Manim was rendering. Retry Render after reviewing the latest deck.");
-      }
-      this.recordHistory(document.uri, baseText, document.getText());
+      const rendered = await this.renderManimElements(document, [message.elementId]);
+      if (rendered.cancelled) throw new ManimCancelled();
+      if (rendered.error) throw new Error(rendered.error);
+      const one = rendered.results[0];
+      if (!one) throw new Error("Manim element not found.");
       response.ok = true;
-      response.settingsFingerprint = rendered.settingsFingerprint;
+      response.settingsFingerprint = one.settingsFingerprint;
       await notify("success", "Manim render complete.");
     } catch (error) {
-      response.error = error instanceof Error ? error.message : "Manim render failed.";
-      await notify("error", response.error);
+      if (error instanceof ManimCancelled) {
+        await notify("dismiss");
+        response.error = error.message;
+      } else {
+        response.error = error instanceof Error ? error.message : "Manim render failed.";
+        await notify("error", response.error);
+      }
     }
     await panel.webview.postMessage(response);
+  }
+
+  private async renderAllManim(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "renderAllManim" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 2, type: "manimRenderAllResult", requestId: message.requestId, ok: false, rendered: 0, skipped: 0 };
+    const parsed = parseDeckText(document.getText());
+    if (!parsed.ok) {
+      response.error = parsed.message;
+      await panel.webview.postMessage(response);
+      return;
+    }
+    const ready: string[] = [];
+    let skipped = 0;
+    for (const slide of parsed.deck.slides) {
+      for (const element of slide.elements) {
+        if (element.type !== "manim") continue;
+        if (element.script?.trim() && element.scene?.trim()) ready.push(element.id);
+        else skipped += 1;
+      }
+    }
+    response.skipped = skipped;
+    if (!ready.length) {
+      response.error = skipped ? "No Manim element has both a script and a scene." : "This deck has no Manim elements.";
+      await panel.webview.postMessage(response);
+      return;
+    }
+    try {
+      const rendered = await this.renderManimElements(document, ready);
+      response.rendered = rendered.results.length;
+      response.results = rendered.results;
+      response.ok = !rendered.cancelled && !rendered.error;
+      if (rendered.cancelled) response.error = "Manim render cancelled.";
+      else if (rendered.error) response.error = rendered.error;
+    } catch (error) {
+      response.error = error instanceof Error ? error.message : "Manim render failed.";
+      response.rendered = 0;
+    }
+    await panel.webview.postMessage(response);
+  }
+
+  private async renderManimElements(document: vscode.TextDocument, elementIds: string[]): Promise<{ results: { elementId: string; settingsFingerprint: string }[]; cancelled: boolean; error?: string }> {
+    if (this.manimRenderInFlight) throw new Error("A Manim render is already running.");
+    this.manimRenderInFlight = true;
+    try {
+    const log = this.manimLog();
+    log.channel.show(true);
+    const launch = await this.manimLaunch(document);
+    if (!launch) return { results: [], cancelled: true };
+    const results: { elementId: string; settingsFingerprint: string }[] = [];
+    let cancelled = false;
+    let reported = 0;
+    let failure: string | undefined;
+    try {
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "Rendering Manim",
+      cancellable: true
+    }, async (progress, token) => {
+      const signal = abortFrom(token);
+      try {
+        for (const [index, elementId] of elementIds.entries()) {
+          if (signal.aborted) throw new ManimCancelled();
+          const baseText = document.getText();
+          const baseRevision = revisionForText(baseText);
+          const parsed = parseDeckText(baseText);
+          if (!parsed.ok) throw new Error(parsed.message);
+          const located = findManimElement(parsed.deck, elementId);
+          if (!located) throw new Error("Manim element not found.");
+          const label = located.element.scene || located.element.script || elementId;
+          reported = 0;
+          progress.report({ message: `${index + 1}/${elementIds.length} ${label}` });
+          log.append(`\n--- ${label} ---\n`);
+          const hooks: ManimRenderHooks = {
+            signal,
+            onOutput: (text) => log.append(text),
+            onProgress: (percent) => {
+              const delta = percent - reported;
+              if (delta > 0) progress.report({ increment: delta, message: `${index + 1}/${elementIds.length} ${label} ${percent}%` });
+              reported = percent;
+            }
+          };
+          const rendered = await runManimRender({
+            deckPath: document.uri.fsPath,
+            element: located.element,
+            slideTitle: parsed.deck.slides[located.slideIndex]?.title ?? "",
+            launch,
+            allowedLinkedRoots: linkedRoots(document),
+            takenStems: takenManimOutputStems(parsed.deck, elementId),
+            hooks
+          });
+          const embeddedReference = await storeNamedAsset(document.uri.fsPath, rendered.bytes, rendered.fileName);
+          applyManimRender(parsed.deck, elementId, embeddedReference);
+          if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
+            throw new Error("The deck changed while Manim was rendering. Retry after reviewing the latest deck.");
+          }
+          this.recordHistory(document.uri, baseText, document.getText());
+          results.push({ elementId, settingsFingerprint: rendered.settingsFingerprint });
+          log.append(`Embedded ${embeddedReference}\n`);
+        }
+      } catch (error) {
+        if (error instanceof ManimCancelled) {
+          cancelled = true;
+          return;
+        }
+        throw error;
+      }
+    });
+    } catch (error) {
+      failure = error instanceof Error ? error.message : "Manim render failed.";
+    }
+    return { results, cancelled, error: failure };
+    } finally {
+      this.manimRenderInFlight = false;
+    }
   }
 
   private async embedMedia(document: vscode.TextDocument, elementIds?: string[]): Promise<void> {
@@ -510,6 +635,22 @@ function safeExtension(name: string, mime: string): string {
   if (/^\.[a-z0-9]{1,8}$/.test(fromName)) return fromName;
   const known: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov" };
   return known[mime] ?? ".bin";
+}
+
+async function storeNamedAsset(deckPath: string, bytes: Uint8Array, fileName: string): Promise<string> {
+  const base = path.basename(fileName);
+  if (base !== fileName || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/.test(base)) throw new Error("Unsafe Manim output name.");
+  const directory = vscode.Uri.file(deckAssetDirectory(deckPath));
+  await vscode.workspace.fs.createDirectory(directory);
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(directory, base), bytes);
+  return base;
+}
+
+function abortFrom(token: vscode.CancellationToken): AbortSignal {
+  const controller = new AbortController();
+  if (token.isCancellationRequested) controller.abort();
+  token.onCancellationRequested(() => controller.abort());
+  return controller.signal;
 }
 
 async function storeEmbeddedBytes(deckPath: string, bytes: Uint8Array, name: string, mime: string): Promise<string> {

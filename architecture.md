@@ -120,7 +120,6 @@ Edit source files, then regenerate outputs with the documented commands.
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
 | `scripts/render-smoke.mjs [deck] [output]` | Uses the installed Google Chrome or Microsoft Edge to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
 | `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
-| `scripts/build-manim-demo.mjs [intro.png motion.mp4]` | Rebuilds `examples/slidepix-manim-demo.slidepix.json` via `uv run manim`, or embeds pre-rendered paths. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 
 See [docs/install.md](docs/install.md) for Linux/macOS (zsh) toolchain setup,
@@ -155,7 +154,12 @@ Do not assume every planned feature is complete. Current known gaps include:
   output are not integrated;
 - automated VS Code custom-editor integration and Cursor smoke tests are still
   missing;
-- Manim requires Manim Community (`slidepix.manim.executable`, default `manim`)
-  on the host machine; the extension does not install Python or Manim.
+- Manim is not bundled. An empty `slidepix.manim.executable` searches
+  `.venv/bin/manim` and `.venv/Scripts/manim.exe`, then `uv run manim`.
+  **Set up Manim** can browse for an executable or install uv and Manim
+  Community. SlidePix does not install a system Python by itself.
+- The Manim inspector does not yet show render progress under **Render**, and
+  that button cannot cancel a render. The notification progress can cancel,
+  and the full Manim log is written to the SlidePix output channel.
 
 When implementing a gap, update this list in the same change.

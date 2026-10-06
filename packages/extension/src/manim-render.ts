@@ -27,12 +27,22 @@ export type ManimRenderOptions = {
   outputName: string;
 };
 
+const VENV_MANIM_RELATIVE = [
+  [".venv", "bin", "manim"],
+  [".venv", "Scripts", "manim.exe"],
+  [".venv", "Scripts", "manim"]
+] as const;
+
+export function venvManimCandidates(directory: string): string[] {
+  return VENV_MANIM_RELATIVE.map((parts) => path.join(directory, ...parts));
+}
+
 export function findVenvManimNear(startDirectory: string, exists: (target: string) => boolean = existsSync): string | undefined {
   let directory = path.resolve(startDirectory);
   const { root } = path.parse(directory);
   while (true) {
-    const candidate = path.join(directory, ".venv", "bin", "manim");
-    if (exists(candidate)) return candidate;
+    const candidate = venvManimCandidates(directory).find((target) => exists(target));
+    if (candidate) return candidate;
     if (directory === root) break;
     const parent = path.dirname(directory);
     if (parent === directory) break;
@@ -117,9 +127,50 @@ export function buildManimRenderArgs(options: ManimRenderOptions): string[] {
     options.outputName,
     `--format=${format}`
   ];
+  if (options.transparent) argv.push("--transparent");
   if (options.output === "image") argv.push("-s");
-  argv.push(options.scriptPath, options.scene);
+  argv.push("--progress_bar=leave", options.scriptPath, options.scene);
   return argv;
+}
+
+export function sanitizeManimFileStem(value: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+}
+
+/** Prefer the scene class, then the slide title. A taken stem gets a slide prefix or a numeric suffix. */
+export function manimOutputBasename(scene: string | undefined, slideTitle: string, taken: readonly string[] = []): string {
+  const sceneName = sanitizeManimFileStem(scene ?? "");
+  const slideName = sanitizeManimFileStem(slideTitle);
+  const preferred = sceneName || slideName || "manim";
+  if (!taken.includes(preferred)) return preferred;
+  const combined = slideName && sceneName && slideName !== sceneName ? `${slideName}-${sceneName}` : preferred;
+  if (!taken.includes(combined)) return combined;
+  const room = combined.slice(0, 76);
+  let index = 2;
+  while (taken.includes(`${room}-${index}`)) index += 1;
+  return `${room}-${index}`;
+}
+
+export function formatManimLogChunk(chunk: string): string {
+  return chunk.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+export function parseManimProgress(text: string): number | undefined {
+  const matches = [...text.matchAll(/(\d{1,3})%/g)];
+  const last = matches.at(-1)?.[1];
+  if (!last) return undefined;
+  const value = Number(last);
+  return value >= 0 && value <= 100 ? value : undefined;
+}
+
+export function uvInstallCommand(platform: NodeJS.Platform): { command: string; args: string[] } {
+  if (platform === "win32") {
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://astral.sh/uv/install.ps1 | iex"]
+    };
+  }
+  return { command: "sh", args: ["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"] };
 }
 
 export function buildManimArgv(launch: ManimLaunch, options: ManimRenderOptions): ManimLaunch {
@@ -153,34 +204,6 @@ export async function findRenderedMedia(mediaDir: string, outputName: string): P
   }
 
   await walk(mediaDir);
-  if (candidates.length) {
-    candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
-    return candidates[0]?.filePath;
-  }
-  return collectLatestMedia(mediaDir);
-}
-
-async function collectLatestMedia(mediaDir: string): Promise<string | undefined> {
-  const files: { filePath: string; mtimeMs: number }[] = [];
-  async function walk(directory: string): Promise<void> {
-    const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      const filePath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        await walk(filePath);
-        continue;
-      }
-      const extension = path.extname(entry.name).toLowerCase();
-      if (!MEDIA_EXTENSIONS.has(extension)) continue;
-      const fileStat = await stat(filePath);
-      files.push({ filePath, mtimeMs: fileStat.mtimeMs });
-    }
-  }
-  try {
-    await walk(mediaDir);
-  } catch {
-    return undefined;
-  }
-  files.sort((left, right) => right.mtimeMs - left.mtimeMs);
-  return files[0]?.filePath;
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  return candidates[0]?.filePath;
 }

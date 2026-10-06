@@ -19,7 +19,8 @@ import {
   manimElementAspectRatio,
   manimRenderFingerprint,
   manimSettingsFingerprint,
-  type ManimOrientation
+  type ManimOrientation,
+  type ManimQuality
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
 import { clamp, cropBoxByEdges, localPointerDelta, panCrop, type CropBox } from "./geometry";
@@ -43,6 +44,7 @@ const pendingManimScripts = new Map<string, (message: Extract<HostToWebviewMessa
 const pendingManimCreates = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScriptCreated" }>) => void>();
 const pendingManimScenes = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScenesListed" }>) => void>();
 const pendingManimRenders = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderResult" }>) => void>();
+const pendingManimRenderAll = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderAllResult" }>) => void>();
 const manimRenderedFingerprints = new Map<string, string>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
 type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
@@ -274,6 +276,27 @@ export default function App() {
     setInspectorCollapsed(false);
     setTab("properties");
   };
+  const setManimQuality = (quality: ManimQuality) => {
+    const hasManim = deck.slides.some((item) => item.elements.some((element) => element.type === "manim"));
+    if (!hasManim) return void showError("This deck has no Manim elements.");
+    store.mutate((draft) => {
+      for (const item of draft.slides) {
+        for (const element of item.elements) {
+          if (element.type === "manim") element.quality = quality;
+        }
+      }
+    });
+  };
+  const renderAllManim = () => {
+    const requestId = crypto.randomUUID();
+    pendingManimRenderAll.set(requestId, (message) => {
+      for (const result of message.results ?? []) {
+        if (result.settingsFingerprint) manimRenderedFingerprints.set(result.elementId, result.settingsFingerprint);
+      }
+      if (message.error && message.error !== "Manim render cancelled.") showError(message.error);
+    });
+    postMessage({ type: "renderAllManim", requestId });
+  };
   const copyElement = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
     if (!selectedElements.length || isTextEntryTarget(event.target)) return;
     event.preventDefault();
@@ -332,6 +355,9 @@ export default function App() {
         chooseImage={() => requestMedia("image")}
         chooseVideo={() => requestMedia("video")}
         addManim={addManim}
+        setManimQuality={setManimQuality}
+        renderAllManim={renderAllManim}
+        setupManim={() => postMessage({ type: "setupManim" })}
         hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
         historyBusy={Boolean(store.historyPending)}
         canUndo={store.canUndo || store.dirty}
@@ -543,7 +569,7 @@ export default function App() {
   );
 }
 
-function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, addManim, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
+function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, addManim, setManimQuality, renderAllManim, setupManim, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
   slide: Slide;
   element?: SlideElement;
   selectedElements: SlideElement[];
@@ -553,6 +579,9 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   chooseImage(): void;
   chooseVideo(): void;
   addManim(output: "image" | "video"): void;
+  setManimQuality(quality: ManimQuality): void;
+  renderAllManim(): void;
+  setupManim(): void;
   hasLinkedMedia: boolean;
   historyBusy: boolean;
   canUndo: boolean;
@@ -668,7 +697,13 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
         ]} />
         <RibbonMenu icon="run-all" label="Manim" items={[
           { icon: "file-media", label: "Still image", onClick: () => addManim("image") },
-          { icon: "device-camera-video", label: "Video", onClick: () => addManim("video") }
+          { icon: "device-camera-video", label: "Video", onClick: () => addManim("video") },
+          { icon: "run-all", label: "Render all", onClick: renderAllManim },
+          { icon: "settings-gear", label: "Set up Manim…", onClick: setupManim },
+          { icon: "symbol-number", label: "Quality: Low", onClick: () => setManimQuality("low") },
+          { icon: "symbol-number", label: "Quality: Medium", onClick: () => setManimQuality("medium") },
+          { icon: "symbol-number", label: "Quality: High", onClick: () => setManimQuality("high") },
+          { icon: "symbol-number", label: "Quality: Production", onClick: () => setManimQuality("production") }
         ]} />
       </div></div>
       <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
@@ -1014,7 +1049,7 @@ function ManimInspector({ slideId, slideSize, element, mutate, preview, schedule
     setRendering(true);
     pendingManimRenders.set(requestId, (message) => {
       setRendering(false);
-      if (message.error) return void showError(message.error);
+      if (message.error && message.error !== "Manim render cancelled.") return void showError(message.error);
       if (message.ok && message.settingsFingerprint) manimRenderedFingerprints.set(element.id, message.settingsFingerprint);
     });
     postMessage({ type: "renderManim", requestId, elementId: element.id });
@@ -1086,6 +1121,7 @@ function ManimInspector({ slideId, slideSize, element, mutate, preview, schedule
     </>}
     {element.outputMedia && <div className="media-source-card"><span className="storage-badge embedded">embedded</span><code title={element.outputMedia.src}>{element.outputMedia.src}</code></div>}
     <p className="panel-help manim-status">{status}</p>
+    {/* TODO: Show Manim render progress under this button, and cancel the render from here. */}
     <button className="edit-text-button" type="button" disabled={!canRender || rendering} onClick={renderScene}>{rendering ? "Rendering…" : "Render"}</button>
     <CheckboxField label="Keep original aspect ratio" checked={element.lockAspectRatio} onChange={(locked) => {
       if (!locked) return updateManim((target) => { target.lockAspectRatio = false; }, false);
@@ -1505,6 +1541,7 @@ function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, 
   else if (message.type === "manimScriptCreated") { pendingManimCreates.get(message.requestId)?.(message); pendingManimCreates.delete(message.requestId); }
   else if (message.type === "manimScenesListed") { pendingManimScenes.get(message.requestId)?.(message); pendingManimScenes.delete(message.requestId); }
   else if (message.type === "manimRenderResult") { pendingManimRenders.get(message.requestId)?.(message); pendingManimRenders.delete(message.requestId); }
+  else if (message.type === "manimRenderAllResult") { pendingManimRenderAll.get(message.requestId)?.(message); pendingManimRenderAll.delete(message.requestId); }
   else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message });
 }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }

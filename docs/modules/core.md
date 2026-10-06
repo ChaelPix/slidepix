@@ -129,9 +129,11 @@ change protocol version 2. Toolbar PDF/PNG capture sends a compatible
 `saveExport` payload (data URI plus format) so the host can show a save dialog
 without changing protocol version 2.
 
-Host `notify` messages update a webview toast by stable notification ID. Export
-commands may include a request ID so host completion or failure replaces the
-progress toast without changing protocol version 2.
+Host `notify` messages update a webview toast by stable notification ID.
+`renderAllManim` and `setupManim` are compatible Manim messages and did not
+change protocol version 2. Export commands may include a request ID so host
+completion or failure replaces the progress toast without changing protocol
+version 2.
 
 Deck messages carry an opaque exact-text revision. Replacement requests echo
 their base revision and receive an explicit accepted, stale, invalid, or failed

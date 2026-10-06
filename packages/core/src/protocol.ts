@@ -13,6 +13,7 @@ export type HostToWebviewMessage =
   | { version: 2; type: "manimScriptCreated"; requestId: string; script?: string; scene?: string; scenes?: string[]; error?: string }
   | { version: 2; type: "manimScenesListed"; requestId: string; scenes?: string[]; contentFingerprint?: string; error?: string }
   | { version: 2; type: "manimRenderResult"; requestId: string; ok: boolean; elementId: string; settingsFingerprint?: string; error?: string }
+  | { version: 2; type: "manimRenderAllResult"; requestId: string; ok: boolean; rendered: number; skipped: number; error?: string; results?: { elementId: string; settingsFingerprint: string }[] }
   | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string };
 
 export type WebviewToHostMessage =
@@ -29,6 +30,8 @@ export type WebviewToHostMessage =
   | { version: 2; type: "openManimScript"; script: string }
   | { version: 2; type: "listManimScenes"; requestId: string; script: string }
   | { version: 2; type: "renderManim"; requestId: string; elementId: string }
+  | { version: 2; type: "renderAllManim"; requestId: string }
+  | { version: 2; type: "setupManim" }
   | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[]; requestId?: string }
   | { version: 2; type: "saveExport"; format: "pdf" | "png"; data: string }
   | { version: 2; type: "log"; level: "info" | "warn" | "error"; message: string };

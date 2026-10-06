@@ -102,12 +102,14 @@ interactive resizing; parsing and saving never rewrite stored geometry.
 A `manim` element stores a workspace-linked `script` path (POSIX relative to
 the deck), optional `scene` class name, `output` (`image` or `video`),
 `orientation` (`horizontal` for 16:9 or `vertical` for 9:16; the host passes
-matching `--resolution` to Manim on render), `quality` (`low`, `medium`, `high`,
-or `production`), optional `transparent`
-background, optional embedded `outputMedia` produced by the extension host,
-and video `playback` settings when `output` is `video`. The `.py` source stays
-linked in the workspace; only rendered PNG/MP4/WebM bytes are embedded in
-`talk.assets/`. Re-render from the editor after changing the script.
+matching `--resolution` and `--transparent` to Manim on render), `quality`
+(`low`, `medium`, `high`, or `production`), optional `transparent` background,
+optional embedded `outputMedia` produced by the extension host, and video
+`playback` settings when `output` is `video`. The `.py` source stays linked in
+the workspace. Rendered PNG/MP4/WebM bytes are embedded in `talk.assets/`
+under a file name taken from the scene class, or from the slide title when
+the scene is empty. A name already used by another element gets the slide
+title or a numeric suffix. Re-rendering overwrites that file.
 
 Text paints past its box. The slide still clips at its own edges. Tab characters
 in Markdown stay as tab stops. `style.lineHeight` is the spacing within a

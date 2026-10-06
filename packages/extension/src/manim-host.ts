@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -11,7 +11,7 @@ import {
   type ManimElement
 } from "@slidepix/core";
 import { resolveMediaPath } from "@slidepix/core/assets";
-import { buildManimArgv, discoverManimScenes, findRenderedMedia, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
+import { buildManimArgv, discoverManimScenes, findRenderedMedia, formatManimLogChunk, manimOutputBasename, parseManimProgress, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
 
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
@@ -50,13 +50,41 @@ export async function listScenesForScript(deckPath: string, scriptReference: str
   return { scenes: discoverManimScenes(source), contentFingerprint: scriptContentFingerprint(source) };
 }
 
+export type ManimRenderHooks = {
+  onOutput?: (text: string) => void;
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+};
+
+export class ManimCancelled extends Error {
+  constructor() {
+    super("Manim render cancelled.");
+    this.name = "ManimCancelled";
+  }
+}
+
+export function takenManimOutputStems(deck: Deck, elementId: string): string[] {
+  const stems: string[] = [];
+  for (const slide of deck.slides) {
+    for (const element of slide.elements) {
+      if (element.type !== "manim" || element.id === elementId || !element.outputMedia?.src) continue;
+      const base = path.basename(element.outputMedia.src);
+      stems.push(base.replace(/\.[^.]+$/, ""));
+    }
+  }
+  return stems;
+}
+
 export async function runManimRender(options: {
   deckPath: string;
   element: ManimElement;
+  slideTitle: string;
   launch: ManimLaunch;
   allowedLinkedRoots: string[];
+  takenStems?: readonly string[];
+  hooks?: ManimRenderHooks;
 }): Promise<{ bytes: Uint8Array; fileName: string; settingsFingerprint: string }> {
-  const { deckPath, element, launch, allowedLinkedRoots } = options;
+  const { deckPath, element, slideTitle, launch, allowedLinkedRoots, hooks } = options;
   if (!element.script?.trim()) throw new Error("Choose a Manim script before rendering.");
   if (!element.scene?.trim()) throw new Error("Enter a scene class name before rendering.");
   const { absolutePath, source } = await readManimScript(deckPath, element.script, allowedLinkedRoots);
@@ -66,7 +94,7 @@ export async function runManimRender(options: {
   }
 
   const mediaDir = await mkdtemp(path.join(os.tmpdir(), "slidepix-manim-"));
-  const outputName = `slidepix-${element.id.replaceAll(/[^a-z0-9-]/gi, "").slice(0, 24) || "render"}`;
+  const outputName = manimOutputBasename(element.scene, slideTitle, options.takenStems ?? []);
   const invocation = buildManimArgv(launch, {
     scriptPath: absolutePath,
     scene: element.scene,
@@ -79,14 +107,15 @@ export async function runManimRender(options: {
   });
 
   try {
-    await execManim(invocation);
+    await execManim(invocation, hooks);
     const rendered = await findRenderedMedia(mediaDir, outputName);
-    if (!rendered) throw new Error("Manim finished without producing a media file.");
+    if (!rendered) throw new Error(`Manim finished without producing ${outputName}.`);
     const bytes = await readFile(rendered);
     if (bytes.byteLength > MAX_MEDIA_BYTES) throw new Error("Rendered media exceeds the 100 MB limit.");
+    const extension = path.extname(rendered).toLowerCase() || (element.output === "image" ? ".png" : ".mp4");
     return {
       bytes,
-      fileName: path.basename(rendered),
+      fileName: `${outputName}${extension}`,
       settingsFingerprint: renderFingerprintForElement(element, source)
     };
   } finally {
@@ -94,28 +123,71 @@ export async function runManimRender(options: {
   }
 }
 
-async function execManim(invocation: ManimLaunch): Promise<void> {
+async function execManim(invocation: ManimLaunch, hooks: ManimRenderHooks = {}): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    if (hooks.signal?.aborted) {
+      reject(new ManimCancelled());
+      return;
+    }
     const child = spawn(invocation.command, invocation.args, {
       cwd: invocation.cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      detached: process.platform !== "win32",
+      env: { ...process.env, PYTHONUNBUFFERED: "1", TERM: "dumb", FORCE_COLOR: "0" }
     });
-    let stderr = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    let tail = "";
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      hooks.signal?.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onAbort = () => {
+      stopManim(child);
+      finish(new ManimCancelled());
+    };
+    hooks.signal?.addEventListener("abort", onAbort);
+    const push = (chunk: Buffer | string) => {
+      const text = formatManimLogChunk(String(chunk));
+      if (!text) return;
+      tail = (tail + text).slice(-12_000);
+      hooks.onOutput?.(text);
+      const percent = parseManimProgress(text);
+      if (percent !== undefined) hooks.onProgress?.(percent);
+    };
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", push);
+    child.stderr?.on("data", push);
     child.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("Could not find Manim. Install Manim Community, add it to PATH, or use a repo .venv (SlidePix will run uv run manim automatically)."));
+        finish(new Error("Could not find Manim. Use Set up Manim to locate it, or install uv and Manim Community."));
         return;
       }
-      reject(error);
+      finish(error);
     });
     child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(stderr.trim() || `Manim exited with code ${code ?? "unknown"}.`));
+      if (hooks.signal?.aborted) finish(new ManimCancelled());
+      else if (code === 0) finish();
+      else finish(new Error(tail.trim() || `Manim exited with code ${code ?? "unknown"}.`));
     });
   });
+}
+
+function stopManim(child: ReturnType<typeof spawn>): void {
+  if (child.pid === undefined) return;
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    child.kill("SIGTERM");
+  }
 }
 
 async function pathExists(target: string): Promise<boolean> {
@@ -129,10 +201,14 @@ async function pathExists(target: string): Promise<boolean> {
 
 export async function createStarterScript(deckPath: string): Promise<{ absolutePath: string; reference: string; scene: string; scenes: string[] }> {
   const absolutePath = await uniqueManimScriptPath(deckPath);
-  await writeFile(absolutePath, MANIM_STARTER_SCRIPT, "utf8");
+  await vscode.workspace.fs.writeFile(vscode.Uri.file(absolutePath), new TextEncoder().encode(MANIM_STARTER_SCRIPT));
   const reference = relativeDeckReference(deckPath, absolutePath);
   const scenes = discoverManimScenes(MANIM_STARTER_SCRIPT);
   return { absolutePath, reference, scene: DEFAULT_MANIM_SCENE_NAME, scenes };
+}
+
+export async function deleteManimScript(absolutePath: string): Promise<void> {
+  await vscode.workspace.fs.delete(vscode.Uri.file(absolutePath), { recursive: false, useTrash: false });
 }
 
 export function applyManimRender(deck: Deck, elementId: string, embeddedReference: string): Deck {
