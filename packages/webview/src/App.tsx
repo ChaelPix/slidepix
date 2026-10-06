@@ -16,8 +16,10 @@ import {
   type Slide,
   type SlideElement,
   type Transition,
+  manimElementAspectRatio,
   manimRenderFingerprint,
-  manimSettingsFingerprint
+  manimSettingsFingerprint,
+  type ManimOrientation
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
 import { clamp, cropBoxByEdges, localPointerDelta, panCrop, type CropBox } from "./geometry";
@@ -98,14 +100,20 @@ export default function App() {
     requestAnimationFrame(() => inlineTextEditor.current?.format(command));
   }, [editingText?.id]);
   useEffect(() => {
-    if (!slide || selected?.type !== "manim" || !selected.outputMedia) return;
-    const url = (() => {
-      const base = store.linkedSourceUri;
-      if (!base) return selected.outputMedia!.src;
-      try { return new URL(selected.outputMedia!.src.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`).toString(); } catch { return selected.outputMedia!.src; }
-    })();
-    void measureMediaAspect(url, selected.output === "video" ? "video" : "image").then((aspectRatio) => lockMediaAspect(slide.id, selected.id, aspectRatio, store.mutate));
-  }, [slide?.id, selected?.id, selected?.type === "manim" ? selected.outputMedia?.src : undefined, selected?.type === "manim" ? selected.output : undefined, store.linkedSourceUri]);
+    if (!slide || selected?.type !== "manim" || !selected.outputMedia || !selected.lockAspectRatio) return;
+    lockMediaAspect(
+      slide.id,
+      selected.id,
+      manimElementAspectRatio(selected.orientation),
+      store.mutate
+    );
+  }, [
+    slide?.id,
+    selected?.id,
+    selected?.type === "manim" ? selected.outputMedia?.src : undefined,
+    selected?.type === "manim" ? selected.orientation : undefined,
+    selected?.type === "manim" ? selected.lockAspectRatio : undefined
+  ]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -254,9 +262,11 @@ export default function App() {
         width,
         height,
         output,
+        orientation: "horizontal",
         quality: "medium",
         transparent: false,
         lockAspectRatio: true,
+        aspectRatio: 16 / 9,
         playback: { mode: "manual", muted: false, loop: false, controls: true }
       });
     });
@@ -933,8 +943,9 @@ function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }:
   </div>;
 }
 
-function ManimInspector({ slideId, element, mutate, preview, scheduleCommit, commit }: {
+function ManimInspector({ slideId, slideSize, element, mutate, preview, scheduleCommit, commit }: {
   slideId: string;
+  slideSize: Deck["size"];
   element: Extract<SlideElement, { type: "manim" }>;
   mutate(fn: (deck: Deck) => void): void;
   preview(fn: (deck: Deck) => void): void;
@@ -1043,6 +1054,23 @@ function ManimInspector({ slideId, element, mutate, preview, scheduleCommit, com
       <option value="image">Still image</option>
       <option value="video">Video</option>
     </select></label>
+    <label>Orientation<select value={element.orientation} onChange={(event) => {
+      const orientation = event.target.value as ManimOrientation;
+      updateManim((target) => {
+        target.orientation = orientation;
+        if (!target.lockAspectRatio) return;
+        const aspectRatio = manimElementAspectRatio(orientation);
+        target.aspectRatio = aspectRatio;
+        const fitted = fitAspectBoxInSlide(target, aspectRatio, slideSize);
+        target.x = fitted.x;
+        target.y = fitted.y;
+        target.width = fitted.width;
+        target.height = fitted.height;
+      }, false);
+    }}>
+      <option value="horizontal">Horizontal (16:9)</option>
+      <option value="vertical">Vertical (9:16)</option>
+    </select></label>
     <label>Quality<select value={element.quality} onChange={(event) => updateManim((target) => { target.quality = event.target.value as typeof element.quality; }, false)}>
       <option value="low">Low</option>
       <option value="medium">Medium</option>
@@ -1063,7 +1091,7 @@ function ManimInspector({ slideId, element, mutate, preview, scheduleCommit, com
       if (!locked) return updateManim((target) => { target.lockAspectRatio = false; }, false);
       updateManim((target) => {
         target.lockAspectRatio = true;
-        target.aspectRatio = target.width / Math.max(1, target.height);
+        target.aspectRatio = manimElementAspectRatio(target.orientation);
       }, false);
     }} />
   </>;
@@ -1140,7 +1168,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
               <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => editShape((target) => { target.shadow.blur = blur; })} onCommit={commit} />
             </>}
           </>}
-          {element.type === "manim" && <ManimInspector slideId={slide.id} element={element} mutate={mutate} preview={preview} scheduleCommit={scheduleCommit} commit={commit} />}
+          {element.type === "manim" && <ManimInspector slideId={slide.id} slideSize={deck.size} element={element} mutate={mutate} preview={preview} scheduleCommit={scheduleCommit} commit={commit} />}
           {element.type === "table" && <>
             <div className="table-size-actions">
               <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows + 1, target.columns); })}><span className="codicon codicon-add" /> Row</button>
@@ -1401,7 +1429,7 @@ function transitionLabel(type: Transition["type"]): string { return ({ none: "No
 function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
 function elementSizePatch(element: SlideElement, driver: "width" | "height", value: number): Partial<SlideElement> {
-  if ((element.type !== "image" && element.type !== "video") || !element.lockAspectRatio || !element.aspectRatio) {
+  if ((element.type !== "image" && element.type !== "video" && element.type !== "manim") || !element.lockAspectRatio || !element.aspectRatio) {
     return driver === "width" ? { width: value } : { height: value };
   }
   return driver === "width"
@@ -1412,7 +1440,7 @@ function lockMediaAspect(slideId: string, elementId: string, aspectRatio: number
   if (!(aspectRatio > 0)) return;
   mutate((draft) => {
     const target = findElement(draft, slideId, elementId);
-    if (target?.type !== "image" && target?.type !== "video") return;
+    if (target?.type !== "image" && target?.type !== "video" && target?.type !== "manim") return;
     const fitted = fitAspectBoxInSlide(target, aspectRatio, draft.size);
     target.x = fitted.x;
     target.y = fitted.y;

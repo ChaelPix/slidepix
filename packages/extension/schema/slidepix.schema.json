@@ -855,6 +855,14 @@
                         "video"
                       ]
                     },
+                    "orientation": {
+                      "default": "horizontal",
+                      "type": "string",
+                      "enum": [
+                        "horizontal",
+                        "vertical"
+                      ]
+                    },
                     "quality": {
                       "default": "medium",
                       "type": "string",
@@ -948,6 +956,7 @@
                     "hidden",
                     "type",
                     "output",
+                    "orientation",
                     "quality",
                     "transparent",
                     "lockAspectRatio",

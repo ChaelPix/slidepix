@@ -17,7 +17,7 @@ cross-process message types, and shared DOM/HTML rendering semantics.
 | `createDeck(title?)` | Creates one valid 1920×1080 light-theme deck with a centered dark title using a portable system-font stack. |
 | `duplicateSlide(slide)` | Deep-copies the slide, creates new slide/element IDs, preserves element names and morph keys, and clears the timeline. |
 | `Deck`, `Slide`, element and motion types | Types inferred from their schemas; do not maintain parallel handwritten interfaces. |
-| `manimElementSchema`, `manimSettingsFingerprint`, `MANIM_STARTER_SCRIPT` | Manim slide element validation plus shared settings fingerprint/starter script helpers in `src/manim.ts`. |
+| `manimElementSchema`, `manimSettingsFingerprint`, `manimRenderResolution`, `manimElementAspectRatio`, `MANIM_STARTER_SCRIPT` | Manim slide element validation, locked 16:9 / 9:16 aspect helpers, render resolution table, and settings fingerprint in `src/manim.ts`. |
 
 When adding a persisted field, define validation/defaults here, add parser and
 serialization tests, rebuild the contributed JSON Schema, and update

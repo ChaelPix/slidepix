@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { DEFAULT_MANIM_SCENE_NAME, MANIM_STARTER_SCRIPT, type Deck, type ManimElement } from "@slidepix/core";
+import {
+  DEFAULT_MANIM_SCENE_NAME,
+  MANIM_STARTER_SCRIPT,
+  manimElementAspectRatio,
+  type Deck,
+  type ManimElement
+} from "@slidepix/core";
 import { resolveMediaPath } from "@slidepix/core/assets";
 import { buildManimArgv, discoverManimScenes, findRenderedMedia, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
 
@@ -65,6 +71,7 @@ export async function runManimRender(options: {
     scriptPath: absolutePath,
     scene: element.scene,
     output: element.output,
+    orientation: element.orientation,
     quality: element.quality,
     transparent: element.transparent,
     mediaDir,
@@ -132,6 +139,9 @@ export function applyManimRender(deck: Deck, elementId: string, embeddedReferenc
   const located = findManimElement(deck, elementId);
   if (!located) throw new Error("Manim element not found.");
   located.element.outputMedia = { src: embeddedReference, storage: "embedded" };
+  if (located.element.lockAspectRatio) {
+    located.element.aspectRatio = manimElementAspectRatio(located.element.orientation);
+  }
   return deck;
 }
 

@@ -2,8 +2,13 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
-import type { ManimElement, ManimQuality } from "@slidepix/core";
-import { MANIM_QUALITY_FLAG, manimRenderFingerprint, manimSettingsFingerprint } from "@slidepix/core/manim";
+import type { ManimElement, ManimOrientation, ManimQuality } from "@slidepix/core";
+import {
+  MANIM_QUALITY_FLAG,
+  manimRenderFingerprint,
+  manimRenderResolution,
+  manimSettingsFingerprint
+} from "@slidepix/core/manim";
 
 export type ManimLaunch = {
   command: string;
@@ -15,6 +20,7 @@ export type ManimRenderOptions = {
   scriptPath: string;
   scene: string;
   output: ManimElement["output"];
+  orientation: ManimOrientation;
   quality: ManimQuality;
   transparent: boolean;
   mediaDir: string;
@@ -99,9 +105,12 @@ export function buildManimRenderArgs(options: ManimRenderOptions): string[] {
     : options.transparent
       ? "webm"
       : "mp4";
+  const { width, height } = manimRenderResolution(options.orientation, options.quality);
   const argv = [
     "render",
     quality,
+    "-r",
+    `${width},${height}`,
     "--media_dir",
     options.mediaDir,
     "-o",

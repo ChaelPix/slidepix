@@ -101,7 +101,9 @@ interactive resizing; parsing and saving never rewrite stored geometry.
 
 A `manim` element stores a workspace-linked `script` path (POSIX relative to
 the deck), optional `scene` class name, `output` (`image` or `video`),
-`quality` (`low`, `medium`, `high`, or `production`), optional `transparent`
+`orientation` (`horizontal` for 16:9 or `vertical` for 9:16; the host passes
+matching `--resolution` to Manim on render), `quality` (`low`, `medium`, `high`,
+or `production`), optional `transparent`
 background, optional embedded `outputMedia` produced by the extension host,
 and video `playback` settings when `output` is `video`. The `.py` source stays
 linked in the workspace; only rendered PNG/MP4/WebM bytes are embedded in

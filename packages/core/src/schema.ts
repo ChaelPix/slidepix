@@ -113,6 +113,8 @@ export const videoElementSchema = baseElementSchema.extend({
 
 export const manimQualitySchema = z.enum(["low", "medium", "high", "production"]);
 
+export const manimOrientationSchema = z.enum(["horizontal", "vertical"]);
+
 export const manimOutputMediaSchema = z.object({
   src: z.string().min(1),
   storage: z.literal("embedded")
@@ -130,6 +132,7 @@ export const manimElementSchema = baseElementSchema.extend({
   script: z.string().min(1).optional(),
   scene: z.string().min(1).optional(),
   output: z.enum(["image", "video"]).default("image"),
+  orientation: manimOrientationSchema.default("horizontal"),
   quality: manimQualitySchema.default("medium"),
   transparent: z.boolean().default(false),
   outputMedia: manimOutputMediaSchema.optional(),
@@ -299,6 +302,7 @@ export type ImageElement = z.infer<typeof imageElementSchema>;
 export type VideoElement = z.infer<typeof videoElementSchema>;
 export type ManimElement = z.infer<typeof manimElementSchema>;
 export type ManimQuality = z.infer<typeof manimQualitySchema>;
+export type ManimOrientation = z.infer<typeof manimOrientationSchema>;
 export type ManimOutputMedia = z.infer<typeof manimOutputMediaSchema>;
 export type ShapeElement = z.infer<typeof shapeElementSchema>;
 export type TableElement = z.infer<typeof tableElementSchema>;

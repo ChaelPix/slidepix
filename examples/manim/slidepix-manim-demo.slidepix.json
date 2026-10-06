@@ -136,8 +136,8 @@
           "morphKey": "m02-still",
           "x": 92,
           "y": 200,
-          "width": 1220,
-          "height": 708,
+          "width": 1266,
+          "height": 712,
           "rotation": 0,
           "opacity": 1,
           "z": 1,
@@ -148,6 +148,7 @@
           "script": "slidepix-manim-demo-2.manim.py",
           "scene": "SlidePixScene",
           "output": "image",
+          "orientation": "horizontal",
           "quality": "low",
           "transparent": false,
           "outputMedia": {
@@ -254,6 +255,7 @@
           "script": "slidepix-manim-demo.manim.py",
           "scene": "MotionClip",
           "output": "video",
+          "orientation": "horizontal",
           "quality": "medium",
           "transparent": false,
           "outputMedia": {

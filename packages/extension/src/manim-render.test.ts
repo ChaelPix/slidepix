@@ -28,12 +28,13 @@ class Outro(MovingCameraScene):
       scriptPath: "/tmp/scene.py",
       scene: "Intro",
       output: "image",
+      orientation: "horizontal",
       quality: "high",
       transparent: false,
       mediaDir: "/tmp/media",
       outputName: "slidepix-1"
     })).toEqual([
-      "render", "-qh", "--media_dir", "/tmp/media", "-o", "slidepix-1", "--format=png", "-s",
+      "render", "-qh", "-r", "1920,1080", "--media_dir", "/tmp/media", "-o", "slidepix-1", "--format=png", "-s",
       "/tmp/scene.py", "Intro"
     ]);
 
@@ -41,11 +42,23 @@ class Outro(MovingCameraScene):
       scriptPath: "/tmp/scene.py",
       scene: "Intro",
       output: "video",
+      orientation: "vertical",
       quality: "medium",
       transparent: true,
       mediaDir: "/tmp/media",
       outputName: "slidepix-2"
-    })).toContain("--format=webm");
+    })).toEqual(expect.arrayContaining(["-r", "720,1280", "--format=webm"]));
+
+    expect(buildManimRenderArgs({
+      scriptPath: "/tmp/scene.py",
+      scene: "Intro",
+      output: "image",
+      orientation: "vertical",
+      quality: "low",
+      transparent: false,
+      mediaDir: "/tmp/media",
+      outputName: "slidepix-3"
+    })).toEqual(expect.arrayContaining(["-r", "480,854"]));
   });
 
   it("assembles argv for direct, venv, and uv launches", () => {
@@ -53,6 +66,7 @@ class Outro(MovingCameraScene):
       scriptPath: "/repo/examples/demo.manim.py",
       scene: "Intro",
       output: "image" as const,
+      orientation: "horizontal" as const,
       quality: "low" as const,
       transparent: false,
       mediaDir: "/tmp/media",
@@ -61,14 +75,14 @@ class Outro(MovingCameraScene):
 
     expect(buildManimArgv({ command: "manim", args: [] }, options)).toMatchObject({
       command: "manim",
-      args: ["render", "-ql", "--media_dir", "/tmp/media", "-o", "slidepix-1", "--format=png", "-s", "/repo/examples/demo.manim.py", "Intro"]
+      args: ["render", "-ql", "-r", "854,480", "--media_dir", "/tmp/media", "-o", "slidepix-1", "--format=png", "-s", "/repo/examples/demo.manim.py", "Intro"]
     });
 
     expect(buildManimArgv({ command: "/repo/.venv/bin/manim", args: [] }, options).command).toBe("/repo/.venv/bin/manim");
     expect(buildManimArgv({ command: "uv", args: ["run", "manim"], cwd: "/repo" }, options)).toEqual({
       command: "uv",
       cwd: "/repo",
-      args: ["run", "manim", "render", "-ql", "--media_dir", "/tmp/media", "-o", "slidepix-1", "--format=png", "-s", "/repo/examples/demo.manim.py", "Intro"]
+      args: ["run", "manim", "render", "-ql", "-r", "854,480", "--media_dir", "/tmp/media", "-o", "slidepix-1", "--format=png", "-s", "/repo/examples/demo.manim.py", "Intro"]
     });
   });
 

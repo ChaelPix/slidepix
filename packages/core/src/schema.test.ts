@@ -175,6 +175,7 @@ describe("deck schema", () => {
     expect(parsed.deck.slides[0]!.elements.at(-1)).toMatchObject({
       type: "manim",
       output: "video",
+      orientation: "horizontal",
       quality: "medium",
       playback: { mode: "manual", controls: true },
       lockAspectRatio: true
