@@ -16,6 +16,20 @@ properties panel.
 Maintainers can regenerate committed assets with
 `node scripts/build-manim-demo.mjs` (uses the repo `uv` environment).
 
+## Fourier
+
+`manim/fourier.slidepix.json` is a short French talk on the Fourier transform.
+Scenes live in `manim/fourier.manim.py`:
+
+- `HarmonicsStill` — three odd harmonics and their sum (PNG)
+- `BuildSquare` — partial sums toward a square wave (MP4)
+- `TimeToFrequency` — a pure sine and the peak that tracks its frequency (MP4)
+- `RectPulse` — a pulse of height A on `[0, X]`, and the sinc that widens as X shrinks (MP4)
+- `EpicycleDraw` — rotating radii whose last point traces a closed outline (MP4)
+
+Renders are already embedded in `manim/fourier.assets/`. After editing a scene,
+select the Manim element and click **Render**.
+
 ## Product demo
 
 `slidepix-demo.slidepix.json` is the canonical light-theme product demo and
