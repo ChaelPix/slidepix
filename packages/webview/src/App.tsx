@@ -471,9 +471,9 @@ export default function App() {
                       )
                       : { x: drag.left, y: drag.top, width, height, guides: [] as SnapGuide[] };
                     snapHold.current = snapped.guides;
-                    const media = dragTarget.type === "image" || dragTarget.type === "video" ? dragTarget : undefined;
-                    const fitted = media?.lockAspectRatio && media.aspectRatio
-                      ? fitLockedAspectBox(snapped, media.aspectRatio, edges)
+                    const lockedRatio = lockedElementAspectRatio(dragTarget);
+                    const fitted = lockedRatio
+                      ? fitLockedAspectBox(snapped, lockedRatio, edges)
                       : snapped;
                     elementTarget.style.width = `${fitted.width}px`;
                     elementTarget.style.height = `${fitted.height}px`;
@@ -1428,13 +1428,21 @@ function animationFlowLabel(timeline: AnimationStep[], index: number): string { 
 function transitionLabel(type: Transition["type"]): string { return ({ none: "None", fade: "Fade", "slide-left": "From left", "slide-right": "From right", "slide-up": "From top", "slide-down": "From bottom", morph: "Morph" } as Record<Transition["type"], string>)[type]; }
 function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
+function lockedElementAspectRatio(element: SlideElement): number | undefined {
+  if (element.type !== "image" && element.type !== "video" && element.type !== "manim") return undefined;
+  if (!element.lockAspectRatio) return undefined;
+  if (element.aspectRatio && element.aspectRatio > 0) return element.aspectRatio;
+  if (element.type === "manim") return manimElementAspectRatio(element.orientation);
+  return element.width / Math.max(1, element.height);
+}
 function elementSizePatch(element: SlideElement, driver: "width" | "height", value: number): Partial<SlideElement> {
-  if ((element.type !== "image" && element.type !== "video" && element.type !== "manim") || !element.lockAspectRatio || !element.aspectRatio) {
+  const aspectRatio = lockedElementAspectRatio(element);
+  if (!aspectRatio) {
     return driver === "width" ? { width: value } : { height: value };
   }
   return driver === "width"
-    ? { width: value, height: heightForLockedAspect(value, element.aspectRatio) }
-    : { height: value, width: widthForLockedAspect(value, element.aspectRatio) };
+    ? { width: value, height: heightForLockedAspect(value, aspectRatio) }
+    : { height: value, width: widthForLockedAspect(value, aspectRatio) };
 }
 function lockMediaAspect(slideId: string, elementId: string, aspectRatio: number, mutate: (fn: (deck: Deck) => void) => void) {
   if (!(aspectRatio > 0)) return;
