@@ -80,9 +80,11 @@ export function resolveManimLaunch(
   const deckDirectory = path.dirname(path.resolve(deckPath));
   const venvManim = findVenvManimNear(deckDirectory, exists);
   if (venvManim) return { command: venvManim, args: [] };
-  const uvRoot = findUvWorkspaceRoot(deckDirectory, exists);
-  if (uvRoot) return { command: "uv", args: ["run", "manim"], cwd: uvRoot };
   return { command: "manim", args: [] };
+}
+
+export function manimSpawnFailure(text: string): boolean {
+  return /Failed to spawn [`']?manim|ENOENT|No such file or directory/i.test(text);
 }
 
 export function assembleManimInvocation(launch: ManimLaunch, renderArgs: string[]): ManimLaunch {
@@ -137,15 +139,17 @@ export function sanitizeManimFileStem(value: string): string {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 }
 
-/** Prefer the scene class, then the slide title. A taken stem gets a slide prefix or a numeric suffix. */
-export function manimOutputBasename(scene: string | undefined, slideTitle: string, taken: readonly string[] = []): string {
-  const sceneName = sanitizeManimFileStem(scene ?? "");
-  const slideName = sanitizeManimFileStem(slideTitle);
-  const preferred = sceneName || slideName || "manim";
+/** Deck file stem without `.slidepix.json`, used in persistent Manim media names. */
+export function manimDeckStem(deckPath: string): string {
+  return path.basename(deckPath).replace(/\.slidepix\.json$/i, "");
+}
+
+/** Stable `deck-slide-scene` stem. A name already used by another element gets a numeric suffix. */
+export function manimOutputBasename(deckName: string, slideTitle: string, scene: string | undefined, taken: readonly string[] = []): string {
+  const parts = [deckName, slideTitle, scene ?? ""].map((part) => sanitizeManimFileStem(part)).filter(Boolean);
+  const preferred = parts.join("-").slice(0, 100) || "manim";
   if (!taken.includes(preferred)) return preferred;
-  const combined = slideName && sceneName && slideName !== sceneName ? `${slideName}-${sceneName}` : preferred;
-  if (!taken.includes(combined)) return combined;
-  const room = combined.slice(0, 76);
+  const room = preferred.slice(0, 96);
   let index = 2;
   while (taken.includes(`${room}-${index}`)) index += 1;
   return `${room}-${index}`;

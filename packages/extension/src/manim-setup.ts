@@ -15,7 +15,15 @@ export async function ensureManimLaunch(deckPath: string, configuredExecutable: 
   return promptManimSetup(deckPath, log);
 }
 
+let setupInFlight: Promise<ManimLaunch | undefined> | undefined;
+
 export async function promptManimSetup(deckPath: string, log: (text: string) => void): Promise<ManimLaunch | undefined> {
+  if (setupInFlight) return setupInFlight;
+  setupInFlight = openManimSetup(deckPath, log).finally(() => { setupInFlight = undefined; });
+  return setupInFlight;
+}
+
+async function openManimSetup(deckPath: string, log: (text: string) => void): Promise<ManimLaunch | undefined> {
   const choice = await vscode.window.showQuickPick(
     [
       { label: "Find Manim…", description: "Browse, or use .venv/bin/manim or .venv/Scripts/manim.exe" },

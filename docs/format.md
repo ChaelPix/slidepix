@@ -107,9 +107,9 @@ matching `--resolution` and `--transparent` to Manim on render), `quality`
 optional embedded `outputMedia` produced by the extension host, and video
 `playback` settings when `output` is `video`. The `.py` source stays linked in
 the workspace. Rendered PNG/MP4/WebM bytes are embedded in `talk.assets/`
-under a file name taken from the scene class, or from the slide title when
-the scene is empty. A name already used by another element gets the slide
-title or a numeric suffix. Re-rendering overwrites that file.
+under a persistent name `deck-slide-scene` (the deck file stem, the slide
+title, and the scene class). A name already used by another element gets a
+numeric suffix. Re-rendering overwrites that file.
 
 Text paints past its box. The slide still clips at its own edges. Tab characters
 in Markdown stay as tab stops. `style.lineHeight` is the spacing within a

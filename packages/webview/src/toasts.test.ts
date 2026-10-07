@@ -20,4 +20,11 @@ describe("toast updates", () => {
     ];
     expect(updateToasts(current, { id: "one", kind: "dismiss" })).toEqual([{ id: "two", kind: "error", message: "Two" }]);
   });
+
+  it("replaces a progress toast with the latest percent", () => {
+    const current: ToastMessage[] = [{ id: "render", kind: "progress", message: "Rendering", progress: 10 }];
+    expect(updateToasts(current, { id: "render", kind: "progress", message: "Rendering", progress: 40 })).toEqual([
+      { id: "render", kind: "progress", message: "Rendering", progress: 40 }
+    ]);
+  });
 });

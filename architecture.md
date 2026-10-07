@@ -154,12 +154,13 @@ Do not assume every planned feature is complete. Current known gaps include:
   output are not integrated;
 - automated VS Code custom-editor integration and Cursor smoke tests are still
   missing;
-- Manim is not bundled. An empty `slidepix.manim.executable` searches
-  `.venv/bin/manim` and `.venv/Scripts/manim.exe`, then `uv run manim`.
-  **Set up Manim** can browse for an executable or install uv and Manim
-  Community. SlidePix does not install a system Python by itself.
-- The Manim inspector does not yet show render progress under **Render**, and
-  that button cannot cancel a render. The notification progress can cancel,
+- Manim is not bundled. An empty `slidepix.manim.executable` uses
+  `.venv/bin/manim` or `.venv/Scripts/manim.exe` only when that file exists.
+  A deleted virtualenv is not launched through `uv run`. **Set up Manim** can
+  browse for an executable or install uv and Manim Community. SlidePix does
+  not install a system Python by itself.
+- The Manim **Render** button cannot cancel a render. Batch and per-scene
+  progress bars are in the editor. Notification progress can still cancel,
   and the full Manim log is written to the SlidePix output channel.
 
 When implementing a gap, update this list in the same change.

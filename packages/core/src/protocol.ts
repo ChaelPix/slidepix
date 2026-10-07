@@ -14,7 +14,7 @@ export type HostToWebviewMessage =
   | { version: 2; type: "manimScenesListed"; requestId: string; scenes?: string[]; contentFingerprint?: string; error?: string }
   | { version: 2; type: "manimRenderResult"; requestId: string; ok: boolean; elementId: string; settingsFingerprint?: string; error?: string }
   | { version: 2; type: "manimRenderAllResult"; requestId: string; ok: boolean; rendered: number; skipped: number; error?: string; results?: { elementId: string; settingsFingerprint: string }[] }
-  | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string };
+  | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string; progress?: number; elementId?: string; elementProgress?: number };
 
 export type WebviewToHostMessage =
   | { version: 2; type: "ready" }

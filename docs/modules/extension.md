@@ -8,8 +8,9 @@ PDF, PNG, PowerPoint, and standalone web exports.
 
 ## `src/extension.ts`
 
-`activate(context)` constructs one `SlidePixEditorProvider`, opens the SlidePix
-output channel, and registers every public command. Command IDs must stay
+`activate(context)` constructs one `SlidePixEditorProvider`, creates the
+SlidePix log output channel, reveals it, and registers every public command.
+**SlidePix: Show Log** opens that channel again. Command IDs must stay
 aligned with `package.json` contributions and webview command union members.
 Deck open/close, commands, Manim setup, and failed edits are written to that
 channel. Successful document replacements are not logged on every keystroke.
@@ -101,8 +102,8 @@ covers the Codex table replacement and JSON merges that keep other servers.
 ## `src/manim-host.ts`, `src/manim-render.ts`, and `src/manim-setup.ts`
 
 These own Manim argv construction (including `--transparent` and
-`--progress_bar`), scene discovery, subprocess rendering, output names, and
-deck updates. Starter scripts are written with `workspace.fs` and removed if
+`--progress_bar`), scene discovery, subprocess rendering, persistent
+`deck-slide-scene` output names, and deck updates. Starter scripts are written with `workspace.fs` and removed if
 the deck edit does not apply. `manim-setup.ts` locates `.venv/bin/manim` or
 `.venv/Scripts/manim.exe`, or installs uv and Manim Community after
 confirmation. `src/manim-render.test.ts` covers argv, names, and scene parsing
@@ -123,6 +124,10 @@ Keep these pure helpers independently testable; the VS Code picker stays in
 - `start()` binds an ephemeral port on `127.0.0.1`, requires the session token
   for HTTP and WebSocket access, and sends initial state.
 - `url(pathname)` returns a tokenized loopback URL.
+- `replaceDeck()` keeps that port and token, then tells connected audience
+  pages to reload. **Present** reuses a running session so a browser refresh
+  of the open URL stays authorized. Deck edits update the served deck without
+  minting a new token. Closing the presenter does not stop the audience server.
 - `command(next|previous|first|last)` clamps visible-slide state and broadcasts
   only when the index changes. Forward navigation initializes entrance state;
   backward navigation completes the destination's timeline so a previously

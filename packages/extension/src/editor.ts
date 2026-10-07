@@ -33,6 +33,7 @@ export const VIEW_TYPE = "slidepix.deckEditor";
 export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly panels = new Map<string, Set<vscode.WebviewPanel>>();
   private readonly sessions = new Map<string, PresentationServer>();
+  private readonly presenterPanels = new Map<string, vscode.WebviewPanel>();
   private readonly histories = new Map<string, DocumentHistory>();
   private activeDocument?: vscode.TextDocument;
   private outputChannel?: vscode.OutputChannel;
@@ -48,7 +49,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   showLog(): void {
     const channel = this.getOutputChannel();
-    channel.show(true);
+    channel.show(false);
     const version = String((this.context.extension.packageJSON as { version?: string }).version ?? "unknown");
     this.log(`SlidePix ${version} activated`);
   }
@@ -56,7 +57,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   log(message: string, level: "info" | "warn" | "error" = "info"): void {
     const prefix = level === "error" ? "ERROR" : level === "warn" ? "WARN" : "INFO";
     this.getOutputChannel().appendLine(`${new Date().toISOString()} ${prefix} ${message}`);
-    if (level === "error") this.getOutputChannel().show(true);
+    if (level === "error") this.getOutputChannel().show(false);
   }
 
   private watchTab(tab: vscode.Tab): void {
@@ -117,27 +118,49 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       return void vscode.window.showErrorMessage(parsed.message);
     }
     const key = document.uri.toString();
-    this.sessions.get(key)?.dispose();
-    let presenterPanel: vscode.WebviewPanel | undefined;
-    const session = new PresentationServer(parsed.deck, document.uri.fsPath, (index) => presenterPanel?.webview.postMessage({ type: "state", index }), linkedRoots(document));
-    await session.start();
-    this.sessions.set(key, session);
-    if (!presenter) {
-      await vscode.env.openExternal(vscode.Uri.parse(session.url("/audience")));
+    const running = this.sessions.get(key);
+    if (running?.isRunning()) {
+      running.replaceDeck(parsed.deck);
+      this.log("presentation hot reload");
+      if (presenter) this.attachPresenter(key, running, parsed.deck);
+      if (!running.hasAudience()) await vscode.env.openExternal(vscode.Uri.parse(running.url("/audience")));
       return;
     }
-    presenterPanel = vscode.window.createWebviewPanel("slidepix.presenter", "SlidePix Presenter", vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
-    presenterPanel.webview.html = presenterHtml(session, parsed.deck);
+    running?.dispose();
+    const session = new PresentationServer(parsed.deck, document.uri.fsPath, (index) => {
+      this.presenterPanels.get(key)?.webview.postMessage({ type: "state", index });
+    }, linkedRoots(document));
+    await session.start();
+    this.sessions.set(key, session);
+    if (presenter) this.attachPresenter(key, session, parsed.deck);
+    await vscode.env.openExternal(vscode.Uri.parse(session.url("/audience")));
+  }
+
+  private attachPresenter(key: string, session: PresentationServer, deck: Deck): vscode.WebviewPanel {
+    const current = this.presenterPanels.get(key);
+    if (current) {
+      current.webview.html = presenterHtml(session, deck);
+      return current;
+    }
+    const presenterPanel = vscode.window.createWebviewPanel("slidepix.presenter", "SlidePix Presenter", vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
+    this.presenterPanels.set(key, presenterPanel);
+    presenterPanel.webview.html = presenterHtml(session, deck);
     presenterPanel.webview.onDidReceiveMessage((message: { command?: "next" | "previous" | "first" | "last" }) => {
       if (message.command === "next" || message.command === "previous") session.control(message.command);
       else if (message.command) session.command(message.command);
     });
-    presenterPanel.onDidDispose(() => session.dispose());
-    await vscode.env.openExternal(vscode.Uri.parse(session.url("/audience")));
+    presenterPanel.onDidDispose(() => { if (this.presenterPanels.get(key) === presenterPanel) this.presenterPanels.delete(key); });
+    return presenterPanel;
   }
 
   private updatePanels(document: vscode.TextDocument): void {
-    const set = this.panels.get(document.uri.toString());
+    const key = document.uri.toString();
+    const session = this.sessions.get(key);
+    if (session?.isRunning()) {
+      const parsed = parseDeckText(document.getText());
+      if (parsed.ok) session.deck = parsed.deck;
+    }
+    const set = this.panels.get(key);
     if (!set) return;
     for (const panel of set) this.postDeck(document, panel);
   }
@@ -238,7 +261,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private getOutputChannel(): vscode.OutputChannel {
     if (!this.outputChannel) {
-      this.outputChannel = vscode.window.createOutputChannel("SlidePix");
+      this.outputChannel = vscode.window.createOutputChannel("SlidePix", { log: true });
       this.context.subscriptions.push(this.outputChannel);
     }
     return this.outputChannel;
@@ -387,15 +410,16 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private async manimLaunch(document: vscode.TextDocument) {
     const configured = vscode.workspace.getConfiguration("slidepix").get<string>("manim.executable", "") ?? "";
     const log = this.manimLog();
-    log.channel.show(true);
+    log.channel.show(false);
     return ensureManimLaunch(document.uri.fsPath, configured, log.append);
   }
 
   private async setupManim(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
     const log = this.manimLog();
-    log.channel.show(true);
+    log.channel.show(false);
     this.log("opening Manim setup");
     const notify = (status: "progress" | "success" | "error" | "dismiss", text?: string) => panel.webview.postMessage({ version: 2, type: "notify", notificationId: "manim-setup", status, message: text } satisfies HostToWebviewMessage);
+    await notify("progress", "Choose how to set up Manim");
     try {
       const launch = await promptManimSetup(document.uri.fsPath, (text) => {
         log.append(text);
@@ -484,12 +508,14 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async renderManim(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "renderManim" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimRenderResult", requestId: message.requestId, ok: false, elementId: message.elementId };
-    const notify = async (status: "progress" | "success" | "error" | "dismiss", text?: string) => {
-      await panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status, message: text } satisfies HostToWebviewMessage);
+    const notify = async (status: "progress" | "success" | "error" | "dismiss", text?: string, progress?: number, elementId?: string, elementProgress?: number) => {
+      await panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status, message: text, progress, elementId, elementProgress } satisfies HostToWebviewMessage);
     };
-    await notify("progress", "Rendering Manim…");
+    await notify("progress", "Rendering Manim…", 0, message.elementId, 0);
     try {
-      const rendered = await this.renderManimElements(document, [message.elementId]);
+      const rendered = await this.renderManimElements(document, [message.elementId], (update) => {
+        void notify("progress", `Rendering ${update.label}… ${update.percent}%`, update.percent, update.elementId, update.percent);
+      });
       if (rendered.cancelled) throw new ManimCancelled();
       if (rendered.error) throw new Error(rendered.error);
       const one = rendered.results[0];
@@ -528,13 +554,17 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     }
     response.skipped = skipped;
     this.log(`render all: ${ready.length} ready, ${skipped} skipped`);
+    await panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status: "progress", message: ready.length ? `Rendering ${ready.length} Manim scene${ready.length === 1 ? "" : "s"}…` : "No Manim scenes to render", progress: 0 } satisfies HostToWebviewMessage);
     if (!ready.length) {
       response.error = skipped ? "No Manim element has both a script and a scene." : "This deck has no Manim elements.";
       await panel.webview.postMessage(response);
       return;
     }
     try {
-      const rendered = await this.renderManimElements(document, ready);
+      const rendered = await this.renderManimElements(document, ready, (update) => {
+        const overall = Math.round(((update.index + update.percent / 100) / update.total) * 100);
+        void panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status: "progress", message: `Rendering ${update.index + 1}/${update.total} Manim scenes… ${update.label}`, progress: overall, elementId: update.elementId, elementProgress: update.percent } satisfies HostToWebviewMessage);
+      });
       response.rendered = rendered.results.length;
       response.results = rendered.results;
       response.ok = !rendered.cancelled && !rendered.error;
@@ -547,7 +577,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     await panel.webview.postMessage(response);
   }
 
-  private async renderManimElements(document: vscode.TextDocument, elementIds: string[]): Promise<{ results: { elementId: string; settingsFingerprint: string }[]; cancelled: boolean; error?: string }> {
+  private async renderManimElements(document: vscode.TextDocument, elementIds: string[], onSceneProgress?: (update: { elementId: string; index: number; total: number; percent: number; label: string }) => void): Promise<{ results: { elementId: string; settingsFingerprint: string }[]; cancelled: boolean; error?: string }> {
     if (this.manimRenderInFlight) throw new Error("A Manim render is already running.");
     this.manimRenderInFlight = true;
     try {
@@ -584,8 +614,9 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
             onOutput: (text) => log.append(text),
             onProgress: (percent) => {
               const delta = percent - reported;
-              if (delta > 0) progress.report({ increment: delta, message: `${index + 1}/${elementIds.length} ${label} ${percent}%` });
-              reported = percent;
+              if (delta > 0) progress.report({ increment: delta / elementIds.length, message: `${index + 1}/${elementIds.length} ${label} ${percent}%` });
+              reported = Math.max(reported, percent);
+              onSceneProgress?.({ elementId, index, total: elementIds.length, percent, label });
             }
           };
           const rendered = await runManimRender({

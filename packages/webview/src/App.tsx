@@ -30,7 +30,7 @@ import { railDropIndex } from "./rail";
 import { syncNamedShapes } from "./shape-batch";
 import { useDeckStore } from "./store";
 import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
-import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
+import { clearManimProgress, notifyToast, onManimProgress, onManimProgressClear, onToast, publishManimProgress, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
 import { jsPDF } from "jspdf";
 import { captureSlidePng, describeExportError, inlineImages, inlineVideos } from "./export-capture";
@@ -45,6 +45,9 @@ const pendingManimCreates = new Map<string, (message: Extract<HostToWebviewMessa
 const pendingManimScenes = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScenesListed" }>) => void>();
 const pendingManimRenders = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderResult" }>) => void>();
 const pendingManimRenderAll = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderAllResult" }>) => void>();
+const manimHostAcked = new Set<string>();
+let manimUiBusy = false;
+let manimSetupTimer = 0;
 const manimRenderedFingerprints = new Map<string, string>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
 type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
@@ -288,12 +291,23 @@ export default function App() {
     });
   };
   const renderAllManim = () => {
+    if (manimUiBusy) return;
+    manimUiBusy = true;
     const requestId = crypto.randomUUID();
-    notifyToast({ id: requestId, kind: "progress", message: "Rendering all Manim scenes…" });
+    notifyToast({ id: requestId, kind: "progress", message: "Rendering all Manim scenes…", progress: 0 });
+    const timer = window.setTimeout(() => {
+      if (manimHostAcked.has(requestId) || !pendingManimRenderAll.has(requestId)) return;
+      pendingManimRenderAll.delete(requestId);
+      manimUiBusy = false;
+      notifyToast({ id: requestId, kind: "error", message: "SlidePix did not start the render. Stop the debug session and launch SlidePix Extension again." });
+    }, 4000);
     pendingManimRenderAll.set(requestId, (message) => {
+      window.clearTimeout(timer);
+      manimUiBusy = false;
       for (const result of message.results ?? []) {
         if (result.settingsFingerprint) manimRenderedFingerprints.set(result.elementId, result.settingsFingerprint);
       }
+      clearManimProgress();
       if (message.ok) notifyToast({ id: requestId, kind: "success", message: `Rendered ${message.rendered} Manim scene${message.rendered === 1 ? "" : "s"}.` });
       else if (message.error && message.error !== "Manim render cancelled.") notifyToast({ id: requestId, kind: "error", message: message.error });
       else notifyToast({ id: requestId, kind: "dismiss" });
@@ -361,7 +375,16 @@ export default function App() {
         setManimQuality={setManimQuality}
         renderAllManim={renderAllManim}
         setupManim={() => {
+          if (manimUiBusy) return;
+          manimUiBusy = true;
           notifyToast({ id: "manim-setup", kind: "progress", message: "Opening Manim setup…" });
+          window.clearTimeout(manimSetupTimer);
+          manimHostAcked.delete("manim-setup");
+          manimSetupTimer = window.setTimeout(() => {
+            if (manimHostAcked.has("manim-setup")) return;
+            manimUiBusy = false;
+            notifyToast({ id: "manim-setup", kind: "error", message: "SlidePix did not open Manim setup. Stop the debug session and launch SlidePix Extension again." });
+          }, 4000);
           postMessage({ type: "setupManim" });
         }}
         hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
@@ -996,6 +1019,24 @@ function ManimInspector({ slideId, slideSize, element, mutate, preview, schedule
   const [scenes, setScenes] = useState<string[]>([]);
   const [contentFingerprint, setContentFingerprint] = useState<string>();
   const [rendering, setRendering] = useState(false);
+  const [renderPercent, setRenderPercent] = useState<number | null>(null);
+  useEffect(() => {
+    const stopProgress = onManimProgress((detail) => {
+      if (detail.elementId !== element.id) return;
+      if (detail.status !== "progress") {
+        setRendering(false);
+        setRenderPercent(null);
+        return;
+      }
+      setRendering(true);
+      setRenderPercent(detail.percent);
+    });
+    const stopClear = onManimProgressClear(() => {
+      setRendering(false);
+      setRenderPercent(null);
+    });
+    return () => { stopProgress(); stopClear(); };
+  }, [element.id]);
   const renderedFingerprint = manimRenderedFingerprints.get(element.id);
   const stale = Boolean(
     element.outputMedia
@@ -1055,6 +1096,7 @@ function ManimInspector({ slideId, slideSize, element, mutate, preview, schedule
     setRendering(true);
     pendingManimRenders.set(requestId, (message) => {
       setRendering(false);
+      setRenderPercent(null);
       if (message.error && message.error !== "Manim render cancelled.") return void showError(message.error);
       if (message.ok && message.settingsFingerprint) manimRenderedFingerprints.set(element.id, message.settingsFingerprint);
     });
@@ -1127,8 +1169,8 @@ function ManimInspector({ slideId, slideSize, element, mutate, preview, schedule
     </>}
     {element.outputMedia && <div className="media-source-card"><span className="storage-badge embedded">embedded</span><code title={element.outputMedia.src}>{element.outputMedia.src}</code></div>}
     <p className="panel-help manim-status">{status}</p>
-    {/* TODO: Show Manim render progress under this button, and cancel the render from here. */}
     <button className="edit-text-button" type="button" disabled={!canRender || rendering} onClick={renderScene}>{rendering ? "Rendering…" : "Render"}</button>
+    {renderPercent !== null && <progress className="manim-progress" max={100} value={renderPercent} aria-label={`Manim render ${renderPercent}%`} />}
     <CheckboxField label="Keep original aspect ratio" checked={element.lockAspectRatio} onChange={(locked) => {
       if (!locked) return updateManim((target) => { target.lockAspectRatio = false; }, false);
       updateManim((target) => {
@@ -1447,7 +1489,7 @@ function ToastStack() {
   if (!toasts.length) return null;
   return <div className="toast-stack" role="region" aria-label="Notifications">{toasts.map((toast) => <div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} key={toast.id}>
     <span className={`codicon codicon-${toast.kind === "progress" ? "loading codicon-modifier-spin" : toast.kind === "success" ? "check" : "error"}`} />
-    <span>{toast.message}</span>
+    <span className="toast-body">{toast.message}{typeof toast.progress === "number" && <progress className="toast-progress" max={100} value={toast.progress} aria-label={`${toast.progress}%`} />}</span>
     {toast.kind === "error" && <button title="Dismiss" aria-label="Dismiss notification" onClick={() => notifyToast({ id: toast.id, kind: "dismiss" })}><span className="codicon codicon-close" /></button>}
   </div>)}</div>;
 }
@@ -1548,7 +1590,15 @@ function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, 
   else if (message.type === "manimScenesListed") { pendingManimScenes.get(message.requestId)?.(message); pendingManimScenes.delete(message.requestId); }
   else if (message.type === "manimRenderResult") { pendingManimRenders.get(message.requestId)?.(message); pendingManimRenders.delete(message.requestId); }
   else if (message.type === "manimRenderAllResult") { pendingManimRenderAll.get(message.requestId)?.(message); pendingManimRenderAll.delete(message.requestId); }
-  else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message });
+  else if (message.type === "notify") {
+    manimHostAcked.add(message.notificationId);
+    if (message.notificationId === "manim-setup") {
+      window.clearTimeout(manimSetupTimer);
+      if (message.status !== "progress") manimUiBusy = false;
+    }
+    notifyToast({ id: message.notificationId, kind: message.status, message: message.message, progress: message.progress });
+    if (message.elementId) publishManimProgress({ elementId: message.elementId, status: message.status, percent: message.elementProgress ?? message.progress ?? 0 });
+  }
 }
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {

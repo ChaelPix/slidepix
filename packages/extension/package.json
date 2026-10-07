@@ -48,6 +48,10 @@
     ],
     "commands": [
       {
+        "command": "slidepix.showLog",
+        "title": "SlidePix: Show Log"
+      },
+      {
         "command": "slidepix.createDeck",
         "title": "SlidePix: Create Deck",
         "icon": "$(new-file)"
@@ -143,7 +147,7 @@
         "slidepix.manim.executable": {
           "type": "string",
           "default": "",
-          "description": "Manim launcher (for example manim, .venv/bin/manim, .venv/Scripts/manim.exe, or uv run manim). Leave empty to search a nearby virtualenv, then uv run manim. Use Set up Manim in the editor to browse for it or install uv and Manim."
+          "description": "Manim executable. Leave empty to use .venv/bin/manim or .venv/Scripts/manim.exe when that file exists. A removed virtualenv is not launched. Set up Manim can browse for manim or install uv and Manim."
         }
       }
     }

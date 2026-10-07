@@ -41,6 +41,25 @@ describe("PresentationServer navigation", () => {
     expect(html).toContain("background:#ffffff");
   });
 
+  it("reloads a connected audience without changing the session token", () => {
+    const deck = createDeck("Hot reload");
+    const server = new PresentationServer(deck, "/talks/fourier.slidepix.json");
+    const sent: string[] = [];
+    const socket = { readyState: 1, send: (message: string) => sent.push(message) };
+    (server as unknown as { sockets: Set<typeof socket> }).sockets.add(socket);
+    const token = server.token;
+    const next = createDeck("Updated");
+    next.slides.push(duplicateSlide(next.slides[0]!));
+
+    server.replaceDeck(next);
+    server.command("next");
+
+    expect(server.token).toBe(token);
+    expect(server.deck).toBe(next);
+    expect(JSON.parse(sent[0]!).type).toBe("reload");
+    expect(JSON.parse(sent[1]!).index).toBe(1);
+  });
+
   it("falls back to slide navigation when presenter control has no audience connection", () => {
     const deck = createDeck("Presenter fallback");
     deck.slides.push(duplicateSlide(deck.slides[0]!));

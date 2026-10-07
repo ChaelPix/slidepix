@@ -14,6 +14,7 @@ export function activate(context: vscode.ExtensionContext): void {
   editor.showLog();
   context.subscriptions.push(
     editor.register(),
+    vscode.commands.registerCommand("slidepix.showLog", () => editor.showLog()),
     vscode.commands.registerCommand("slidepix.createDeck", (selected?: vscode.Uri) => createDeckCommand(selected, editor)),
     vscode.commands.registerCommand("slidepix.exportPptx", () => { editor.log("command exportPptx"); return withDeck(editor, (deck, document) => exportPptx(context, deck, document.uri.fsPath)); }),
     vscode.commands.registerCommand("slidepix.exportWeb", () => { editor.log("command exportWeb"); return withDeck(editor, (deck, document) => exportWeb(deck, document.uri.fsPath)); }),

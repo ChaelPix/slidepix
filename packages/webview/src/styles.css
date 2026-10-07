@@ -421,6 +421,11 @@ button:disabled { opacity: .45; cursor: default; }
 .toast.error > .codicon { color: var(--vscode-errorForeground); }
 .toast.progress > .codicon { color: var(--vscode-progressBar-background); }
 .toast button { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; }
+.toast-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+progress.toast-progress, progress.manim-progress { width: 100%; height: 6px; margin: 0; appearance: none; border: 0; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--vscode-foreground) 18%, transparent); }
+progress.manim-progress { margin-top: 8px; }
+progress.toast-progress::-webkit-progress-bar, progress.manim-progress::-webkit-progress-bar { background: transparent; }
+progress.toast-progress::-webkit-progress-value, progress.manim-progress::-webkit-progress-value { background: var(--vscode-progressBar-background, #0e70c0); border-radius: 99px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: #0009; }
 .text-editor { width: min(980px, 90vw); height: min(760px, 90vh); display: grid; grid-template-rows: 48px minmax(180px, 1fr) minmax(180px, .85fr) 34px; padding: 10px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); box-shadow: 0 20px 80px #000; }

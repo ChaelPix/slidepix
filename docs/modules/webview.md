@@ -115,10 +115,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   Manim uses the same pattern: **Still image** or **Video** inserts a centered
   box and opens Manim properties for script, scene, quality, and **Render**.
   **Render all** renders every Manim element that has a script and a scene and
-  shows a progress toast immediately. **Quality** entries set that quality on
+  shows a progress toast with a bar for the whole batch. The Manim properties
+  panel of the scene currently rendering shows that scene's bar under
+  **Render**. **Quality** entries set that quality on
   every Manim image and video. **Set up Manim…** opens a quick pick to locate
-  or install Manim. Progress under
-  the element **Render** button, and cancelling from that button, are not
+  or install Manim. Cancelling from the element **Render** button is not
   implemented yet.
   Until a render exists, image and video Manim elements both show the same
   bordered placeholder with the linked `.py` filename centered in the box.

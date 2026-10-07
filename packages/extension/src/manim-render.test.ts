@@ -7,7 +7,9 @@ import {
   findUvWorkspaceRoot,
   findVenvManimNear,
   formatManimLogChunk,
+  manimDeckStem,
   manimOutputBasename,
+  manimSpawnFailure,
   parseManimProgress,
   resolveManimLaunch,
   scriptContentFingerprint,
@@ -103,14 +105,17 @@ class Outro(MovingCameraScene):
       command: "uv",
       args: ["run", "manim"]
     });
+    const venvOnly = (target: string) => target === "/repo/.venv";
+    expect(resolveManimLaunch("/repo/examples/demo.slidepix.json", "", venvOnly)).toEqual({ command: "manim", args: [] });
     const windows = (target: string) => target === path.join("/repo", ".venv", "Scripts", "manim.exe");
     expect(findVenvManimNear("/repo/examples", windows)).toBe(path.join("/repo", ".venv", "Scripts", "manim.exe"));
   });
 
   it("names output after the scene, then the slide", () => {
-    expect(manimOutputBasename("HarmonicsStill", "Harmoniques")).toBe("HarmonicsStill");
-    expect(manimOutputBasename(undefined, "Créneau")).toBe("Creneau");
-    expect(manimOutputBasename("HarmonicsStill", "Harmoniques", ["HarmonicsStill"])).toBe("Harmoniques-HarmonicsStill");
+    expect(manimDeckStem("/talks/fourier.slidepix.json")).toBe("fourier");
+    expect(manimOutputBasename("fourier", "Harmoniques", "HarmonicsStill")).toBe("fourier-Harmoniques-HarmonicsStill");
+    expect(manimOutputBasename("fourier", "Créneau", undefined)).toBe("fourier-Creneau");
+    expect(manimOutputBasename("fourier", "Harmoniques", "HarmonicsStill", ["fourier-Harmoniques-HarmonicsStill"])).toBe("fourier-Harmoniques-HarmonicsStill-2");
   });
 
   it("reads manim progress and strips carriage returns", () => {
@@ -118,6 +123,7 @@ class Outro(MovingCameraScene):
     expect(formatManimLogChunk("partial\rdone\n")).toBe("partial\ndone\n");
     expect(uvInstallCommand("win32").command).toBe("powershell.exe");
     expect(uvInstallCommand("darwin").args.join(" ")).toContain("astral.sh/uv/install.sh");
+    expect(manimSpawnFailure("error: Failed to spawn `manim`\nCaused by: No such file or directory (os error 2)")).toBe(true);
   });
 
   it("fingerprints script content deterministically", () => {

@@ -17,13 +17,16 @@ export class PresentationServer {
   private index = 0;
   readonly token = crypto.randomUUID();
   port = 0;
+  deck: Deck;
 
   constructor(
-    readonly deck: Deck,
+    deck: Deck,
     readonly deckPath: string,
     private readonly onState?: (index: number) => void,
     private readonly allowedLinkedRoots: string[] = []
-  ) {}
+  ) {
+    this.deck = deck;
+  }
 
   async start(): Promise<void> {
     if (this.server) return;
@@ -50,6 +53,21 @@ export class PresentationServer {
 
   url(pathname: string): string {
     return `http://127.0.0.1:${this.port}${pathname}?token=${encodeURIComponent(this.token)}`;
+  }
+
+  isRunning(): boolean {
+    return Boolean(this.server?.listening);
+  }
+
+  hasAudience(): boolean {
+    return [...this.sockets].some((socket) => socket.readyState === 1);
+  }
+
+  /** Keep the same port and token, then ask open audience pages to reload. */
+  replaceDeck(deck: Deck): void {
+    this.deck = deck;
+    const message = JSON.stringify({ type: "reload" });
+    for (const socket of this.sockets) if (socket.readyState === 1) socket.send(message);
   }
 
   command(command: "next" | "previous" | "first" | "last"): void {
@@ -122,7 +140,7 @@ export class PresentationServer {
 }
 
 function audienceBridge(port: number, token: string): string {
-  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='state')window.slidepixShow?.(m.index,m.animationState);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
+  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='reload'){location.reload();return}if(m.type==='state')window.slidepixShow?.(m.index,m.animationState);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
 }
 
 export function renderPresenterFrame(deck: Deck, index: number, resolveAsset: AssetResolver = (value) => value): string {

@@ -11,7 +11,7 @@ import {
   type ManimElement
 } from "@slidepix/core";
 import { resolveMediaPath } from "@slidepix/core/assets";
-import { buildManimArgv, discoverManimScenes, findRenderedMedia, formatManimLogChunk, manimOutputBasename, parseManimProgress, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
+import { buildManimArgv, discoverManimScenes, findRenderedMedia, formatManimLogChunk, manimDeckStem, manimOutputBasename, manimSpawnFailure, parseManimProgress, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
 
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
@@ -94,7 +94,7 @@ export async function runManimRender(options: {
   }
 
   const mediaDir = await mkdtemp(path.join(os.tmpdir(), "slidepix-manim-"));
-  const outputName = manimOutputBasename(element.scene, slideTitle, options.takenStems ?? []);
+  const outputName = manimOutputBasename(manimDeckStem(deckPath), slideTitle, element.scene, options.takenStems ?? []);
   const invocation = buildManimArgv(launch, {
     scriptPath: absolutePath,
     scene: element.scene,
@@ -172,7 +172,12 @@ async function execManim(invocation: ManimLaunch, hooks: ManimRenderHooks = {}):
     child.on("close", (code) => {
       if (hooks.signal?.aborted) finish(new ManimCancelled());
       else if (code === 0) finish();
-      else finish(new Error(tail.trim() || `Manim exited with code ${code ?? "unknown"}.`));
+      else {
+        const detail = tail.trim();
+        finish(new Error(manimSpawnFailure(detail)
+          ? "Manim is not installed. The virtualenv is missing or does not contain manim. Use Set up Manim to install it."
+          : detail || `Manim exited with code ${code ?? "unknown"}.`));
+      }
     });
   });
 }
