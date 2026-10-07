@@ -23,10 +23,10 @@ import {
   ManimCancelled,
   relativeDeckReference,
   runManimRender,
-  takenManimOutputStems,
-  type ManimRenderHooks
+  takenManimOutputStems
 } from "./manim-host";
 import { ensureManimLaunch, promptManimSetup } from "./manim-setup";
+import { assignManimBasenames, manimDeckStem } from "./manim-render";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -34,6 +34,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly panels = new Map<string, Set<vscode.WebviewPanel>>();
   private readonly sessions = new Map<string, PresentationServer>();
   private readonly presenterPanels = new Map<string, vscode.WebviewPanel>();
+  private readonly presentationReloads = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly histories = new Map<string, DocumentHistory>();
   private activeDocument?: vscode.TextDocument;
   private outputChannel?: vscode.OutputChannel;
@@ -68,9 +69,10 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   register(): vscode.Disposable {
     const provider = vscode.window.registerCustomEditorProvider(VIEW_TYPE, this, { supportsMultipleEditorsPerDocument: true, webviewOptions: { retainContextWhenHidden: true } });
     const changes = vscode.workspace.onDidChangeTextDocument((event) => this.updatePanels(event.document));
+    const saves = vscode.workspace.onDidSaveTextDocument((document) => this.schedulePresentationReload(document.uri.toString(), true));
     const tabs = vscode.window.tabGroups.onDidChangeTabs((event) => { for (const tab of [...event.opened, ...event.changed]) this.watchTab(tab); });
     for (const group of vscode.window.tabGroups.all) for (const tab of group.tabs) this.watchTab(tab);
-    return vscode.Disposable.from(provider, changes, tabs, this.recovery, { dispose: () => { for (const session of this.sessions.values()) session.dispose(); } });
+    return vscode.Disposable.from(provider, changes, saves, tabs, this.recovery, { dispose: () => { for (const timer of this.presentationReloads.values()) clearTimeout(timer); for (const session of this.sessions.values()) session.dispose(); } });
   }
 
   async resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
@@ -129,7 +131,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     running?.dispose();
     const session = new PresentationServer(parsed.deck, document.uri.fsPath, (index) => {
       this.presenterPanels.get(key)?.webview.postMessage({ type: "state", index });
-    }, linkedRoots(document));
+    }, linkedRoots(document), () => this.deckForPresentation(key, document.uri.fsPath));
     await session.start();
     this.sessions.set(key, session);
     if (presenter) this.attachPresenter(key, session, parsed.deck);
@@ -159,10 +161,37 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (session?.isRunning()) {
       const parsed = parseDeckText(document.getText());
       if (parsed.ok) session.deck = parsed.deck;
+      this.schedulePresentationReload(key);
     }
     const set = this.panels.get(key);
     if (!set) return;
     for (const panel of set) this.postDeck(document, panel);
+  }
+
+  private schedulePresentationReload(key: string, immediate = false): void {
+    const session = this.sessions.get(key);
+    if (!session?.isRunning()) return;
+    const pending = this.presentationReloads.get(key);
+    if (pending) clearTimeout(pending);
+    const reload = () => {
+      this.presentationReloads.delete(key);
+      if (session.isRunning()) session.reloadAudience();
+    };
+    if (immediate) reload();
+    else this.presentationReloads.set(key, setTimeout(reload, 400));
+  }
+
+  private async deckForPresentation(key: string, deckPath: string): Promise<Deck | undefined> {
+    const open = vscode.workspace.textDocuments.find((item) => item.uri.toString() === key);
+    const buffer = open ? parseDeckText(open.getText()) : undefined;
+    let saved: Deck | undefined;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(deckPath));
+      const parsed = parseDeckText(Buffer.from(bytes).toString("utf8"));
+      if (parsed.ok) saved = parsed.deck;
+    } catch { /* the deck may not be on disk yet */ }
+    if (open?.isDirty && buffer?.ok) return buffer.deck;
+    return saved ?? (buffer?.ok ? buffer.deck : undefined);
   }
 
   private postDeck(document: vscode.TextDocument, panel: vscode.WebviewPanel): void {
@@ -514,7 +543,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     await notify("progress", "Rendering Manim…", 0, message.elementId, 0);
     try {
       const rendered = await this.renderManimElements(document, [message.elementId], (update) => {
-        void notify("progress", `Rendering ${update.label}… ${update.percent}%`, update.percent, update.elementId, update.percent);
+        void notify("progress", `Rendering ${update.label}… ${update.percent}%`, update.overall, update.elementId, update.percent);
       });
       if (rendered.cancelled) throw new ManimCancelled();
       if (rendered.error) throw new Error(rendered.error);
@@ -562,8 +591,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     }
     try {
       const rendered = await this.renderManimElements(document, ready, (update) => {
-        const overall = Math.round(((update.index + update.percent / 100) / update.total) * 100);
-        void panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status: "progress", message: `Rendering ${update.index + 1}/${update.total} Manim scenes… ${update.label}`, progress: overall, elementId: update.elementId, elementProgress: update.percent } satisfies HostToWebviewMessage);
+        void panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status: "progress", message: `Rendering ${update.total} Manim scenes… ${update.overall}%`, progress: update.overall, elementId: update.elementId, elementProgress: update.percent } satisfies HostToWebviewMessage);
       });
       response.rendered = rendered.results.length;
       response.results = rendered.results;
@@ -577,7 +605,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     await panel.webview.postMessage(response);
   }
 
-  private async renderManimElements(document: vscode.TextDocument, elementIds: string[], onSceneProgress?: (update: { elementId: string; index: number; total: number; percent: number; label: string }) => void): Promise<{ results: { elementId: string; settingsFingerprint: string }[]; cancelled: boolean; error?: string }> {
+  private async renderManimElements(document: vscode.TextDocument, elementIds: string[], onSceneProgress?: (update: { elementId: string; index: number; total: number; percent: number; overall: number; label: string }) => void): Promise<{ results: { elementId: string; settingsFingerprint: string }[]; cancelled: boolean; error?: string }> {
     if (this.manimRenderInFlight) throw new Error("A Manim render is already running.");
     this.manimRenderInFlight = true;
     try {
@@ -585,10 +613,33 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     log.channel.show(true);
     const launch = await this.manimLaunch(document);
     if (!launch) return { results: [], cancelled: false, error: "Manim setup was dismissed." };
+    const started = parseDeckText(document.getText());
+    if (!started.ok) return { results: [], cancelled: false, error: started.message };
+    const jobs = elementIds.flatMap((elementId) => {
+      const located = findManimElement(started.deck, elementId);
+      if (!located) return [];
+      const ownSource = located.element.outputMedia?.src;
+      return [{
+        elementId,
+        located,
+        label: located.element.scene || located.element.script || elementId,
+        ownStem: ownSource ? path.basename(ownSource).replace(/\.[^.]+$/, "") : undefined
+      }];
+    });
+    if (!jobs.length) return { results: [], cancelled: false, error: "Manim element not found." };
+    const deckName = manimDeckStem(document.uri.fsPath);
+    const basenames = assignManimBasenames(jobs.map((job) => ({
+      id: job.elementId,
+      deckName,
+      slideTitle: started.deck.slides[job.located.slideIndex]?.title ?? "",
+      scene: job.located.element.scene,
+      ownStem: job.ownStem
+    })), takenManimOutputStems(started.deck, ""));
     const results: { elementId: string; settingsFingerprint: string }[] = [];
+    const failures: string[] = [];
     let cancelled = false;
-    let reported = 0;
-    let failure: string | undefined;
+    const percents = jobs.map(() => 0);
+    let reportedOverall = 0;
     try {
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
@@ -596,59 +647,66 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       cancellable: true
     }, async (progress, token) => {
       const signal = abortFrom(token);
-      try {
-        for (const [index, elementId] of elementIds.entries()) {
-          if (signal.aborted) throw new ManimCancelled();
-          const baseText = document.getText();
-          const baseRevision = revisionForText(baseText);
-          const parsed = parseDeckText(baseText);
-          if (!parsed.ok) throw new Error(parsed.message);
-          const located = findManimElement(parsed.deck, elementId);
-          if (!located) throw new Error("Manim element not found.");
-          const label = located.element.scene || located.element.script || elementId;
-          reported = 0;
-          progress.report({ message: `${index + 1}/${elementIds.length} ${label}` });
-          log.append(`\n--- ${label} ---\n`);
-          const hooks: ManimRenderHooks = {
-            signal,
-            onOutput: (text) => log.append(text),
-            onProgress: (percent) => {
-              const delta = percent - reported;
-              if (delta > 0) progress.report({ increment: delta / elementIds.length, message: `${index + 1}/${elementIds.length} ${label} ${percent}%` });
-              reported = Math.max(reported, percent);
-              onSceneProgress?.({ elementId, index, total: elementIds.length, percent, label });
-            }
-          };
+      progress.report({ message: jobs.length > 1 ? `${jobs.length} scenes in parallel` : jobs[0]!.label });
+      const settled = await Promise.all(jobs.map(async (job, index) => {
+        if (signal.aborted) return { cancelled: true as const };
+        const outputBasename = basenames.get(job.elementId);
+        log.append(`\n--- ${job.label} ---\n`);
+        try {
           const rendered = await runManimRender({
             deckPath: document.uri.fsPath,
-            element: located.element,
-            slideTitle: parsed.deck.slides[located.slideIndex]?.title ?? "",
+            element: job.located.element,
+            slideTitle: started.deck.slides[job.located.slideIndex]?.title ?? "",
             launch,
             allowedLinkedRoots: linkedRoots(document),
-            takenStems: takenManimOutputStems(parsed.deck, elementId),
-            hooks
+            outputBasename,
+            hooks: {
+              signal,
+              onOutput: (text) => {
+                for (const line of text.split("\n")) if (line) log.append(`[${job.label}] ${line}\n`);
+              },
+              onProgress: (percent) => {
+                percents[index] = percent;
+                const overall = Math.round(percents.reduce((sum, value) => sum + value, 0) / jobs.length);
+                const delta = overall - reportedOverall;
+                if (delta > 0) progress.report({ increment: delta, message: `${job.label} ${percent}%` });
+                reportedOverall = Math.max(reportedOverall, overall);
+                onSceneProgress?.({ elementId: job.elementId, index, total: jobs.length, percent, overall, label: job.label });
+              }
+            }
           });
           const embeddedReference = await storeNamedAsset(document.uri.fsPath, rendered.bytes, rendered.fileName);
-          applyManimRender(parsed.deck, elementId, embeddedReference);
-          if (!await replaceDocument(document, serializeDeck(parsed.deck), baseRevision)) {
-            throw new Error("The deck changed while Manim was rendering. Retry after reviewing the latest deck.");
-          }
-          this.recordHistory(document.uri, baseText, document.getText());
-          results.push({ elementId, settingsFingerprint: rendered.settingsFingerprint });
-          log.append(`Embedded ${embeddedReference}\n`);
+          log.append(`[${job.label}] Embedded ${embeddedReference}\n`);
+          return { ok: true as const, elementId: job.elementId, embeddedReference, settingsFingerprint: rendered.settingsFingerprint };
+        } catch (error) {
+          if (error instanceof ManimCancelled || signal.aborted) return { cancelled: true as const };
+          const message = error instanceof Error ? error.message : "Manim render failed.";
+          log.append(`[${job.label}] ${message}\n`);
+          return { ok: false as const, label: job.label, message };
         }
-      } catch (error) {
-        if (error instanceof ManimCancelled) {
-          cancelled = true;
-          return;
-        }
-        throw error;
+      }));
+      const succeeded = settled.flatMap((item) => "ok" in item && item.ok ? [item] : []);
+      for (const item of settled) {
+        if ("cancelled" in item) cancelled = true;
+        if ("ok" in item && !item.ok) failures.push(`${item.label}: ${item.message}`);
       }
+      if (!succeeded.length) return;
+      const latestText = document.getText();
+      const latestRevision = revisionForText(latestText);
+      const latest = parseDeckText(latestText);
+      if (!latest.ok) throw new Error(latest.message);
+      for (const item of succeeded) applyManimRender(latest.deck, item.elementId, item.embeddedReference);
+      if (!await replaceDocument(document, serializeDeck(latest.deck), latestRevision)) {
+        throw new Error("The deck changed while Manim was rendering. Retry after reviewing the latest deck.");
+      }
+      this.recordHistory(document.uri, latestText, document.getText());
+      for (const item of succeeded) results.push({ elementId: item.elementId, settingsFingerprint: item.settingsFingerprint });
     });
     } catch (error) {
-      failure = error instanceof Error ? error.message : "Manim render failed.";
+      if (error instanceof ManimCancelled) cancelled = true;
+      else failures.push(error instanceof Error ? error.message : "Manim render failed.");
     }
-    return { results, cancelled, error: failure };
+    return { results, cancelled, error: failures.length ? failures.join("\n") : undefined };
     } finally {
       this.manimRenderInFlight = false;
     }

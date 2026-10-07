@@ -42,9 +42,9 @@ Chrome or Microsoft Edge already installed on the machine.
 4. In the new Extension Development Host, run **SlidePix: Create Deck**.
 5. After source changes, run `pnpm build` again and reload the development host.
 
-`pnpm dev` watches the webview and extension bundles, but the Extension
-Development Host may still require **Developer: Reload Window** to load a new
-extension bundle.
+`pnpm dev` watches the webview and the `slidepix` extension bundle. The
+Extension Development Host still needs **Developer: Reload Window** to load a
+new `dist/extension.cjs`.
 
 ## Verification by change type
 

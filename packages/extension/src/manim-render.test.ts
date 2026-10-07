@@ -7,6 +7,7 @@ import {
   findUvWorkspaceRoot,
   findVenvManimNear,
   formatManimLogChunk,
+  assignManimBasenames,
   manimDeckStem,
   manimOutputBasename,
   manimSpawnFailure,
@@ -116,6 +117,19 @@ class Outro(MovingCameraScene):
     expect(manimOutputBasename("fourier", "Harmoniques", "HarmonicsStill")).toBe("fourier-Harmoniques-HarmonicsStill");
     expect(manimOutputBasename("fourier", "Créneau", undefined)).toBe("fourier-Creneau");
     expect(manimOutputBasename("fourier", "Harmoniques", "HarmonicsStill", ["fourier-Harmoniques-HarmonicsStill"])).toBe("fourier-Harmoniques-HarmonicsStill-2");
+    expect(assignManimBasenames([
+      { id: "a", deckName: "fourier", slideTitle: "Harmoniques", scene: "HarmonicsStill", ownStem: "fourier-Harmoniques-HarmonicsStill" },
+      { id: "b", deckName: "fourier", slideTitle: "Créneau", scene: "RectPulse" }
+    ], ["fourier-Harmoniques-HarmonicsStill"])).toEqual(new Map([
+      ["a", "fourier-Harmoniques-HarmonicsStill"],
+      ["b", "fourier-Creneau-RectPulse"]
+    ]));
+    const shared = assignManimBasenames([
+      { id: "new", deckName: "fourier", slideTitle: "Créneau", scene: "RectPulse" },
+      { id: "owner", deckName: "fourier", slideTitle: "Créneau", scene: "RectPulse", ownStem: "fourier-Creneau-RectPulse" }
+    ], ["fourier-Creneau-RectPulse"]);
+    expect(shared.get("owner")).toBe("fourier-Creneau-RectPulse");
+    expect(shared.get("new")).toBe("fourier-Creneau-RectPulse-2");
   });
 
   it("reads manim progress and strips carriage returns", () => {

@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { URL } from "node:url";
@@ -23,7 +24,8 @@ export class PresentationServer {
     deck: Deck,
     readonly deckPath: string,
     private readonly onState?: (index: number) => void,
-    private readonly allowedLinkedRoots: string[] = []
+    private readonly allowedLinkedRoots: string[] = [],
+    private readonly loadDeck?: () => Promise<Deck | undefined> | Deck | undefined
   ) {
     this.deck = deck;
   }
@@ -66,8 +68,31 @@ export class PresentationServer {
   /** Keep the same port and token, then ask open audience pages to reload. */
   replaceDeck(deck: Deck): void {
     this.deck = deck;
-    const message = JSON.stringify({ type: "reload" });
+    this.clampIndex();
+    this.reloadAudience();
+  }
+
+  reloadAudience(): void {
+    const message = JSON.stringify({ type: "reload", rev: Date.now() });
     for (const socket of this.sockets) if (socket.readyState === 1) socket.send(message);
+  }
+
+  private clampIndex(): void {
+    const count = this.deck.slides.filter((slide) => !slide.hidden).length;
+    this.index = count === 0 ? 0 : Math.min(this.index, count - 1);
+  }
+
+  /** Replace the startup snapshot with the deck the host considers current. */
+  async adoptLatestDeck(): Promise<void> {
+    if (!this.loadDeck) return;
+    try {
+      const loaded = await this.loadDeck();
+      if (!loaded) return;
+      this.deck = loaded;
+      this.clampIndex();
+    } catch {
+      // Keep the last good deck when the saved file cannot be read.
+    }
   }
 
   command(command: "next" | "previous" | "first" | "last"): void {
@@ -110,6 +135,7 @@ export class PresentationServer {
     const url = new URL(rawUrl, "http://127.0.0.1");
     if (url.searchParams.get("token") !== this.token) return send(response, 403, "text/plain", "Forbidden");
     try {
+      if (!url.pathname.startsWith("/asset/")) await this.adoptLatestDeck();
       if (url.pathname.startsWith("/asset/")) {
         const reference = decodeURIComponent(url.pathname.slice("/asset/".length));
         const storage: MediaStorage = url.searchParams.get("storage") === "linked" ? "linked" : "embedded";
@@ -118,7 +144,15 @@ export class PresentationServer {
         const bytes = await readFile(filePath);
         return send(response, 200, MIME[extname(filePath).toLowerCase()] ?? "application/octet-stream", bytes);
       }
-      const asset: AssetResolver = (reference, storage) => `${this.url(`/asset/${encodeURIComponent(reference)}`)}&storage=${storage}`;
+      const roots = this.allowedLinkedRoots.length ? this.allowedLinkedRoots : undefined;
+      const asset: AssetResolver = (reference, storage) => {
+        const storageMode = storage === "linked" ? "linked" : "embedded";
+        let version = "0";
+        try {
+          version = String(statSync(resolveMediaPath(this.deckPath, reference, storageMode, roots)).mtimeMs);
+        } catch { /* a missing file keeps a stable url */ }
+        return `${this.url(`/asset/${encodeURIComponent(reference)}`)}&storage=${storageMode}&v=${version}`;
+      };
       if (url.pathname === "/audience") {
         const html = renderDeckDocument(this.deck, asset, { mode: "present" }).replace("</body>", `${audienceBridge(this.port, this.token)}</body>`);
         return send(response, 200, "text/html; charset=utf-8", html);
@@ -140,7 +174,7 @@ export class PresentationServer {
 }
 
 function audienceBridge(port: number, token: string): string {
-  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='reload'){location.reload();return}if(m.type==='state')window.slidepixShow?.(m.index,m.animationState);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
+  return `<script>(function(){const socket=new WebSocket('ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}');function command(c){if(c==='next'&&window.slidepixAdvance?.())return;socket.send(JSON.stringify({type:'command',command:c}))}socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='reload'){const next=new URL(location.href);next.searchParams.set('rev',String(m.rev||Date.now()));location.replace(next.href);return}if(m.type==='state')window.slidepixShow?.(m.index,m.animationState);if(m.type==='control')command(m.command)};addEventListener('keydown',e=>{const c=['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)?'next':['ArrowLeft','ArrowUp','PageUp'].includes(e.key)?'previous':null;if(c){e.preventDefault();command(c)}});addEventListener('click',()=>command('next'))})();</script>`;
 }
 
 export function renderPresenterFrame(deck: Deck, index: number, resolveAsset: AssetResolver = (value) => value): string {
@@ -163,7 +197,9 @@ function cssValue(value: string): string {
 function send(response: import("node:http").ServerResponse, status: number, contentType: string, body: string | Uint8Array): void {
   response.writeHead(status, {
     "Content-Type": contentType,
-    "Cache-Control": "no-store",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
     "X-Content-Type-Options": "nosniff",
     "Access-Control-Allow-Origin": "*"
   });

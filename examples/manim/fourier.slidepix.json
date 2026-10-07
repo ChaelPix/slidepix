@@ -66,7 +66,7 @@
         {
           "id": "ft01-title",
           "morphKey": "ft01-title",
-          "x": 112,
+          "x": 114,
           "y": 330,
           "width": 1680,
           "height": 220,
@@ -246,7 +246,7 @@
           "quality": "medium",
           "transparent": false,
           "outputMedia": {
-            "src": "d5f8d8f87e73acac0c371218a22783c5dd9b25c26a5e4e7396f594c8338323b4.png",
+            "src": "HarmonicsStill.png",
             "storage": "embedded"
           },
           "lockAspectRatio": true,
@@ -321,7 +321,7 @@
           "quality": "medium",
           "transparent": false,
           "outputMedia": {
-            "src": "d0535f4a57ae02fcb2faf5fbe7ac2840f51ce0a48a989a5a720086535fc6dd1e.mp4",
+            "src": "BuildSquare.mp4",
             "storage": "embedded"
           },
           "lockAspectRatio": true,
@@ -422,7 +422,7 @@
           "quality": "medium",
           "transparent": false,
           "outputMedia": {
-            "src": "ab1134fe0269d1f59e886dfe6de39c1a7d76ae41b9c9735414262324e4b81555.mp4",
+            "src": "TimeToFrequency.mp4",
             "storage": "embedded"
           },
           "lockAspectRatio": true,
@@ -576,7 +576,7 @@
           "x": 36,
           "y": 140,
           "width": 1140,
-          "height": 641,
+          "height": 641.25,
           "rotation": 0,
           "opacity": 1,
           "z": 1,
@@ -588,10 +588,10 @@
           "scene": "RectPulse",
           "output": "video",
           "orientation": "horizontal",
-          "quality": "medium",
+          "quality": "low",
           "transparent": false,
           "outputMedia": {
-            "src": "bafa6e50e8c6252936fd960eb995c00f253e44d5b13e5bdd2d522e3edfd65a7c.mp4",
+            "src": "RectPulse.mp4",
             "storage": "embedded"
           },
           "lockAspectRatio": true,
@@ -692,7 +692,7 @@
           "quality": "medium",
           "transparent": false,
           "outputMedia": {
-            "src": "6429d7a6a1d4ae3c2084a9637c69ffb46f3f9de89a92cfdff776023d8975a488.mp4",
+            "src": "EpicycleDraw.mp4",
             "storage": "embedded"
           },
           "lockAspectRatio": true,

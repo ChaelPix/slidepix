@@ -82,6 +82,7 @@ export async function runManimRender(options: {
   launch: ManimLaunch;
   allowedLinkedRoots: string[];
   takenStems?: readonly string[];
+  outputBasename?: string;
   hooks?: ManimRenderHooks;
 }): Promise<{ bytes: Uint8Array; fileName: string; settingsFingerprint: string }> {
   const { deckPath, element, slideTitle, launch, allowedLinkedRoots, hooks } = options;
@@ -94,7 +95,7 @@ export async function runManimRender(options: {
   }
 
   const mediaDir = await mkdtemp(path.join(os.tmpdir(), "slidepix-manim-"));
-  const outputName = manimOutputBasename(manimDeckStem(deckPath), slideTitle, element.scene, options.takenStems ?? []);
+  const outputName = options.outputBasename ?? manimOutputBasename(manimDeckStem(deckPath), slideTitle, element.scene, options.takenStems ?? []);
   const invocation = buildManimArgv(launch, {
     scriptPath: absolutePath,
     scene: element.scene,

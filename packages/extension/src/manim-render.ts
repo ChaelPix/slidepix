@@ -144,6 +144,24 @@ export function manimDeckStem(deckPath: string): string {
   return path.basename(deckPath).replace(/\.slidepix\.json$/i, "");
 }
 
+/** Reserve one stable stem per element. An element reuses its own current stem; other reserved names get a numeric suffix. */
+export function assignManimBasenames(
+  entries: { id: string; deckName: string; slideTitle: string; scene?: string; ownStem?: string }[],
+  usedStems: readonly string[]
+): Map<string, string> {
+  const reserved = usedStems.filter((stem) => !entries.some((entry) => entry.ownStem === stem));
+  const planned = new Map<string, string>();
+  const ownersFirst = [...entries.filter((entry) => entry.ownStem), ...entries.filter((entry) => !entry.ownStem)];
+  for (const entry of ownersFirst) {
+    const name = manimOutputBasename(entry.deckName, entry.slideTitle, entry.scene, reserved);
+    planned.set(entry.id, name);
+    reserved.push(name);
+  }
+  const names = new Map<string, string>();
+  for (const entry of entries) names.set(entry.id, planned.get(entry.id)!);
+  return names;
+}
+
 /** Stable `deck-slide-scene` stem. A name already used by another element gets a numeric suffix. */
 export function manimOutputBasename(deckName: string, slideTitle: string, scene: string | undefined, taken: readonly string[] = []): string {
   const parts = [deckName, slideTitle, scene ?? ""].map((part) => sanitizeManimFileStem(part)).filter(Boolean);

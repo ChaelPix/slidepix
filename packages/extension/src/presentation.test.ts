@@ -60,6 +60,19 @@ describe("PresentationServer navigation", () => {
     expect(JSON.parse(sent[1]!).index).toBe(1);
   });
 
+  it("serves the saved deck instead of the snapshot taken when Present started", async () => {
+    const stale = createDeck("Stale");
+    const saved = createDeck("Saved");
+    saved.slides.push(duplicateSlide(saved.slides[0]!));
+    const server = new PresentationServer(stale, "/talks/fourier.slidepix.json", undefined, [], async () => saved);
+
+    await server.adoptLatestDeck();
+    server.command("next");
+
+    expect(server.deck.slides).toHaveLength(2);
+    expect(server.deck.metadata.title).toBe("Saved");
+  });
+
   it("falls back to slide navigation when presenter control has no audience connection", () => {
     const deck = createDeck("Presenter fallback");
     deck.slides.push(duplicateSlide(deck.slides[0]!));

@@ -114,7 +114,7 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - The Insert ribbon's Shape control uses the same themed dropdown as Export.
   Manim uses the same pattern: **Still image** or **Video** inserts a centered
   box and opens Manim properties for script, scene, quality, and **Render**.
-  **Render all** renders every Manim element that has a script and a scene and
+  **Render all** renders every ready Manim scene at the same time and
   shows a progress toast with a bar for the whole batch. The Manim properties
   panel of the scene currently rendering shows that scene's bar under
   **Render**. **Quality** entries set that quality on
