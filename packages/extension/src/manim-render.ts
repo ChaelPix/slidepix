@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import type { ManimElement, ManimOrientation, ManimQuality } from "@slidepix/core";
 import {
@@ -183,6 +184,57 @@ export function parseManimProgress(text: string): number | undefined {
   if (!last) return undefined;
   const value = Number(last);
   return value >= 0 && value <= 100 ? value : undefined;
+}
+
+/** Keep diagnostic lines. Progress ticks stay out of the log so a full pipe cannot stall the other renders. */
+export function splitManimOutput(chunk: string): { log: string; percent?: number } {
+  const text = formatManimLogChunk(chunk);
+  const percent = parseManimProgress(text);
+  const log = text.split("\n").filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (/\d{1,3}%/.test(trimmed) && !/\b(error|traceback|warning|exception)\b/i.test(trimmed)) return false;
+    return true;
+  }).join("\n");
+  return { log, percent };
+}
+
+/** One math thread per process, so each scene can occupy a different core. */
+export function manimProcessEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return {
+    ...base,
+    PYTHONUNBUFFERED: "1",
+    TERM: "dumb",
+    FORCE_COLOR: "0",
+    OMP_NUM_THREADS: "1",
+    OPENBLAS_NUM_THREADS: "1",
+    MKL_NUM_THREADS: "1",
+    VECLIB_MAXIMUM_THREADS: "1",
+    NUMEXPR_NUM_THREADS: "1"
+  };
+}
+
+export function manimRenderConcurrency(sceneCount: number, cores = os.availableParallelism()): number {
+  const scenes = Math.max(0, Math.floor(sceneCount));
+  const width = Math.max(1, Math.floor(cores));
+  return Math.max(1, Math.min(scenes || 1, width));
+}
+
+export async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const run = async (): Promise<void> => {
+    while (next < items.length) {
+      const current = next;
+      next += 1;
+      const item = items[current];
+      if (item === undefined) return;
+      results[current] = await worker(item, current);
+    }
+  };
+  const workers = Math.max(1, Math.min(items.length, Math.floor(limit) || 1));
+  await Promise.all(Array.from({ length: workers }, () => run()));
+  return results;
 }
 
 export function uvInstallCommand(platform: NodeJS.Platform): { command: string; args: string[] } {

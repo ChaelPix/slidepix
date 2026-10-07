@@ -10,6 +10,10 @@ import {
   assignManimBasenames,
   manimDeckStem,
   manimOutputBasename,
+  manimProcessEnv,
+  manimRenderConcurrency,
+  mapWithConcurrency,
+  splitManimOutput,
   manimSpawnFailure,
   parseManimProgress,
   resolveManimLaunch,
@@ -130,6 +134,26 @@ class Outro(MovingCameraScene):
     ], ["fourier-Creneau-RectPulse"]);
     expect(shared.get("owner")).toBe("fourier-Creneau-RectPulse");
     expect(shared.get("new")).toBe("fourier-Creneau-RectPulse-2");
+  });
+
+  it("drops progress ticks from the log and keeps one math thread per process", () => {
+    expect(splitManimOutput("Animation 0: 45%|###\r")).toEqual({ log: "", percent: 45 });
+    expect(splitManimOutput("Traceback (most recent call last):\nError: boom\n").log).toContain("Traceback");
+    expect(manimProcessEnv({ PATH: "/usr/bin" })).toMatchObject({ PATH: "/usr/bin", OMP_NUM_THREADS: "1", VECLIB_MAXIMUM_THREADS: "1" });
+    expect(manimRenderConcurrency(5, 8)).toBe(5);
+    expect(manimRenderConcurrency(20, 8)).toBe(8);
+  });
+
+  it("runs at most the requested number of workers at once", async () => {
+    let active = 0;
+    let maxActive = 0;
+    await mapWithConcurrency([0, 1, 2, 3], 2, async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+    });
+    expect(maxActive).toBe(2);
   });
 
   it("reads manim progress and strips carriage returns", () => {

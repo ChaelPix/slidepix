@@ -103,9 +103,11 @@ covers the Codex table replacement and JSON merges that keep other servers.
 
 These own Manim argv construction (including `--transparent` and
 `--progress_bar`), scene discovery, subprocess rendering, persistent
-`deck-slide-scene` output names, and deck updates. **Render all** starts every
-ready scene at once, then applies the successful embeds with one
-`WorkspaceEdit`. Starter scripts are written with `workspace.fs` and removed if
+`deck-slide-scene` output names, and deck updates. **Render all** runs one
+Manim process per scene, up to one process per CPU core, each limited to one
+math thread. Progress ticks update the bars and are not copied into the log,
+so a full pipe cannot leave the other processes idle. Successful embeds are
+applied with one `WorkspaceEdit`. Starter scripts are written with `workspace.fs` and removed if
 the deck edit does not apply. `manim-setup.ts` locates `.venv/bin/manim` or
 `.venv/Scripts/manim.exe`, or installs uv and Manim Community after
 confirmation. `src/manim-render.test.ts` covers argv, names, and scene parsing

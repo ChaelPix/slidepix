@@ -11,7 +11,7 @@ import {
   type ManimElement
 } from "@slidepix/core";
 import { resolveMediaPath } from "@slidepix/core/assets";
-import { buildManimArgv, discoverManimScenes, findRenderedMedia, formatManimLogChunk, manimDeckStem, manimOutputBasename, manimSpawnFailure, parseManimProgress, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
+import { buildManimArgv, discoverManimScenes, findRenderedMedia, manimDeckStem, manimOutputBasename, manimProcessEnv, manimSpawnFailure, splitManimOutput, type ManimLaunch, renderFingerprintForElement, scriptContentFingerprint } from "./manim-render.js";
 
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
@@ -53,6 +53,7 @@ export async function listScenesForScript(deckPath: string, scriptReference: str
 export type ManimRenderHooks = {
   onOutput?: (text: string) => void;
   onProgress?: (percent: number) => void;
+  onStart?: (pid: number) => void;
   signal?: AbortSignal;
 };
 
@@ -135,14 +136,31 @@ async function execManim(invocation: ManimLaunch, hooks: ManimRenderHooks = {}):
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       detached: process.platform !== "win32",
-      env: { ...process.env, PYTHONUNBUFFERED: "1", TERM: "dumb", FORCE_COLOR: "0" }
+      env: manimProcessEnv()
     });
+    if (child.pid !== undefined) hooks.onStart?.(child.pid);
     let tail = "";
+    let pending = "";
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    const flushLog = () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = undefined;
+      if (!pending) return;
+      const text = pending;
+      pending = "";
+      hooks.onOutput?.(text);
+    };
+    const enqueueLog = (text: string) => {
+      pending += text.endsWith("\n") ? text : `${text}\n`;
+      if (pending.length > 100_000) pending = pending.slice(-50_000);
+      if (!flushTimer) flushTimer = setTimeout(flushLog, 200);
+    };
     let settled = false;
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
       hooks.signal?.removeEventListener("abort", onAbort);
+      flushLog();
       if (error) reject(error);
       else resolve();
     };
@@ -152,12 +170,10 @@ async function execManim(invocation: ManimLaunch, hooks: ManimRenderHooks = {}):
     };
     hooks.signal?.addEventListener("abort", onAbort);
     const push = (chunk: Buffer | string) => {
-      const text = formatManimLogChunk(String(chunk));
-      if (!text) return;
-      tail = (tail + text).slice(-12_000);
-      hooks.onOutput?.(text);
-      const percent = parseManimProgress(text);
-      if (percent !== undefined) hooks.onProgress?.(percent);
+      const split = splitManimOutput(String(chunk));
+      if (split.log || split.percent !== undefined) tail = (tail + (split.log || `${split.percent}%`)).slice(-12_000);
+      if (split.log) enqueueLog(split.log);
+      if (split.percent !== undefined) hooks.onProgress?.(split.percent);
     };
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");

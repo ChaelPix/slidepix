@@ -26,7 +26,7 @@ import {
   takenManimOutputStems
 } from "./manim-host";
 import { ensureManimLaunch, promptManimSetup } from "./manim-setup";
-import { assignManimBasenames, manimDeckStem } from "./manim-render";
+import { assignManimBasenames, manimDeckStem, manimRenderConcurrency, mapWithConcurrency } from "./manim-render";
 
 export const VIEW_TYPE = "slidepix.deckEditor";
 
@@ -647,8 +647,9 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       cancellable: true
     }, async (progress, token) => {
       const signal = abortFrom(token);
-      progress.report({ message: jobs.length > 1 ? `${jobs.length} scenes in parallel` : jobs[0]!.label });
-      const settled = await Promise.all(jobs.map(async (job, index) => {
+      const cores = manimRenderConcurrency(jobs.length);
+      progress.report({ message: jobs.length > 1 ? `${jobs.length} scenes on ${cores} cores` : jobs[0]!.label });
+      const settled = await mapWithConcurrency(jobs, manimRenderConcurrency(jobs.length), async (job, index) => {
         if (signal.aborted) return { cancelled: true as const };
         const outputBasename = basenames.get(job.elementId);
         log.append(`\n--- ${job.label} ---\n`);
@@ -662,6 +663,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
             outputBasename,
             hooks: {
               signal,
+              onStart: (pid) => log.append(`[${job.label}] process ${pid}\n`),
               onOutput: (text) => {
                 for (const line of text.split("\n")) if (line) log.append(`[${job.label}] ${line}\n`);
               },
@@ -684,7 +686,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
           log.append(`[${job.label}] ${message}\n`);
           return { ok: false as const, label: job.label, message };
         }
-      }));
+      });
       const succeeded = settled.flatMap((item) => "ok" in item && item.ok ? [item] : []);
       for (const item of settled) {
         if ("cancelled" in item) cancelled = true;
