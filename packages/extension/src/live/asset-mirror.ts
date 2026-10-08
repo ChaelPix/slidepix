@@ -12,13 +12,54 @@ export function deckRelativePath(deckFsPath: string, workspaceRoots: string[]): 
   return path.relative(root, resolved).split(path.sep).join("/");
 }
 
+export type GuestPlace = { mode: "temporary" } | { mode: "folder"; folder: string };
+
 export function mirrorPaths(storageRoot: string, relativeDeck: string): { workspace: string; deckPath: string } {
   const workspace = path.join(storageRoot, "workspace");
-  const deckPath = path.resolve(workspace, ...relativeDeck.split("/"));
-  if (deckPath !== workspace && !deckPath.startsWith(`${workspace}${path.sep}`)) {
+  return { workspace, deckPath: containedDeckPath(workspace, relativeDeck) };
+}
+
+export function containedDeckPath(workspace: string, relativeDeck: string): string {
+  const base = path.resolve(workspace);
+  const deckPath = path.resolve(base, ...relativeDeck.split("/").filter(Boolean));
+  if (deckPath !== base && !deckPath.startsWith(`${base}${path.sep}`)) {
     throw new Error("Live mirror path escapes the session workspace.");
   }
-  return { workspace, deckPath };
+  return deckPath;
+}
+
+/** Reuse a previous choice. A missing folder is asked again. */
+export function selectGuestPlace(remembered: GuestPlace | undefined, folderExists: boolean): GuestPlace | undefined {
+  if (!remembered) return undefined;
+  if (remembered.mode === "temporary") return remembered;
+  return folderExists ? remembered : undefined;
+}
+
+export async function relocateMirror(fromDeck: string, toWorkspace: string, relativeDeck: string, linkedRoots: string[]): Promise<string> {
+  const deckPath = containedDeckPath(toWorkspace, relativeDeck);
+  if (path.resolve(fromDeck) === deckPath) return deckPath;
+  const text = await readFile(fromDeck, "utf8");
+  await mkdir(path.dirname(deckPath), { recursive: true });
+  await writeFile(deckPath, text, "utf8");
+  const parsed = parseDeckText(text);
+  if (!parsed.ok) return deckPath;
+  for (const item of referencedMedia(parsed.deck)) {
+    let source: string;
+    try {
+      source = resolveMediaPath(fromDeck, item.reference, item.storage, linkedRoots);
+    } catch {
+      continue;
+    }
+    let target: string;
+    try {
+      target = resolveMediaPath(deckPath, item.reference, item.storage, [toWorkspace]);
+    } catch {
+      continue;
+    }
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, await readFile(source));
+  }
+  return deckPath;
 }
 
 export async function writeMirroredBytes(deckPath: string, item: DeckMediaReference, bytes: Uint8Array, linkedRoots: string[], expectedSha256?: string): Promise<void> {

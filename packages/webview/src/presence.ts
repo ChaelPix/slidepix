@@ -7,6 +7,7 @@ export type CollaborationView = {
   hostName?: string;
   self?: LivePeer;
   peers: LivePeer[];
+  temporaryMirror?: boolean;
 };
 
 const idle: CollaborationView = { status: "off", role: "none", canEdit: true, peers: [] };

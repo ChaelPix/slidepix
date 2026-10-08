@@ -10,7 +10,7 @@ Changing invitations, peer connection, live merge, guest files, or presence.
 
 ## Ownership
 
-The host extension owns the deck file and the order of accepted edits. Guests edit a `slidepix-live:` document backed by a private mirror. `@slidepix/core` owns `mergeDecksLive`. The webview only sends presence and normal document edits.
+The host extension owns the deck file and the order of accepted edits. Guests edit a `slidepix-live:` document backed by a mirror. `@slidepix/core` owns `mergeDecksLive`. The webview only sends presence and normal document edits.
 
 ## Behavior
 
@@ -19,6 +19,8 @@ The host extension owns the deck file and the order of accepted edits. Guests ed
 The host applies each guest edit with `mergeDecksLive`, preferring the incoming edit when both sides changed the same property. An invalid combined deck is rejected. Guests keep their local change when a newer host state arrives, then send the merged result. Undo restores only the local step.
 
 Guests download media the deck references and upload new media into the host's asset folder. During a session those uploads are embedded. Manim stays on the host. At most 8 guests can join.
+
+The first time a guest opens a deck, SlidePix asks for a folder. Leaving that empty keeps the deck in the editor's temporary storage. The choice is remembered for that deck id. A later join reuses the folder when it still exists, or the temporary mirror when that was the choice. A missing folder is asked again. **Save locally** appears while the mirror is temporary: it copies the deck and its media into a chosen folder, and the session continues from there.
 
 ## Entry points
 

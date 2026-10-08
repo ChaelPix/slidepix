@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDeck, serializeDeck } from "@slidepix/core";
-import { copyDeckSnapshot, deckRelativePath, mirrorPaths, removeStaleMirrors, writeMirroredBytes } from "./asset-mirror";
+import { containedDeckPath, copyDeckSnapshot, deckRelativePath, mirrorPaths, relocateMirror, removeStaleMirrors, selectGuestPlace, writeMirroredBytes } from "./asset-mirror";
 
 describe("asset mirror", () => {
   it("rejects a mirror path that escapes the session workspace", () => {
@@ -51,5 +51,39 @@ describe("asset mirror", () => {
     await removeStaleMirrors(root);
     await expect(stat(stale)).rejects.toThrow();
     expect(assetDir).toContain("talk.assets");
+  });
+
+  it("reuses a previous folder only while it exists", () => {
+    expect(selectGuestPlace(undefined, false)).toBeUndefined();
+    expect(selectGuestPlace({ mode: "temporary" }, false)).toEqual({ mode: "temporary" });
+    expect(selectGuestPlace({ mode: "folder", folder: "/talks" }, true)).toEqual({ mode: "folder", folder: "/talks" });
+    expect(selectGuestPlace({ mode: "folder", folder: "/talks" }, false)).toBeUndefined();
+  });
+
+  it("copies the deck and its media into a chosen folder", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "slidepix-live-"));
+    const deckPath = path.join(root, "notes", "talk.slidepix.json");
+    const deck = createDeck("Mirror");
+    deck.slides[0]!.elements.push({
+      ...deck.slides[0]!.elements[0]!,
+      id: "image-1",
+      morphKey: "image-1",
+      type: "image",
+      src: "picture.png",
+      storage: "embedded",
+      crop: { x: 0, y: 0, width: 1, height: 1 },
+      borderRadius: 0,
+      edgeFade: 0,
+      border: { width: 0, color: "transparent" },
+      lockAspectRatio: true
+    });
+    await writeMirroredBytes(deckPath, { reference: "picture.png", storage: "embedded" }, Buffer.from("pixels"), [root]);
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(path.dirname(deckPath), { recursive: true }));
+    await writeFile(deckPath, serializeDeck(deck));
+    const destination = await mkdtemp(path.join(tmpdir(), "slidepix-local-"));
+    const moved = await relocateMirror(deckPath, destination, "notes/talk.slidepix.json", [root]);
+    expect(moved).toBe(containedDeckPath(destination, "notes/talk.slidepix.json"));
+    expect(await readFile(path.join(destination, "notes", "talk.assets", "picture.png"), "utf8")).toBe("pixels");
+    expect(() => containedDeckPath(destination, "../outside.slidepix.json")).toThrow(/escapes/);
   });
 });

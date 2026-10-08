@@ -15,7 +15,7 @@ export type HostToWebviewMessage =
   | { version: 2; type: "manimRenderResult"; requestId: string; ok: boolean; elementId: string; settingsFingerprint?: string; error?: string }
   | { version: 2; type: "manimRenderAllResult"; requestId: string; ok: boolean; rendered: number; skipped: number; error?: string; results?: { elementId: string; settingsFingerprint: string }[] }
   | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string; progress?: number; elementId?: string; elementProgress?: number }
-  | { version: 2; type: "collaboration"; status: LiveCollaborationStatus; role: "host" | "guest" | "none"; canEdit: boolean; hostName?: string; self?: LivePeer; peers: LivePeer[] }
+  | { version: 2; type: "collaboration"; status: LiveCollaborationStatus; role: "host" | "guest" | "none"; canEdit: boolean; hostName?: string; self?: LivePeer; peers: LivePeer[]; temporaryMirror?: boolean }
   | { version: 2; type: "assetsUpdated"; references: string[] };
 
 export type LiveCollaborationStatus = "off" | "hosting" | "joined" | "reconnecting" | "ended";

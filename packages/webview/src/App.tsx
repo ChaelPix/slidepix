@@ -464,7 +464,8 @@ export default function App() {
         {liveOn && <div className="live-banner" role="status">
           <span>{collaboration.status === "hosting" ? "Sharing this deck" : collaboration.status === "reconnecting" ? "Reconnecting…" : collaboration.status === "ended" ? `Session ended — ${collaboration.hostName ?? "the host"} closed it` : `Connected to ${collaboration.hostName ?? "the host"}`}</span>
           <span className="live-avatars">{[collaboration.self, ...collaboration.peers].filter((peer): peer is NonNullable<typeof peer> => Boolean(peer)).map((peer) => <span key={peer.id} className="live-avatar" title={peer.name} style={{ background: peer.color }}>{peer.name.slice(0, 1).toUpperCase()}</span>)}</span>
-          {collaboration.status === "ended" && <button type="button" onClick={() => postMessage({ type: "command", command: "saveLiveCopy" })}>Save a copy</button>}
+          {collaboration.temporaryMirror && <button type="button" onClick={() => postMessage({ type: "command", command: "saveLiveCopy" })}>Save locally</button>}
+          {collaboration.status === "ended" && !collaboration.temporaryMirror && <button type="button" onClick={() => postMessage({ type: "command", command: "saveLiveCopy" })}>Save a copy</button>}
           {collaboration.status === "hosting" && <button type="button" onClick={() => postMessage({ type: "command", command: "stopLive" })}>Stop</button>}
         </div>}
         <div className="canvas-scroll" onWheel={(event) => {
@@ -1635,7 +1636,7 @@ function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, 
   else if (message.type === "manimScenesListed") { pendingManimScenes.get(message.requestId)?.(message); pendingManimScenes.delete(message.requestId); }
   else if (message.type === "manimRenderResult") { pendingManimRenders.get(message.requestId)?.(message); pendingManimRenders.delete(message.requestId); }
   else if (message.type === "manimRenderAllResult") { pendingManimRenderAll.get(message.requestId)?.(message); pendingManimRenderAll.delete(message.requestId); }
-  else if (message.type === "collaboration") setCollaboration({ status: message.status, role: message.role, canEdit: message.canEdit, hostName: message.hostName, self: message.self, peers: message.peers });
+  else if (message.type === "collaboration") setCollaboration({ status: message.status, role: message.role, canEdit: message.canEdit, hostName: message.hostName, self: message.self, peers: message.peers, temporaryMirror: message.temporaryMirror });
   else if (message.type === "assetsUpdated") noteAssets(message.references);
   else if (message.type === "notify") {
     manimHostAcked.add(message.notificationId);

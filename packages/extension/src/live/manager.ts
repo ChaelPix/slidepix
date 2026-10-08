@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -7,7 +7,7 @@ import { parseDeckText, type HostToWebviewMessage, type LivePeer } from "@slidep
 import { resolveMediaPath } from "@slidepix/core/assets";
 import { replaceDocument, SlidePixEditorProvider, storeEmbeddedBytes, VIEW_TYPE } from "../editor";
 import { revisionForText } from "../document-revision";
-import { copyDeckSnapshot, deckRelativePath, mirrorPaths, missingMedia, referencedMedia, removeStaleMirrors, writeMirroredBytes } from "./asset-mirror";
+import { containedDeckPath, copyDeckSnapshot, deckRelativePath, mirrorPaths, missingMedia, referencedMedia, relocateMirror, removeStaleMirrors, selectGuestPlace, writeMirroredBytes, type GuestPlace } from "./asset-mirror";
 import type { LiveDeckHost } from "./bridge";
 import { colorForId } from "./color";
 import { GuestSession } from "./guest-session";
@@ -40,7 +40,13 @@ type GuestBinding = {
   linkedRoots: string[];
   stopping: boolean;
   reconnecting: boolean;
+  temporary: boolean;
+  deckId?: string;
+  relativePath?: string;
+  workspace?: string;
 };
+
+const GUEST_PLACES = "slidepix.live.places";
 
 export class LiveCollaboration implements LiveDeckHost {
   readonly files = new LiveFileSystemProvider();
@@ -169,7 +175,8 @@ export class LiveCollaboration implements LiveDeckHost {
       canEdit: true,
       linkedRoots: [],
       stopping: false,
-      reconnecting: false
+      reconnecting: false,
+      temporary: true
     };
     binding.session = new GuestSession({
       displayName: displayName(),
@@ -251,11 +258,25 @@ export class LiveCollaboration implements LiveDeckHost {
 
   async saveCopy(document: vscode.TextDocument): Promise<void> {
     const guest = this.guests.get(document.uri.authority);
-    if (!guest?.deckPath) return;
-    const folder = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: "Save a copy" });
+    if (!guest?.deckPath || !guest.relativePath) return;
+    const folder = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: guest.temporary ? "Save locally" : "Save a copy",
+      title: guest.temporary ? "Folder for this deck and its media" : "Folder for a copy of this deck"
+    });
     if (!folder?.[0]) return;
-    await copyDeckSnapshot(guest.deckPath, folder[0].fsPath, guest.linkedRoots);
-    void vscode.window.showInformationMessage(`Saved a copy in ${folder[0].fsPath}.`);
+    const destination = folder[0].fsPath;
+    const savingLocally = guest.temporary;
+    try {
+      if (savingLocally) await this.adoptFolder(guest, destination);
+      else await copyDeckSnapshot(guest.deckPath, destination, guest.linkedRoots);
+    } catch (error) {
+      void vscode.window.showErrorMessage(error instanceof Error ? error.message : "Could not save the deck locally.");
+      return;
+    }
+    void vscode.window.showInformationMessage(savingLocally ? `This deck is now stored in ${destination}.` : `Saved a copy in ${destination}.`);
   }
 
   async saveOnHost(document: vscode.TextDocument): Promise<void> {
@@ -328,14 +349,24 @@ export class LiveCollaboration implements LiveDeckHost {
 
   private async prepareMirror(binding: GuestBinding, sessionId: string, relativePath: string, text: string): Promise<{ deckPath: string; linkedRoots: string[] }> {
     if (binding.deckPath) return { deckPath: binding.deckPath, linkedRoots: binding.linkedRoots };
-    const storageRoot = path.join(this.context.globalStorageUri.fsPath, "live", sessionId);
-    const paths = mirrorPaths(storageRoot, relativePath);
+    const parsed = parseDeckText(text);
+    const deckId = parsed.ok ? parsed.deck.id : relativePath;
+    const deckName = parsed.ok ? parsed.deck.metadata.title || path.basename(relativePath) : path.basename(relativePath);
+    const place = await this.placeFor(deckId, deckName);
+    const temporary = place.mode === "temporary";
+    const paths = temporary
+      ? mirrorPaths(path.join(this.context.globalStorageUri.fsPath, "live", sessionId), relativePath)
+      : { workspace: place.folder, deckPath: containedDeckPath(place.folder, relativePath) };
     const { mkdir, writeFile } = await import("node:fs/promises");
     await mkdir(path.dirname(paths.deckPath), { recursive: true });
     await writeFile(paths.deckPath, text, "utf8");
     this.files.mount(sessionId, paths.workspace);
     binding.deckPath = paths.deckPath;
     binding.linkedRoots = [paths.workspace];
+    binding.temporary = temporary;
+    binding.deckId = deckId;
+    binding.relativePath = relativePath;
+    binding.workspace = paths.workspace;
     binding.session.deckPath = paths.deckPath;
     binding.session.linkedRoots = binding.linkedRoots;
     const uri = liveDocumentUri(sessionId, relativePath);
@@ -343,6 +374,63 @@ export class LiveCollaboration implements LiveDeckHost {
     await vscode.commands.executeCommand("vscode.openWith", uri, VIEW_TYPE);
     this.refreshStatus();
     return { deckPath: paths.deckPath, linkedRoots: binding.linkedRoots };
+  }
+
+  private guestPlaces(): Record<string, GuestPlace> {
+    return this.context.globalState.get<Record<string, GuestPlace>>(GUEST_PLACES) ?? {};
+  }
+
+  private async rememberPlace(deckId: string, place: GuestPlace): Promise<void> {
+    await this.context.globalState.update(GUEST_PLACES, { ...this.guestPlaces(), [deckId]: place });
+  }
+
+  private async placeFor(deckId: string, deckName: string): Promise<GuestPlace> {
+    const remembered = this.guestPlaces()[deckId];
+    const folderExists = remembered?.mode === "folder" ? await directoryExists(remembered.folder) : false;
+    const selected = selectGuestPlace(remembered, folderExists);
+    if (selected?.mode === "folder") void vscode.window.showInformationMessage(`Opening “${deckName}” from ${selected.folder}.`);
+    if (selected) return selected;
+    const choice = await vscode.window.showInformationMessage(
+      `Where should “${deckName}” be stored on this computer?`,
+      { modal: true },
+      "Choose a folder",
+      "Temporary folder"
+    );
+    let place: GuestPlace = { mode: "temporary" };
+    if (choice === "Choose a folder") {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: "Store the deck here",
+        title: "Folder for this deck and its media"
+      });
+      if (picked?.[0]) place = { mode: "folder", folder: picked[0].fsPath };
+    }
+    await this.rememberPlace(deckId, place);
+    return place;
+  }
+
+  private async adoptFolder(guest: GuestBinding, folder: string): Promise<void> {
+    if (!guest.deckPath || !guest.relativePath || !guest.deckId || !guest.workspace) throw new Error("The shared deck is not ready.");
+    const previousWorkspace = guest.workspace;
+    const deckPath = await relocateMirror(guest.deckPath, folder, guest.relativePath, guest.linkedRoots);
+    this.files.mount(guest.uri.authority, folder);
+    guest.deckPath = deckPath;
+    guest.workspace = folder;
+    guest.linkedRoots = [folder];
+    guest.session.deckPath = deckPath;
+    guest.session.linkedRoots = [folder];
+    guest.temporary = false;
+    await this.rememberPlace(guest.deckId, { mode: "folder", folder });
+    const document = this.guestDocument(guest);
+    if (document) this.announce(document);
+    const tempRoot = path.join(this.context.globalStorageUri.fsPath, "live", guest.uri.authority);
+    const previous = path.resolve(previousWorkspace);
+    const next = path.resolve(folder);
+    if (previous !== next && previous.startsWith(`${path.resolve(tempRoot)}${path.sep}`)) {
+      await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   private async reconnect(binding: GuestBinding): Promise<void> {
@@ -397,7 +485,8 @@ export class LiveCollaboration implements LiveDeckHost {
         canEdit: guest.canEdit,
         hostName: guest.hostName,
         self: guest.self,
-        peers: guest.peers
+        peers: guest.peers,
+        temporaryMirror: guest.temporary
       };
     }
     return { version: 2, type: "collaboration", status: "off", role: "none", canEdit: true, peers: [] };
@@ -481,6 +570,14 @@ function displayName(): string {
   const configured = vscode.workspace.getConfiguration("slidepix").get<string>("live.displayName", "") ?? "";
   const fallback = os.userInfo().username || "Guest";
   return (configured.trim() || fallback).slice(0, 80);
+}
+
+async function directoryExists(folder: string): Promise<boolean> {
+  try {
+    return (await stat(folder)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function workspaceRoots(document: vscode.TextDocument): string[] {
