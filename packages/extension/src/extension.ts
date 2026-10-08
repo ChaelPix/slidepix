@@ -8,22 +8,31 @@ import { exportPptx } from "./pptx-export-command";
 import { exportWeb } from "./web-export-command";
 import { configureGitCollaboration, removeGitCollaboration, resolveGitConflict } from "./git-collaboration";
 import { mcpTargets, mergeMcpTarget, slidepixMcpProcess, type McpTarget } from "./mcp-config";
+import { LiveCollaboration } from "./live/manager";
 
 export function activate(context: vscode.ExtensionContext): void {
   const editor = new SlidePixEditorProvider(context);
+  const live = new LiveCollaboration(context, editor);
+  editor.attachLive(live);
   editor.showLog();
   context.subscriptions.push(
     editor.register(),
+    live.register(),
     vscode.commands.registerCommand("slidepix.showLog", () => editor.showLog()),
     vscode.commands.registerCommand("slidepix.createDeck", (selected?: vscode.Uri) => createDeckCommand(selected, editor)),
-    vscode.commands.registerCommand("slidepix.exportPptx", () => { editor.log("command exportPptx"); return withDeck(editor, (deck, document) => exportPptx(context, deck, document.uri.fsPath)); }),
-    vscode.commands.registerCommand("slidepix.exportWeb", () => { editor.log("command exportWeb"); return withDeck(editor, (deck, document) => exportWeb(deck, document.uri.fsPath)); }),
+    vscode.commands.registerCommand("slidepix.exportPptx", () => { editor.log("command exportPptx"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportPptx(context, deck, editor.locationOf(document).deckPath); }); }),
+    vscode.commands.registerCommand("slidepix.exportWeb", () => { editor.log("command exportWeb"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportWeb(deck, editor.locationOf(document).deckPath); }); }),
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),
     vscode.commands.registerCommand("slidepix.presenter", () => editor.currentDocument() && editor.present(editor.currentDocument()!, true)),
     vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context, editor)),
     vscode.commands.registerCommand("slidepix.configureGitCollaboration", () => reportGitError(editor, "configure Git collaboration", () => configureGitCollaboration(context, editor.currentDocument()))),
     vscode.commands.registerCommand("slidepix.removeGitCollaboration", () => reportGitError(editor, "remove Git collaboration", () => removeGitCollaboration(context, editor.currentDocument()))),
-    vscode.commands.registerCommand("slidepix.resolveGitConflict", () => reportGitError(editor, "resolve the Git conflict", () => resolveGitConflict(editor.currentDocument())))
+    vscode.commands.registerCommand("slidepix.resolveGitConflict", () => reportGitError(editor, "resolve the Git conflict", () => resolveGitConflict(editor.currentDocument()))),
+    vscode.commands.registerCommand("slidepix.startLive", () => { const document = editor.currentDocument(); return document && live.start(document); }),
+    vscode.commands.registerCommand("slidepix.joinLive", () => live.join()),
+    vscode.commands.registerCommand("slidepix.copyLiveInvite", () => { const document = editor.currentDocument(); return document && live.copyInvite(document); }),
+    vscode.commands.registerCommand("slidepix.stopLive", () => live.stop(editor.currentDocument())),
+    vscode.commands.registerCommand("slidepix.saveLiveCopy", () => { const document = editor.currentDocument(); return document && live.saveCopy(document); })
   );
 }
 

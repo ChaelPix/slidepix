@@ -8,6 +8,7 @@ import {
   type HostToWebviewMessage,
   type WebviewToHostMessage
 } from "@slidepix/core";
+import { canEditDocument } from "./presence";
 import { postMessage } from "./vscode";
 
 type PendingEdit = {
@@ -87,6 +88,7 @@ export const useDeckStore = create<DeckStore>((set, get) => {
   };
 
   const flush = () => {
+    if (!canEditDocument()) return;
     const state = get();
     if (state.pending || state.mergeState || state.error || !state.dirty || !state.deck || !state.confirmedDeck || !state.revision) {
       drainCommands(state);
@@ -214,23 +216,25 @@ export const useDeckStore = create<DeckStore>((set, get) => {
     setZoom: (zoom) => set({ zoom: Math.min(1.5, Math.max(0.1, zoom)) }),
     preview: (mutator) => {
       const deck = get().deck;
-      if (!deck || get().mergeState) return;
+      if (!canEditDocument() || !deck || get().mergeState) return;
       const next = structuredClone(deck);
       mutator(next);
       set({ deck: next, dirty: true });
     },
     scheduleCommit: () => {
+      if (!canEditDocument()) return;
       if (commitTimer) clearTimeout(commitTimer);
       commitTimer = setTimeout(flush, 600);
     },
     commit: () => {
+      if (!canEditDocument()) return;
       if (commitTimer) clearTimeout(commitTimer);
       commitTimer = undefined;
       flush();
     },
     mutate: (mutator) => {
       const deck = get().deck;
-      if (!deck || get().mergeState) return;
+      if (!canEditDocument() || !deck || get().mergeState) return;
       const next = structuredClone(deck);
       mutator(next);
       set({ deck: next, dirty: true });

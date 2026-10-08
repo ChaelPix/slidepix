@@ -14,7 +14,23 @@ export type HostToWebviewMessage =
   | { version: 2; type: "manimScenesListed"; requestId: string; scenes?: string[]; contentFingerprint?: string; error?: string }
   | { version: 2; type: "manimRenderResult"; requestId: string; ok: boolean; elementId: string; settingsFingerprint?: string; error?: string }
   | { version: 2; type: "manimRenderAllResult"; requestId: string; ok: boolean; rendered: number; skipped: number; error?: string; results?: { elementId: string; settingsFingerprint: string }[] }
-  | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string; progress?: number; elementId?: string; elementProgress?: number };
+  | { version: 2; type: "notify"; notificationId: string; status: "progress" | "success" | "error" | "dismiss"; message?: string; progress?: number; elementId?: string; elementProgress?: number }
+  | { version: 2; type: "collaboration"; status: LiveCollaborationStatus; role: "host" | "guest" | "none"; canEdit: boolean; hostName?: string; self?: LivePeer; peers: LivePeer[] }
+  | { version: 2; type: "assetsUpdated"; references: string[] };
+
+export type LiveCollaborationStatus = "off" | "hosting" | "joined" | "reconnecting" | "ended";
+
+export type LivePose = { id: string; x: number; y: number; width: number; height: number; rotation: number };
+
+export type LivePeer = {
+  id: string;
+  name: string;
+  color: string;
+  slideId?: string;
+  elementIds: string[];
+  editingElementId?: string;
+  preview?: { slideId: string; poses: LivePose[] };
+};
 
 export type WebviewToHostMessage =
   | { version: 2; type: "ready" }
@@ -32,6 +48,7 @@ export type WebviewToHostMessage =
   | { version: 2; type: "renderManim"; requestId: string; elementId: string }
   | { version: 2; type: "renderAllManim"; requestId: string }
   | { version: 2; type: "setupManim" }
-  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor"; slideIds?: string[]; requestId?: string }
+  | { version: 2; type: "presence"; slideId?: string; elementIds: string[]; editingElementId?: string; preview?: { slideId: string; poses: LivePose[] } }
+  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor" | "startLive" | "copyLiveInvite" | "stopLive" | "saveLiveCopy"; slideIds?: string[]; requestId?: string }
   | { version: 2; type: "saveExport"; format: "pdf" | "png"; data: string }
   | { version: 2; type: "log"; level: "info" | "warn" | "error"; message: string };

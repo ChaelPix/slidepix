@@ -185,6 +185,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - App-wide canvas paste handling ignores inputs, textareas, selects, and
   content-editable targets, so pasting inside the Markdown editor or inspector
   edits that field instead of creating a new slide element.
+- Live collaboration shows a status banner, peer initials, colored slide dots,
+  remote selections, and a dashed ghost while another peer drags. Presence is
+  throttled to 15 Hz and is not saved. A soft lock stops a second person from
+  opening the same text. Guests cannot run Manim. When the session has ended,
+  document edits stop until the guest saves a copy.
 
 ## Verification
 
@@ -195,6 +200,6 @@ Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
 `src/store.test.ts` covers write serialization, debounce, rebasing, conflicts,
-failed edits, deferred document commands, and host undo availability. `src/export-capture.test.ts` covers image error-event formatting, CSS `url()` extraction, capture timeouts, data-URI inlining, and the video play control. `src/align.test.ts` covers page
+failed edits, deferred document commands, and host undo availability. `src/presence.test.ts` covers the 15 Hz limit, the text lock, slide marks, and ghost poses. `src/export-capture.test.ts` covers image error-event formatting, CSS `url()` extraction, capture timeouts, data-URI inlining, and the video play control. `src/align.test.ts` covers page
 and selection alignment plus distribution. `src/snap.test.ts` covers edge
 snapping and the zoom-aware catch radius.

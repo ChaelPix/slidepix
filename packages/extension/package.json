@@ -101,6 +101,27 @@
       {
         "command": "slidepix.resolveGitConflict",
         "title": "SlidePix: Resolve Git Conflict"
+      },
+      {
+        "command": "slidepix.startLive",
+        "title": "SlidePix: Start Live Collaboration",
+        "icon": "$(broadcast)"
+      },
+      {
+        "command": "slidepix.joinLive",
+        "title": "SlidePix: Join Live Collaboration"
+      },
+      {
+        "command": "slidepix.copyLiveInvite",
+        "title": "SlidePix: Copy Live Invitation"
+      },
+      {
+        "command": "slidepix.stopLive",
+        "title": "SlidePix: Stop Live Collaboration"
+      },
+      {
+        "command": "slidepix.saveLiveCopy",
+        "title": "SlidePix: Save Live Copy"
       }
     ],
     "menus": {
@@ -148,20 +169,44 @@
           "type": "string",
           "default": "",
           "description": "Manim executable. Leave empty to use .venv/bin/manim or .venv/Scripts/manim.exe when that file exists. A removed virtualenv is not launched. Set up Manim can browse for manim or install uv and Manim."
+        },
+        "slidepix.live.displayName": {
+          "type": "string",
+          "default": "",
+          "description": "Name shown to other people in a live session. Empty uses the operating-system user name."
+        },
+        "slidepix.live.relayMode": {
+          "type": "string",
+          "enum": ["default", "custom", "disabled"],
+          "default": "default",
+          "description": "How SlidePix reaches peers when a direct connection fails. default uses the public n0 relays. custom uses slidepix.live.relayUrls. disabled tries a direct connection only."
+        },
+        "slidepix.live.relayUrls": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Relay URLs used when slidepix.live.relayMode is custom."
+        },
+        "slidepix.live.requireApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask before admitting someone who presents a valid live invitation."
         }
       }
     }
   },
   "scripts": {
     "generate-schema": "node ./scripts/generate-schema.mjs",
-    "build": "pnpm generate-schema && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap && esbuild src/merge-driver.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/merge-driver.cjs && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\"",
+    "build": "pnpm generate-schema && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@number0/iroh --outfile=dist/extension.cjs --sourcemap && esbuild src/merge-driver.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/merge-driver.cjs && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\" && node ./scripts/stage-native.mjs",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "dev": "pnpm build --watch",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "package": "vsce package --no-dependencies --allow-missing-repository"
+    "package": "vsce package --no-dependencies --allow-missing-repository --target $(node -p \"process.platform === 'darwin' ? (process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64') : process.platform === 'win32' ? (process.arch === 'arm64' ? 'win32-arm64' : 'win32-x64') : (process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64')\")"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
+    "@number0/iroh": "1.1.0",
     "@slidepix/core": "workspace:*",
     "jszip": "3.10.2",
     "pptxgenjs": "4.0.1",

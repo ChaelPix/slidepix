@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeDecks, type DeckMergeResolution } from "./merge.js";
+import { mergeDecks, mergeDecksLive, type DeckMergeResolution } from "./merge.js";
 import { createDeck, duplicateSlide, parseDeckText, type Deck, type SlideElement } from "./schema.js";
 
 function fixture(): Deck {
@@ -173,5 +173,56 @@ describe("mergeDecks", () => {
     const resolved = mergeDecks(base, ours, theirs, resolutions);
     expect(resolved.ok).toBe(true);
     if (resolved.ok) expect(resolved.deck.slides[0]!.timeline).toHaveLength(1);
+  });
+});
+
+describe("mergeDecksLive", () => {
+  it("keeps the preferred side when both change the same value", () => {
+    const base = fixture();
+    const ours = structuredClone(base);
+    const theirs = structuredClone(base);
+    ours.slides[0]!.title = "Ours";
+    theirs.slides[0]!.title = "Theirs";
+    const preferred = mergeDecksLive(base, ours, theirs, "theirs");
+    expect(preferred.ok).toBe(true);
+    if (preferred.ok) expect(preferred.deck.slides[0]!.title).toBe("Theirs");
+    const other = mergeDecksLive(base, ours, theirs, "ours");
+    expect(other.ok).toBe(true);
+    if (other.ok) expect(other.deck.slides[0]!.title).toBe("Ours");
+  });
+
+  it("lets the preferred side win a delete-versus-edit", () => {
+    const base = fixture();
+    const ours = structuredClone(base);
+    const theirs = structuredClone(base);
+    ours.slides[0]!.elements = [];
+    theirs.slides[0]!.elements[0]!.x = 42;
+    const kept = mergeDecksLive(base, ours, theirs, "theirs");
+    expect(kept.ok).toBe(true);
+    if (kept.ok) expect(kept.deck.slides[0]!.elements[0]!.x).toBe(42);
+    const deleted = mergeDecksLive(base, ours, theirs, "ours");
+    expect(deleted.ok).toBe(true);
+    if (deleted.ok) expect(deleted.deck.slides[0]!.elements).toHaveLength(0);
+  });
+
+  it("rejects a combined result that breaks deck integrity", () => {
+    const base = fixture();
+    const ours = structuredClone(base);
+    const theirs = structuredClone(base);
+    ours.slides[0]!.elements = [];
+    theirs.slides[0]!.timeline.push({ id: "new-animation", targetElementId: "element-a", phase: "entrance", effect: "fade", trigger: "onClick", delayMs: 0, durationMs: 500, easing: "ease-out" });
+    const result = mergeDecksLive(base, ours, theirs, "theirs");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.conflicts.some((conflict) => conflict.kind === "invalid-result")).toBe(true);
+  });
+
+  it("is deterministic", () => {
+    const base = fixture();
+    const ours = structuredClone(base);
+    const theirs = structuredClone(base);
+    ours.slides[0]!.title = "Ours";
+    theirs.slides[0]!.notes = "Theirs";
+    ours.slides[1]!.notes = "Local";
+    expect(mergeDecksLive(base, ours, theirs, "theirs")).toEqual(mergeDecksLive(base, ours, theirs, "theirs"));
   });
 });

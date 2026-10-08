@@ -9,6 +9,8 @@
     "test": "pnpm --filter @slidepix/core test && pnpm --filter @slidepix/webview test && pnpm --filter slidepix test && pnpm --filter @slidepix/mcp test",
     "typecheck": "pnpm -r typecheck",
     "docs:check": "node ./scripts/check-docs.mjs",
+    "test:live": "pnpm --filter slidepix test:live",
+    "package:all": "pnpm --filter slidepix build && node packages/extension/scripts/package-all.mjs",
     "package": "pnpm build && pnpm --filter slidepix package"
   }
 }

@@ -20,7 +20,7 @@ the task; this keeps context small while making ownership explicit.
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change MCP tools or selection rules | `packages/mcp/src/server.ts` and `packages/mcp/src/tools.ts` | [MCP module](docs/modules/mcp.md) |
 | Change Manim slide elements or rendering | `packages/core/src/schema.ts` and `packages/extension/src/manim-host.ts` | [Core module](docs/modules/core.md), [Extension module](docs/modules/extension.md), [Webview module](docs/modules/webview.md) |
-| Set up a Linux/macOS toolchain, compile, and install a local VSIX | [Install guide](docs/install.md) | [Development guide](docs/development.md) |
+| Change live collaboration, invitations, or peer sync | `packages/extension/src/live/manager.ts` | [Live collaboration](docs/modules/live-collaboration.md), [Extension module](docs/modules/extension.md) |
 | Change build/package/release work | root and package `package.json` files | [Development guide](docs/development.md) |
 
 ## System map
@@ -86,7 +86,10 @@ Detailed ownership and method contracts:
 7. Rendering semantics belong in `@slidepix/core`. Editor, presentation, export,
    and MCP should not independently reinterpret deck fields.
 8. Presentation HTTP and WebSocket services bind only to `127.0.0.1` and require
-   an unguessable per-session token.
+   an unguessable per-session token. Live collaboration is the one non-loopback
+   service: it runs only during an explicit session, uses encrypted QUIC, and
+   admits a peer only after the invitation secret matches and, by default, the
+   host approves them.
 9. MCP v0.1 stays read-only. Its tools must not write a deck or its assets.
 10. PDF and PNG exports are captured in the editor webview. A video is painted
     as its first frame with a play control. The PDF does not contain a playable
@@ -94,6 +97,9 @@ Detailed ownership and method contracts:
 11. Every document replacement names its exact base revision. Stale edits are
     semantically rebased or surfaced as conflicts; they are never applied
     blindly over newer source.
+12. Remote live peers are untrusted. Every frame is schema-checked, media reads
+    go through `resolveMediaPath`, and a peer can only fetch media referenced
+    by the current deck or a recent revision.
 
 ## Source, generated, and packaged files
 
@@ -116,7 +122,9 @@ Edit source files, then regenerate outputs with the documented commands.
 | `pnpm test` | Runs core schema/rendering tests, extension presentation-state tests, and MCP selection tests. |
 | `pnpm typecheck` | Type-checks every workspace package without emitting files. |
 | `pnpm docs:check` | Verifies local Markdown links and required agent-native files. |
-| `pnpm package` | Performs a full workspace build and creates the VSIX. |
+| `pnpm package` | Performs a full workspace build and creates the VSIX for the current platform. |
+| `pnpm test:live` | Connects two local iroh endpoints with relays disabled and exchanges a frame and a media file. It is not part of `pnpm test`. |
+| `pnpm package:all` | Builds, stages each platform's iroh binary, and packages a VSIX per target. |
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
 | `scripts/render-smoke.mjs [deck] [output]` | Uses the installed Google Chrome or Microsoft Edge to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
 | `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
@@ -162,5 +170,9 @@ Do not assume every planned feature is complete. Current known gaps include:
 - The Manim **Render** button cannot cancel a render. Batch and per-scene
   progress bars are in the editor. Notification progress can still cancel,
   and the full Manim log is written to the SlidePix output channel.
+- Live collaboration does not merge characters inside one text property; the
+  later edit wins that whole property. Manim runs only on the host. Linked
+  media outside the deck's workspace folder is not copied to guests. A session
+  admits at most 8 guests. There is no view-only role.
 
 When implementing a gap, update this list in the same change.

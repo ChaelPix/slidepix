@@ -74,6 +74,30 @@ export function mergeDecks(
     : { ok: true, deck: parsed.data, text, conflicts: [] };
 }
 
+const liveResolvable = new Set<DeckMergeConflictKind>(["value", "delete-edit", "order"]);
+
+/** Live collaboration merge: last writer wins per property. Integrity conflicts stay explicit. */
+export function mergeDecksLive(
+  base: Deck,
+  ours: Deck,
+  theirs: Deck,
+  prefer: Exclude<DeckMergeResolution, "base">
+): DeckMergeResult {
+  const resolutions: Record<string, DeckMergeResolution> = {};
+  let result = mergeDecks(base, ours, theirs, resolutions);
+  for (let pass = 0; pass < 8 && !result.ok; pass += 1) {
+    let changed = false;
+    for (const conflict of result.conflicts) {
+      if (!liveResolvable.has(conflict.kind) || resolutions[conflict.id]) continue;
+      resolutions[conflict.id] = prefer;
+      changed = true;
+    }
+    if (!changed) return result;
+    result = mergeDecks(base, ours, theirs, resolutions);
+  }
+  return result;
+}
+
 function mergeValue(
   base: MaybeValue,
   ours: MaybeValue,

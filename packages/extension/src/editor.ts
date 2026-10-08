@@ -10,6 +10,7 @@ import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
 import { cssFontFamily, discoverSystemFontFamilies } from "./fonts";
 import { revisionForText } from "./document-revision";
+import type { LiveDeckHost } from "./live/bridge";
 import { emptyDocumentHistory, historyFlags, recordDocumentEdit, redoDocument, undoDocument, type DocumentHistory } from "./document-history";
 import type { ExportResult } from "./export-result";
 import { EditorResolveRecovery } from "./editor-recovery";
@@ -39,6 +40,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private activeDocument?: vscode.TextDocument;
   private outputChannel?: vscode.OutputChannel;
   private manimRenderInFlight = false;
+  private live?: LiveDeckHost;
   private readonly recovery = new EditorResolveRecovery<vscode.Tab>({
     isResolved: (key) => this.panels.has(key),
     hasDocument: (key) => vscode.workspace.textDocuments.some((document) => document.uri.toString() === key),
@@ -47,6 +49,23 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   });
 
   constructor(private readonly context: vscode.ExtensionContext) {}
+
+  attachLive(live: LiveDeckHost): void {
+    this.live = live;
+  }
+
+  postTo(document: vscode.TextDocument, message: HostToWebviewMessage): void {
+    for (const panel of this.panels.get(document.uri.toString()) ?? []) void panel.webview.postMessage(message);
+  }
+
+  embedLinkedMedia(document: vscode.TextDocument, elementIds?: string[]): Promise<void> {
+    return this.embedMedia(document, elementIds);
+  }
+
+  locationOf(document: vscode.TextDocument): { deckPath: string; linkedRoots: string[] } {
+    const located = this.paths(document);
+    return { deckPath: located.deckPath, linkedRoots: located.roots };
+  }
 
   showLog(): void {
     const channel = this.getOutputChannel();
@@ -86,8 +105,8 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, "media"),
-        vscode.Uri.file(deckAssetDirectory(document.uri.fsPath)),
-        ...workspaceRootUris(document)
+        vscode.Uri.file(deckAssetDirectory(this.paths(document).deckPath)),
+        ...this.resourceRoots(document)
       ]
     };
     panel.webview.html = this.webviewHtml(panel.webview);
@@ -98,7 +117,8 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (!set.size) {
         this.panels.delete(key);
         this.histories.delete(key);
-        this.log(`closed ${document.uri.fsPath}`);
+        this.log(`closed ${document.uri.toString()}`);
+        void this.live?.panelClosed(document);
       }
     });
     panel.webview.onDidReceiveMessage((message: WebviewToHostMessage) => {
@@ -129,9 +149,11 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       return;
     }
     running?.dispose();
-    const session = new PresentationServer(parsed.deck, document.uri.fsPath, (index) => {
+    const located = this.paths(document);
+    await this.live?.ensureAssets(document);
+    const session = new PresentationServer(parsed.deck, located.deckPath, (index) => {
       this.presenterPanels.get(key)?.webview.postMessage({ type: "state", index });
-    }, linkedRoots(document), () => this.deckForPresentation(key, document.uri.fsPath));
+    }, located.roots, () => this.deckForPresentation(key, located.deckPath));
     await session.start();
     this.sessions.set(key, session);
     if (presenter) this.attachPresenter(key, session, parsed.deck);
@@ -163,6 +185,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (parsed.ok) session.deck = parsed.deck;
       this.schedulePresentationReload(key);
     }
+    this.live?.documentChanged(document);
     const set = this.panels.get(key);
     if (!set) return;
     for (const panel of set) this.postDeck(document, panel);
@@ -198,8 +221,9 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     const text = document.getText();
     const parsed = parseDeckText(text);
     const revision = revisionForText(text);
-    const assetUri = panel.webview.asWebviewUri(vscode.Uri.file(deckAssetDirectory(document.uri.fsPath))).toString();
-    const linkedUri = panel.webview.asWebviewUri(vscode.Uri.file(path.dirname(document.uri.fsPath))).toString();
+    const located = this.paths(document);
+    const assetUri = panel.webview.asWebviewUri(vscode.Uri.file(deckAssetDirectory(located.deckPath))).toString();
+    const linkedUri = panel.webview.asWebviewUri(vscode.Uri.file(path.dirname(located.deckPath))).toString();
     const flags = this.historyState(document.uri);
     const message: HostToWebviewMessage = parsed.ok
       ? { version: 2, type: "deck", text, deck: parsed.deck, revision, uri: assetUri, linkedUri, ...flags }
@@ -217,7 +241,11 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       const detail = message.type === "command" ? `command ${message.command}` : message.type;
       this.log(`<- ${detail}`);
     }
-    if (message.type === "ready") return this.postDeck(document, panel);
+    if (message.type === "ready") {
+      this.postDeck(document, panel);
+      this.live?.announce(document);
+      return;
+    }
     if (message.type === "replaceDocument") {
       const currentText = document.getText();
       const currentRevision = revisionForText(currentText);
@@ -241,10 +269,17 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       await this.applyHistory(document, panel, message.command, message.requestId);
       return;
     }
-    if (message.type === "importAsset") return this.importAsset(document, panel, message);
+    if (message.type === "presence") return this.live?.presence(document, message);
+    if (message.type === "importAsset") {
+      if (this.live?.isGuest(document)) return this.importGuestAsset(document, panel, message);
+      return this.importAsset(document, panel, message);
+    }
     if (message.type === "selectMedia") return this.selectMedia(document, panel, message);
     if (message.type === "linkMedia") return this.resolveMedia(document, panel, message, vscode.Uri.parse(message.uri));
-    if (message.type === "embedMedia") return this.embedMedia(document, message.elementIds);
+    if (message.type === "embedMedia") {
+      if (await this.live?.embedOnHost(document, message.elementIds)) return;
+      return this.embedMedia(document, message.elementIds);
+    }
     if (message.type === "selectFont") return this.selectFont(panel, message);
     if (message.type === "selectManimScript") return this.selectManimScript(document, panel, message);
     if (message.type === "createManimScript") return this.createManimScript(document, panel, message);
@@ -255,21 +290,27 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     if (message.type === "setupManim") return this.setupManim(document, panel);
     if (message.type === "command") {
       if (message.command === "undo" || message.command === "redo") return this.applyHistory(document, panel, message.command);
-      if (message.command === "save") return void document.save();
+      if (message.command === "save") return this.live?.isGuest(document) ? this.live.saveOnHost(document) : void document.save();
+      if (message.command === "startLive") return this.live?.start(document);
+      if (message.command === "copyLiveInvite") return this.live?.copyInvite(document);
+      if (message.command === "stopLive") return this.live?.stop(document);
+      if (message.command === "saveLiveCopy") return this.live?.saveCopy(document);
       if (message.command === "configureMcp") return void vscode.commands.executeCommand("slidepix.configureMcp");
       if (message.command === "resolveGitConflict") return void vscode.commands.executeCommand("slidepix.resolveGitConflict");
       if (message.command === "openTextEditor") return void vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
       const parsed = parseDeckText(document.getText());
       if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
-      if (message.command === "exportPptx") return this.runExport(panel, message.requestId, "PowerPoint export", () => exportPptx(this.context, parsed.deck, document.uri.fsPath));
-      if (message.command === "exportWeb") return this.runExport(panel, message.requestId, "Web export", () => exportWeb(parsed.deck, document.uri.fsPath));
+      if (message.command === "exportPptx" || message.command === "exportWeb") await this.live?.ensureAssets(document);
+      const located = this.paths(document);
+      if (message.command === "exportPptx") return this.runExport(panel, message.requestId, "PowerPoint export", () => exportPptx(this.context, parsed.deck, located.deckPath));
+      if (message.command === "exportWeb") return this.runExport(panel, message.requestId, "Web export", () => exportWeb(parsed.deck, located.deckPath));
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);
     }
     if (message.type === "saveExport") {
       const destination = await vscode.window.showSaveDialog({
         filters: message.format === "pdf" ? { PDF: ["pdf"] } : { PNG: ["png"] },
-        defaultUri: vscode.Uri.file(document.uri.fsPath.replace(/\.slidepix\.json$/i, message.format === "pdf" ? ".pdf" : ".png"))
+        defaultUri: vscode.Uri.file(this.paths(document).deckPath.replace(/\.slidepix\.json$/i, message.format === "pdf" ? ".pdf" : ".png"))
       });
       if (destination) {
         const bytes = Buffer.from(message.data.replace(/^data:[^;]+;base64,/, ""), "base64");
@@ -323,7 +364,8 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       ? undoDocument(this.historyFor(document.uri), currentText)
       : redoDocument(this.historyFor(document.uri), currentText);
     let error: string | undefined;
-    if (step) {
+    if (step && "error" in step) error = step.error;
+    else if (step) {
       const previous = this.historyFor(document.uri);
       this.setHistory(document.uri, step.history);
       const applied = await replaceDocument(document, step.text, revisionForText(currentText));
@@ -366,6 +408,32 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     return historyFlags(this.historyFor(uri));
   }
 
+  private paths(document: vscode.TextDocument): { deckPath: string; roots: string[] } {
+    const located = this.live?.locate(document);
+    if (located) return { deckPath: located.deckPath, roots: located.linkedRoots };
+    return { deckPath: document.uri.fsPath, roots: linkedRoots(document) };
+  }
+
+  private resourceRoots(document: vscode.TextDocument): vscode.Uri[] {
+    const located = this.live?.locate(document);
+    if (located) {
+      const media = located.linkedRoots[0] ?? path.dirname(located.deckPath);
+      return [vscode.Uri.file(path.dirname(located.deckPath)), vscode.Uri.file(media)];
+    }
+    return workspaceRootUris(document);
+  }
+
+  private async importGuestAsset(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "importAsset" }>): Promise<void> {
+    const response: HostToWebviewMessage = { version: 2, type: "assetImported", requestId: message.requestId };
+    const bytes = Buffer.from(message.base64, "base64");
+    const stored = await this.live?.importAsset(document, bytes, message.name, message.mime);
+    if (stored && "reference" in stored) {
+      response.reference = stored.reference;
+      response.storage = stored.storage;
+    } else response.error = stored?.error ?? "Could not upload media.";
+    await panel.webview.postMessage(response);
+  }
+
   private async selectFont(panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectFont" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "fontSelected", requestId: message.requestId };
     try {
@@ -388,7 +456,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     try {
       const bytes = Buffer.from(message.base64, "base64");
       if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("Media files are limited to 100 MB per import.");
-      response.reference = await storeEmbeddedBytes(document.uri.fsPath, bytes, message.name, message.mime);
+      response.reference = await storeEmbeddedBytes(this.paths(document).deckPath, bytes, message.name, message.mime);
       response.storage = "embedded";
     } catch (error) {
       response.error = error instanceof Error ? error.message : "Could not import asset";
@@ -413,6 +481,15 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (kind !== message.kind) throw new Error(`Choose a supported ${message.kind} file.`);
       const stat = await vscode.workspace.fs.stat(uri);
       if (stat.size > 100 * 1024 * 1024) throw new Error("Media files are limited to 100 MB.");
+      if (this.live?.isGuest(document)) {
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        const stored = await this.live.importAsset(document, bytes, path.basename(uri.fsPath), "");
+        if ("error" in stored) throw new Error(stored.error);
+        response.reference = stored.reference;
+        response.storage = stored.storage;
+        await panel.webview.postMessage(response);
+        return;
+      }
       const roots = linkedRoots(document);
       const resolved = path.resolve(uri.fsPath);
       const insideWorkspace = roots.some((root) => isInside(root, resolved));
@@ -436,6 +513,12 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     return { channel, append: (text) => channel.append(text) };
   }
 
+  private refuseManim(document: vscode.TextDocument): boolean {
+    if (this.live?.canUseManim(document) !== false) return false;
+    void vscode.window.showInformationMessage("Manim runs on the host during live collaboration.");
+    return true;
+  }
+
   private async manimLaunch(document: vscode.TextDocument) {
     const configured = vscode.workspace.getConfiguration("slidepix").get<string>("manim.executable", "") ?? "";
     const log = this.manimLog();
@@ -446,6 +529,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   private async setupManim(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
     const log = this.manimLog();
     log.channel.show(false);
+    if (this.refuseManim(document)) return;
     this.log("opening Manim setup");
     const notify = (status: "progress" | "success" | "error" | "dismiss", text?: string) => panel.webview.postMessage({ version: 2, type: "notify", notificationId: "manim-setup", status, message: text } satisfies HostToWebviewMessage);
     await notify("progress", "Choose how to set up Manim");
@@ -465,6 +549,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async selectManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "selectManimScript" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimScriptSelected", requestId: message.requestId };
+    if (this.refuseManim(document)) { response.error = "Manim runs on the host during live collaboration."; return void panel.webview.postMessage(response); }
     try {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
@@ -488,6 +573,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async createManimScript(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "createManimScript" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimScriptCreated", requestId: message.requestId };
+    if (this.refuseManim(document)) { response.error = "Manim runs on the host during live collaboration."; return void panel.webview.postMessage(response); }
     let createdPath: string | undefined;
     let linked = false;
     try {
@@ -515,6 +601,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   private async openManimScript(document: vscode.TextDocument, message: Extract<WebviewToHostMessage, { type: "openManimScript" }>): Promise<void> {
+    if (this.refuseManim(document)) return;
     try {
       const absolutePath = resolveMediaPath(document.uri.fsPath, message.script, "linked", linkedRoots(document));
       await vscode.window.showTextDocument(vscode.Uri.file(absolutePath), { viewColumn: vscode.ViewColumn.Beside });
@@ -525,6 +612,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async listManimScenes(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "listManimScenes" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimScenesListed", requestId: message.requestId };
+    if (this.refuseManim(document)) { response.error = "Manim runs on the host during live collaboration."; return void panel.webview.postMessage(response); }
     try {
       const listed = await listScenesForScript(document.uri.fsPath, message.script, linkedRoots(document));
       response.scenes = listed.scenes;
@@ -537,6 +625,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async renderManim(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "renderManim" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimRenderResult", requestId: message.requestId, ok: false, elementId: message.elementId };
+    if (this.refuseManim(document)) { response.error = "Manim runs on the host during live collaboration."; return void panel.webview.postMessage(response); }
     const notify = async (status: "progress" | "success" | "error" | "dismiss", text?: string, progress?: number, elementId?: string, elementProgress?: number) => {
       await panel.webview.postMessage({ version: 2, type: "notify", notificationId: message.requestId, status, message: text, progress, elementId, elementProgress } satisfies HostToWebviewMessage);
     };
@@ -566,6 +655,7 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
 
   private async renderAllManim(document: vscode.TextDocument, panel: vscode.WebviewPanel, message: Extract<WebviewToHostMessage, { type: "renderAllManim" }>): Promise<void> {
     const response: HostToWebviewMessage = { version: 2, type: "manimRenderAllResult", requestId: message.requestId, ok: false, rendered: 0, skipped: 0 };
+    if (this.refuseManim(document)) { response.error = "Manim runs on the host during live collaboration."; return void panel.webview.postMessage(response); }
     const parsed = parseDeckText(document.getText());
     if (!parsed.ok) {
       response.error = parsed.message;
@@ -783,7 +873,7 @@ function abortFrom(token: vscode.CancellationToken): AbortSignal {
   return controller.signal;
 }
 
-async function storeEmbeddedBytes(deckPath: string, bytes: Uint8Array, name: string, mime: string): Promise<string> {
+export async function storeEmbeddedBytes(deckPath: string, bytes: Uint8Array, name: string, mime: string): Promise<string> {
   const hash = createHash("sha256").update(bytes).digest("hex");
   const reference = `${hash}${safeExtension(name, mime)}`;
   const directory = vscode.Uri.file(deckAssetDirectory(deckPath));
@@ -792,7 +882,7 @@ async function storeEmbeddedBytes(deckPath: string, bytes: Uint8Array, name: str
   return reference;
 }
 
-async function replaceDocument(document: vscode.TextDocument, text: string, baseRevision: string): Promise<boolean> {
+export async function replaceDocument(document: vscode.TextDocument, text: string, baseRevision: string): Promise<boolean> {
   if (revisionForText(document.getText()) !== baseRevision) return false;
   const end = document.lineAt(Math.max(0, document.lineCount - 1)).range.end;
   const edit = new vscode.WorkspaceEdit();

@@ -460,3 +460,59 @@ progress.toast-progress::-webkit-progress-value, progress.manim-progress::-webki
   .toolbar { padding-inline: 4px; }
   .ribbon-group { padding-inline: 2px; }
 }
+
+.workspace { position: relative; }
+.live-banner {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 12px;
+  background: var(--vscode-statusBar-background, #04395e);
+  color: var(--vscode-statusBar-foreground, #fff);
+}
+.live-banner button { background: transparent; color: inherit; border-color: currentColor; }
+.live-avatars { display: flex; gap: 4px; }
+.live-avatar, .live-dots i {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+}
+.live-dots { display: flex; gap: 3px; margin-left: 6px; }
+.live-dots i { width: 8px; height: 8px; }
+.live-selection, .live-ghost {
+  position: absolute;
+  outline: 2px solid;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.live-selection span {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.live-ghost { outline-style: dashed; opacity: .85; }
+.live-lock {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: var(--vscode-editorWidget-background);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+

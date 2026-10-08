@@ -1,5 +1,5 @@
 import Moveable from "react-moveable";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import {
   duplicateSlide,
@@ -32,6 +32,7 @@ import { useDeckStore } from "./store";
 import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
 import { clearManimProgress, notifyToast, onManimProgress, onManimProgressClear, onToast, publishManimProgress, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
+import { assetCacheKey, collaborationView, ghostPoses, localPreview, noteAssets, peerMarks, setCollaboration, subscribeCollaboration, textLockHolder } from "./presence";
 import { jsPDF } from "jspdf";
 import { captureSlidePng, describeExportError, inlineImages, inlineVideos } from "./export-capture";
 
@@ -73,6 +74,8 @@ export default function App() {
   const snapPeers = useRef<ReturnType<typeof peerBoxes>>([]);
   const snapHold = useRef<SnapGuide[]>([]);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const collaboration = useSyncExternalStore(subscribeCollaboration, collaborationView, collaborationView);
+  const presenceSentAt = useRef(0);
 
   useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult, store.handleHistoryResult)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
@@ -90,6 +93,22 @@ export default function App() {
   const dragTarget = selectedElements.find((item) => !item.locked) ?? selected;
   const target = dragTarget && !dragTarget.locked ? document.getElementById(`element-${dragTarget.id}`) : null;
   const cropping = selected?.type === "image" && croppingId === selected.id;
+  const guest = collaboration.role === "guest";
+  const liveOn = collaboration.status !== "off";
+
+  useEffect(() => {
+    if (!liveOn || collaboration.status === "ended") return;
+    const send = () => {
+      const now = Date.now();
+      if (now - presenceSentAt.current < 66) return;
+      presenceSentAt.current = now;
+      const preview = localPreview(store.deck, store.confirmedDeck, slide?.id, store.selectedElementIds);
+      postMessage({ type: "presence", slideId: slide?.id, elementIds: store.selectedElementIds, editingElementId: editingTextId, preview });
+    };
+    send();
+    const beat = window.setInterval(send, 2000);
+    return () => window.clearInterval(beat);
+  }, [liveOn, collaboration.status, slide?.id, editingTextId, store.selectedElementIds.join(","), store.deck, store.confirmedDeck]);
 
   useEffect(() => {
     if (!selected || selected.type !== "image" || selected.id !== croppingId) setCroppingId(undefined);
@@ -174,7 +193,12 @@ export default function App() {
   const assetUrl = (reference: string, storage: MediaStorage) => {
     const base = storage === "linked" ? store.linkedSourceUri : store.sourceUri;
     if (!base) return reference;
-    try { return new URL(reference.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`).toString(); } catch { return reference; }
+    try {
+      const url = new URL(reference.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`);
+      const version = assetCacheKey(reference);
+      if (version) url.searchParams.set("v", version);
+      return url.toString();
+    } catch { return reference; }
   };
   const addMedia = (kind: "image" | "video", result: MediaResult, name?: string, elementId?: string) => {
     let fitId: string | undefined;
@@ -233,6 +257,8 @@ export default function App() {
     setEditingTextId(common.id);
   };
   const beginTextEditing = (id: string, selectAll = false) => {
+    const holder = textLockHolder(collaboration.peers, collaboration.self?.id, id);
+    if (holder) return void showError(`${holder.name} is editing this text`);
     setSelectAllOnEdit(selectAll);
     setEditingTextId(id);
   };
@@ -349,7 +375,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app${railCollapsed ? " rail-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}`} onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+    <div className={`app${railCollapsed ? " rail-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}${liveOn ? " live-on" : ""}`} onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
       event.preventDefault();
       const uri = droppedFileUri(event.dataTransfer);
       if (uri) {
@@ -430,9 +456,17 @@ export default function App() {
           copies.slice(1).forEach((item) => store.selectElement(item.id, true));
         }}
         deleteSelected={() => deleteElements(slide.id, selectedElements.map((item) => item.id), store.mutate, store.selectElement)}
+        manimLocked={guest}
+        sharing={collaboration.status === "hosting"}
       />
-      <SlideRail collapsed={railCollapsed} onToggleCollapse={() => setRailCollapsed((value) => !value)} deck={deck} selectedId={slide.id} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
+      <SlideRail collapsed={railCollapsed} onToggleCollapse={() => setRailCollapsed((value) => !value)} deck={deck} selectedId={slide.id} peerColors={peerMarks(collaboration.peers)} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
       <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
+        {liveOn && <div className="live-banner" role="status">
+          <span>{collaboration.status === "hosting" ? "Sharing this deck" : collaboration.status === "reconnecting" ? "Reconnecting…" : collaboration.status === "ended" ? `Session ended — ${collaboration.hostName ?? "the host"} closed it` : `Connected to ${collaboration.hostName ?? "the host"}`}</span>
+          <span className="live-avatars">{[collaboration.self, ...collaboration.peers].filter((peer): peer is NonNullable<typeof peer> => Boolean(peer)).map((peer) => <span key={peer.id} className="live-avatar" title={peer.name} style={{ background: peer.color }}>{peer.name.slice(0, 1).toUpperCase()}</span>)}</span>
+          {collaboration.status === "ended" && <button type="button" onClick={() => postMessage({ type: "command", command: "saveLiveCopy" })}>Save a copy</button>}
+          {collaboration.status === "hosting" && <button type="button" onClick={() => postMessage({ type: "command", command: "stopLive" })}>Stop</button>}
+        </div>}
         <div className="canvas-scroll" onWheel={(event) => {
           if (!event.ctrlKey && !event.metaKey) return;
           event.preventDefault();
@@ -559,6 +593,13 @@ export default function App() {
               )}
               {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropping={cropping} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCroppingId(undefined)} />}
               {editingText && <InlineTextEditor ref={inlineTextEditor} element={editingText} selectAll={selectAllOnEdit} preview={(markdown) => { store.preview((draft) => { const element = findElement(draft, slide.id, editingText.id); if (element?.type === "text") element.markdown = markdown; }); store.scheduleCommit(); }} finish={() => { store.commit(); setEditingTextId(undefined); }} />}
+              {collaboration.peers.filter((peer) => peer.slideId === slide.id).flatMap((peer) => peer.elementIds.flatMap((id) => {
+                const element = slide.elements.find((item) => item.id === id);
+                if (!element) return [];
+                return [<div key={`${peer.id}-${id}`} className="live-selection" style={{ left: element.x, top: element.y, width: element.width, height: element.height, transform: `rotate(${element.rotation}deg)`, outlineColor: peer.color }}><span style={{ background: peer.color }}>{peer.name}</span></div>];
+              }))}
+              {ghostPoses(collaboration.peers, slide.id).map(({ peer, pose }) => <div key={`${peer.id}-ghost-${pose.id}`} className="live-ghost" style={{ left: pose.x, top: pose.y, width: pose.width, height: pose.height, transform: `rotate(${pose.rotation}deg)`, outlineColor: peer.color }} />)}
+              {editingText && textLockHolder(collaboration.peers, collaboration.self?.id, editingText.id) && <div className="live-lock">{textLockHolder(collaboration.peers, collaboration.self?.id, editingText.id)?.name} is editing this text</div>}
             </div>
             {snapGuides.length > 0 && (
               <div className="snap-overlay" aria-hidden="true">
@@ -598,7 +639,7 @@ export default function App() {
   );
 }
 
-function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, addManim, setManimQuality, renderAllManim, setupManim, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
+function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, addManim, setManimQuality, renderAllManim, setupManim, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected, manimLocked, sharing }: {
   slide: Slide;
   element?: SlideElement;
   selectedElements: SlideElement[];
@@ -625,6 +666,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   distribute(action: DistributeAction): void;
   duplicateElement(): void;
   deleteSelected(): void;
+  manimLocked: boolean;
+  sharing: boolean;
 }) {
   const runCommand = useDeckStore((state) => state.runCommand);
   const zoom = useDeckStore((state) => state.zoom);
@@ -733,11 +776,12 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
           { icon: "symbol-number", label: "Quality: Medium", onClick: () => setManimQuality("medium") },
           { icon: "symbol-number", label: "Quality: High", onClick: () => setManimQuality("high") },
           { icon: "symbol-number", label: "Quality: Production", onClick: () => setManimQuality("production") }
-        ]} />
+        ].map((item) => manimLocked ? { ...item, onClick: () => showError("Manim runs on the host during live collaboration.") } : item)} />
       </div></div>
       <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
         <RibbonButton icon="play" label="Present" primary onClick={() => postMessage({ type: "command", command: "present" })} />
         <RibbonButton icon="multiple-windows" label="Presenter" onClick={() => postMessage({ type: "command", command: "presenter" })} />
+        <RibbonButton icon="broadcast" label={sharing ? "Copy invite" : "Share"} onClick={() => postMessage({ type: "command", command: sharing ? "copyLiveInvite" : "startLive" })} />
       </div></div>
     </div>
     <div className="context-toolbar" aria-label="Selection formatting">
@@ -841,7 +885,7 @@ function AlignControls({ count, unlocked, align, distribute }: { count: number; 
   </div>;
 }
 
-function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, mutate, resolveAsset }: { collapsed: boolean; onToggleCollapse(): void; deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
+function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, peerColors, select, mutate, resolveAsset }: { collapsed: boolean; onToggleCollapse(): void; deck: Deck; selectedId: string; peerColors: Map<string, string[]>; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
   const [transitionSlideId, setTransitionSlideId] = useState<string>();
   const [drag, setDrag] = useState<{ id: string; from: number; dy: number; to: number }>();
   const listRef = useRef<HTMLDivElement>(null);
@@ -917,6 +961,7 @@ function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, muta
           <span className="slide-index">{index + 1}</span>
           <div className="thumb-clip" style={{ width: 192, height: 108 }}><SlideView deck={deck} slide={slide} scale={0.1} resolveAsset={resolveAsset} /></div>
           <span className="slide-title">{slide.title}{slide.hidden ? " (hidden)" : ""}</span>
+          {(peerColors.get(slide.id) ?? []).length > 0 && <span className="live-dots">{(peerColors.get(slide.id) ?? []).map((color, dot) => <i key={`${color}-${dot}`} style={{ background: color }} />)}</span>}
         </button>
         <div className="rail-actions">
           <IconButton icon="copy" label="Duplicate" onClick={() => mutate((draft) => draft.slides.splice(index + 1, 0, duplicateSlide(draft.slides[index]!)))} />
@@ -1590,6 +1635,8 @@ function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, 
   else if (message.type === "manimScenesListed") { pendingManimScenes.get(message.requestId)?.(message); pendingManimScenes.delete(message.requestId); }
   else if (message.type === "manimRenderResult") { pendingManimRenders.get(message.requestId)?.(message); pendingManimRenders.delete(message.requestId); }
   else if (message.type === "manimRenderAllResult") { pendingManimRenderAll.get(message.requestId)?.(message); pendingManimRenderAll.delete(message.requestId); }
+  else if (message.type === "collaboration") setCollaboration({ status: message.status, role: message.role, canEdit: message.canEdit, hostName: message.hostName, self: message.self, peers: message.peers });
+  else if (message.type === "assetsUpdated") noteAssets(message.references);
   else if (message.type === "notify") {
     manimHostAcked.add(message.notificationId);
     if (message.notificationId === "manim-setup") {

@@ -224,3 +224,11 @@ altering build outputs.
 The Explorer context menu contributes **SlidePix: Create Deck** so the selected
 file or folder URI can be used as the creation location without opening a
 filesystem-wide save dialog or filename prompt.
+
+## Live collaboration
+
+`src/live/` owns invitations, the iroh transport, host sequencing, the guest
+client, the `slidepix-live:` file system, and the guest media mirror. The host
+document stays the only saved deck. Remote edits become `WorkspaceEdit`s.
+Undo restores only the local step when another person has edited a different
+property. See [Live collaboration](live-collaboration.md).

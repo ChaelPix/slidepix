@@ -25,9 +25,8 @@ Then:
 5. Select `slidepix-0.1.0.vsix` and approve the installation.
 6. Click **Reload Window** if the editor asks you to reload.
 
-The same VSIX works on Windows, macOS, and Linux. The extension itself is small;
-the optional PDF/PNG renderer is downloaded separately the first time you need
-it.
+The installation file is built for one operating system and CPU. Use the VSIX
+that matches the computer where you install it.
 
 ## Create your first presentation
 
@@ -75,6 +74,9 @@ The screen is organized like a simple slide application:
   new elements.
 - Pick a text font from the system-font selector in **Properties**; SlidePix
   defaults to the operating system's UI font instead of requiring a CSS name.
+- Choose **Share** to edit the open deck with other people. SlidePix copies an
+  invitation. The other person runs **SlidePix: Join Live Collaboration** and
+  pastes it. The host is asked to allow them. **Stop** ends the session.
 - Select an image to set border width/color, corner radius, and edge fade.
   Double-click it to enter crop mode, then drag to pan and use the visible
   zoom/reset/done controls.

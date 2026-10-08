@@ -23,7 +23,14 @@ pnpm build
 pnpm test
 pnpm typecheck
 pnpm docs:check
+pnpm test:live
 ```
+
+`pnpm test:live` is separate from `pnpm test`. It binds two local iroh endpoints
+with relays disabled. `pnpm package` stages the current platform's iroh binary
+and passes `--target` to vsce. `pnpm package:all` repeats that for darwin-arm64,
+linux-x64, linux-arm64, win32-x64, and win32-arm64. Intel macOS has no published
+iroh binary.
 
 Extension and MCP Vitest configurations alias `@slidepix/core` directly to its
 source. Tests therefore work in a fresh checkout before `packages/core/dist`
