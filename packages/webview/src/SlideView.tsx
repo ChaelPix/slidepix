@@ -197,7 +197,7 @@ function ManimView({
 
   useEffect(() => {
     setMediaFailed(false);
-  }, [media?.src, element.script, element.output]);
+  }, [mediaSrc, media?.storage, media?.src, element.script, element.output]);
 
   if (!media?.src || mediaFailed) {
     return (

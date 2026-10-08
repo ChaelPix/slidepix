@@ -78,7 +78,7 @@ export async function openLiveEndpoint(relay: RelayConfig): Promise<LiveEndpoint
     async connect(inviteTicket: string) {
       const addr = iroh.EndpointTicket.fromString(inviteTicket).endpointAddr();
       const connection = await endpoint.connect(addr, ALPN);
-      connection.setMaxConcurrentBiStreams(32n);
+      connection.setMaxConcurrentBiStreams(1n);
       const stream = await connection.openBi();
       return new IrohLink(connection, stream.send, stream.recv);
     }
@@ -132,7 +132,7 @@ async function acceptLoop(endpoint: Endpoint, handler: (link: LiveLink) => void)
     if (!incoming) return;
     try {
       const connection = await (await incoming.accept()).connect();
-      connection.setMaxConcurrentBiStreams(32n);
+      connection.setMaxConcurrentBiStreams(1n);
       const stream = await connection.acceptBi();
       const first = await readFrame(stream.recv);
       if (first.type !== "hello") {
@@ -154,6 +154,7 @@ class IrohLink implements LiveLink {
   private assetHandler?: (payload: { requestId: string; bytes: Uint8Array; sha256: string }) => void;
   private readonly queued: ControlFrame[] = [];
   private readonly queuedAssets: { requestId: string; bytes: Uint8Array; sha256: string }[] = [];
+  private assetsAccepted = false;
 
   constructor(private readonly connection: Connection, private readonly sendStream: SendStream, recv: RecvStream, initial?: ControlFrame) {
     this.remoteId = connection.remoteId().toString();
@@ -161,7 +162,6 @@ class IrohLink implements LiveLink {
     else if (initial) this.queued.push(initial);
     this.closed = connection.closed().then(() => undefined, () => undefined);
     void this.readControl(recv);
-    void this.acceptAssets();
   }
 
   takeHello(): Extract<ControlFrame, { type: "hello" }> | undefined {
@@ -178,6 +178,10 @@ class IrohLink implements LiveLink {
   onAsset(handler: (payload: { requestId: string; bytes: Uint8Array; sha256: string }) => void): void {
     this.assetHandler = handler;
     for (const asset of this.queuedAssets.splice(0)) handler(asset);
+    if (this.assetsAccepted) return;
+    this.assetsAccepted = true;
+    this.connection.setMaxConcurrentBiStreams(32n);
+    void this.acceptAssets();
   }
 
   async send(frame: ControlFrame): Promise<void> {

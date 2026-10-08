@@ -87,7 +87,6 @@ export class HostSession {
 
   private async admit(link: LiveLink): Promise<void> {
     const hello = link.takeHello();
-    link.onAsset((asset) => { void this.onAsset(link, asset); });
     link.onFrame((frame) => { void this.onFrame(link, frame); });
     if (!hello || hello.protocol !== 1) return link.close();
     if (this.banned.has(link.remoteId)) return link.close();
@@ -108,6 +107,7 @@ export class HostSession {
     const previous = this.peers.get(link.remoteId);
     previous?.link.close();
     this.peers.set(link.remoteId, { link, name: hello.name.slice(0, 80), seenAt: Date.now(), presenceMarks: [], transfers: new Map() });
+    link.onAsset((asset) => { void this.onAsset(link, asset); });
     const current = this.sequencer.current();
     await link.send({ type: "welcome", protocol: 1, revision: current.revision, text: current.text, hostName: this.hooks.displayName, deckName: this.hooks.deckName, relativePath: this.hooks.relativePath });
     if (this.localPresence) await link.send(this.localPresence).catch(() => undefined);

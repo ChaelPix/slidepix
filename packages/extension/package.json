@@ -202,7 +202,7 @@
     "dev": "pnpm build --watch",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "package": "vsce package --no-dependencies --allow-missing-repository --target $(node -p \"process.platform === 'darwin' ? (process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64') : process.platform === 'win32' ? (process.arch === 'arm64' ? 'win32-arm64' : 'win32-x64') : (process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64')\")"
+    "package": "node ./scripts/package.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",

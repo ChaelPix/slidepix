@@ -24,8 +24,13 @@ const current = process.platform === "darwin"
 const target = requested || current;
 const spec = platforms[target];
 if (!spec) {
-  console.error(`Live collaboration is not available on ${target}. Supported targets: ${Object.keys(platforms).join(", ")}.`);
-  process.exit(1);
+  if (requested) {
+    console.error(`Live collaboration is not available on ${target}. Supported targets: ${Object.keys(platforms).join(", ")}.`);
+    process.exit(1);
+  }
+  rmSync(destination, { recursive: true, force: true });
+  console.log(`Skipping native staging for ${target}. Live collaboration will report that it is unavailable.`);
+  process.exit(0);
 }
 
 const loader = require.resolve("@number0/iroh");

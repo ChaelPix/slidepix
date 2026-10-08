@@ -50,7 +50,7 @@ Settings: `slidepix.live.displayName`, `slidepix.live.relayMode` (`default`, `cu
 
 ## Invariants and hazards
 
-Remote peers are untrusted. Frames are schema-checked. Media paths go through `resolveMediaPath`, and the host serves a file only when a current or recent deck references it. Do not write a guest edit with `writeFile`; use `replaceDocument`. Do not add a second merge implementation.
+Remote peers are untrusted. Frames are schema-checked. The host accepts media streams only after the invitation secret matches and the guest is admitted. Media paths go through `resolveMediaPath`, and the host serves a file only when a current or recent deck references it. Do not write a guest edit with `writeFile`; use `replaceDocument`. Do not add a second merge implementation. A rejected edit does not discard keystrokes made after that edit was sent.
 
 Live Share, Open Collaboration Tools, Hyperswarm, and a webview WebRTC mesh were not used: they need an unsupported host, a server, UDP-only networking, or a public signaling service. A CRDT would be a second source of truth beside the deck file.
 

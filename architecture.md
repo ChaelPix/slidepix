@@ -122,7 +122,7 @@ Edit source files, then regenerate outputs with the documented commands.
 | `pnpm test` | Runs core schema/rendering tests, extension presentation-state tests, and MCP selection tests. |
 | `pnpm typecheck` | Type-checks every workspace package without emitting files. |
 | `pnpm docs:check` | Verifies local Markdown links and required agent-native files. |
-| `pnpm package` | Performs a full workspace build and creates the VSIX for the current platform. |
+| `pnpm package` | Performs a full workspace build and creates the VSIX for the current platform. The vsce target is computed in Node. Intel macOS skips the missing iroh binary and still packages. |
 | `pnpm test:live` | Connects two local iroh endpoints with relays disabled and exchanges a frame and a media file. It is not part of `pnpm test`. |
 | `pnpm package:all` | Builds, stages each platform's iroh binary, and packages a VSIX per target. |
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |

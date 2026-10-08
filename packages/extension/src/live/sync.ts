@@ -90,15 +90,26 @@ export class GuestSync {
   }
 
   onRejected(revision: string, text: string, message: string): GuestStep {
+    const sent = this.inflight?.text;
+    const pending = this.localText;
     this.inflight = undefined;
     this.confirmedText = text;
     this.confirmedRevision = revision;
-    this.localText = text;
-    return { documentText: text, error: message };
+    if (!sent || pending === sent) {
+      this.localText = text;
+      return { documentText: text, error: message };
+    }
+    const merged = mergeDocument(sent, pending, text, "ours");
+    if (!merged.ok) {
+      this.localText = pending;
+      return { documentText: pending, error: message };
+    }
+    this.localText = merged.text;
+    return { documentText: merged.text, edit: this.enqueue(), error: message };
   }
 
   private adopt(revision: string, text: string, resend: boolean): GuestStep {
-    const local = this.inflight?.text ?? this.localText;
+    const local = this.localText;
     this.inflight = undefined;
     if (local === this.confirmedText || local === text) {
       this.confirmedText = text;
