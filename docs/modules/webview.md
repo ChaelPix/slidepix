@@ -119,8 +119,9 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   panel of the scene currently rendering shows that scene's bar under
   **Render**. **Quality** entries set that quality on
   every Manim image and video. **Set up Manim…** opens a quick pick to locate
-  or install Manim. Cancelling from the element **Render** button is not
-  implemented yet.
+  Manim, install it with `uv tool install manim`, or create a `.venv` beside
+  the deck with `uv venv -p 3.12` and `uv pip install manim`. Cancelling from
+  the element **Render** button is not implemented yet.
   Until a render exists, image and video Manim elements both show the same
   bordered placeholder with the linked `.py` filename centered in the box.
   The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,

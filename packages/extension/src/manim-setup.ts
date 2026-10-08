@@ -27,6 +27,7 @@ async function openManimSetup(deckPath: string, log: (text: string) => void): Pr
   const choice = await vscode.window.showQuickPick(
     [
       { label: "Find Manim…", description: "Browse, or use .venv/bin/manim or .venv/Scripts/manim.exe" },
+      { label: "Create a virtualenv", description: "uv venv -p 3.12 next to the deck, then uv pip install manim" },
       { label: "Install Manim", description: "Install uv if needed, then uv tool install manim" },
       { label: "Install uv", description: "Install Astral uv" }
     ],
@@ -34,6 +35,7 @@ async function openManimSetup(deckPath: string, log: (text: string) => void): Pr
   );
   log(`Manim setup choice: ${choice?.label ?? "dismissed"}\n`);
   if (choice?.label === "Find Manim…") return chooseManimExecutable(deckPath);
+  if (choice?.label === "Create a virtualenv") return installManimVenv(deckPath, log);
   if (choice?.label === "Install uv") {
     await installUv(log, false);
     return undefined;
@@ -83,6 +85,33 @@ async function installManim(deckPath: string, log: (text: string) => void): Prom
   if (!(await pathExists(manim)) && manim !== manimName) {
     throw new Error("uv installed Manim, but SlidePix could not locate the manim executable.");
   }
+  await saveManimExecutable(manim);
+  void vscode.window.showInformationMessage(`Manim is ready: ${manim}`);
+  return { command: manim, args: [] };
+}
+
+async function installManimVenv(deckPath: string, log: (text: string) => void): Promise<ManimLaunch | undefined> {
+  const confirmed = await vscode.window.showWarningMessage(
+    "Create .venv next to the deck with uv (Python 3.12) and install Manim Community into it?",
+    { modal: true },
+    "Create"
+  );
+  if (confirmed !== "Create") return undefined;
+  const uv = await uvExecutable() ?? await installUv(log, true);
+  if (!uv) return undefined;
+  const deckDir = path.dirname(deckPath);
+  log(`\n$ ${uv} venv -p 3.12\n`);
+  await runLogged(uv, ["venv", "-p", "3.12", "--allow-existing"], log, deckDir);
+  log(`\n$ ${uv} pip install manim\n`);
+  await runLogged(uv, ["pip", "install", "manim"], log, deckDir);
+  let manim: string | undefined;
+  for (const candidate of venvManimCandidates(deckDir)) {
+    if (await pathExists(candidate)) {
+      manim = candidate;
+      break;
+    }
+  }
+  if (!manim) throw new Error("The virtualenv was created, but SlidePix could not find manim inside .venv.");
   await saveManimExecutable(manim);
   void vscode.window.showInformationMessage(`Manim is ready: ${manim}`);
   return { command: manim, args: [] };

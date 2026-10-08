@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cssUrls, describeExportError, firstPresentedTime, frameIsBlank, inlineImages, playHud, urlToDataUri, withTimeout } from "./export-capture";
+import { cssUrls, describeExportError, firstPresentedTime, frameIsBlank, inlineImages, playHud, stillObjectFit, urlToDataUri, withTimeout } from "./export-capture";
 
 const PNG_BYTES = Uint8Array.from([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137,
@@ -38,6 +38,15 @@ describe("first video frame", () => {
   it("treats an all-black bitmap as blank and a lit bitmap as a real frame", () => {
     expect(frameIsBlank(new Uint8ClampedArray([0, 0, 0, 255, 0, 0, 0, 255]))).toBe(true);
     expect(frameIsBlank(new Uint8ClampedArray([200, 20, 20, 255, 0, 0, 0, 255]))).toBe(false);
+  });
+});
+
+describe("stillObjectFit", () => {
+  it("keeps a computed fit and falls back to contain", () => {
+    expect(stillObjectFit("contain", "cover")).toBe("contain");
+    expect(stillObjectFit("cover", "")).toBe("cover");
+    expect(stillObjectFit("", "fill")).toBe("fill");
+    expect(stillObjectFit("auto", "")).toBe("contain");
   });
 });
 
@@ -108,6 +117,24 @@ describe("inlineImages", () => {
     img.naturalWidth = 0;
     root.children.push(img);
     await expect(inlineImages(root as unknown as HTMLElement)).rejects.toThrow(/Image failed to load: https:\/\/assets\.example\/missing\.png/);
+  });
+
+  it("restores images already rewritten when a later image fails", async () => {
+    stubPngFetch();
+    stubComputedStyle();
+    const root = el("div");
+    const loaded = el("img");
+    loaded.setAttribute("src", "https://assets.example/photo.png");
+    loaded.complete = true;
+    loaded.naturalWidth = 8;
+    loaded.naturalHeight = 8;
+    const missing = el("img");
+    missing.setAttribute("src", "https://assets.example/missing.png");
+    missing.complete = true;
+    missing.naturalWidth = 0;
+    root.children.push(loaded, missing);
+    await expect(inlineImages(root as unknown as HTMLElement)).rejects.toThrow(/missing\.png/);
+    expect(loaded.getAttribute("src")).toBe("https://assets.example/photo.png");
   });
 
   it("replaces CSS background urls with fetched data URIs and restores them", async () => {

@@ -66,11 +66,12 @@ swallowed. `src/editor-recovery.test.ts` covers the decision rules.
 
 Webview-triggered PowerPoint and web exports carry an optional request ID. The
 provider reports completion or failure through a typed `notify` message so the
-editor can replace its non-blocking progress toast; command-palette exports
-keep their native VS Code notifications. Toolbar PDF/PNG capture sends
-`saveExport` with a data URI; the provider writes the chosen file through
-`workspace.fs`. `log` messages append to the SlidePix output channel and show
-it on errors.
+editor can replace its non-blocking progress toast; command-palette PowerPoint
+and web exports keep their native VS Code notifications. **Export PDF** and
+**Export PNG** from the palette send `startCapture` to the open SlidePix editor,
+which captures in the webview and returns `saveExport`. The provider writes
+the chosen file through `workspace.fs`. `log` messages append to the SlidePix
+output channel and show it on errors.
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's autosave/external-change lifecycle.

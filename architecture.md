@@ -165,7 +165,8 @@ Do not assume every planned feature is complete. Current known gaps include:
 - Manim is not bundled. An empty `slidepix.manim.executable` uses
   `.venv/bin/manim` or `.venv/Scripts/manim.exe` only when that file exists.
   A deleted virtualenv is not launched through `uv run`. **Set up Manim** can
-  browse for an executable or install uv and Manim Community. SlidePix does
+  browse for an executable, install uv and Manim Community, or create a Python
+  3.12 virtualenv beside the deck. SlidePix does
   not install a system Python by itself.
 - The Manim **Render** button cannot cancel a render. Batch and per-scene
   progress bars are in the editor. Notification progress can still cancel,

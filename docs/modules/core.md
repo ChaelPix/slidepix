@@ -134,7 +134,8 @@ change, not for every new compatible message.
 Export commands include the compatible `exportPptx` member; adding it did not
 change protocol version 2. Toolbar PDF/PNG capture sends a compatible
 `saveExport` payload (data URI plus format) so the host can show a save dialog
-without changing protocol version 2.
+without changing protocol version 2. The command palette asks the open editor
+to capture through the compatible `startCapture` message.
 
 Host `notify` messages update a webview toast by stable notification ID.
 `renderAllManim` and `setupManim` are compatible Manim messages and did not

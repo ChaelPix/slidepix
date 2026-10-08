@@ -72,6 +72,7 @@ export function resolveManimLaunch(
 ): ManimLaunch {
   const configured = configuredExecutable.trim();
   if (configured) {
+    if (exists(configured)) return { command: configured, args: [] };
     if (configured.includes(" ")) {
       const tokens = configured.split(/\s+/).filter(Boolean);
       return { command: tokens[0]!, args: tokens.slice(1) };

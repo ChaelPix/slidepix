@@ -47,7 +47,10 @@ describe("shared document rendering", () => {
 
     const rendered = slide.elements.find((item) => item.id === "manim-1");
     if (rendered?.type === "manim") rendered.outputMedia = { src: "render.png", storage: "embedded" };
-    expect(renderDeckDocument(deck)).toContain('src="render.png"');
+    const html = renderDeckDocument(deck);
+    expect(html).toContain('src="render.png"');
+    expect(html).toContain("slidepix-manim-still");
+    expect(html).toContain("object-fit:contain");
   });
 
   it("renders a selected presenter frame with a viewport fitting runtime", () => {

@@ -16,9 +16,12 @@ await mkdir(output, { recursive: true });
 await mkdir(resolve(output, "slides"), { recursive: true });
 const assets = new Map();
 for (const slide of parsed.deck.slides) for (const element of slide.elements) {
-  if (element.type !== "image" && element.type !== "video") continue;
-  await loadAsset(element.src, element.storage);
-  if (element.type === "video" && element.poster) await loadAsset(element.poster, "embedded");
+  if (element.type === "image" || element.type === "video") {
+    await loadAsset(element.src, element.storage);
+    if (element.type === "video" && element.poster) await loadAsset(element.poster, "embedded");
+  } else if (element.type === "manim" && element.outputMedia) {
+    await loadAsset(element.outputMedia.src, element.outputMedia.storage);
+  }
 }
 const asset = (reference, storage) => assets.get(`${storage}:${reference}`) ?? reference;
 const browser = browserExecutable();
@@ -27,13 +30,16 @@ const profile = resolve(tmpdir(), `slidepix-smoke-${process.pid}`);
 await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "print" }), {
   pdf: resolve(output, "deck.pdf")
 });
-await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "contact", columns: 2 }), {
-  screenshot: resolve(output, "contact.png"),
-  width: parsed.deck.size.width * 2 + 96,
-  height: parsed.deck.size.height + 96
-});
-
 const visibleSlides = parsed.deck.slides.filter((slide) => !slide.hidden);
+const contactColumns = 2;
+const contactRows = Math.max(1, Math.ceil(visibleSlides.length / contactColumns));
+const contactGap = 32;
+const contactPad = 32;
+await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "contact", columns: contactColumns }), {
+  screenshot: resolve(output, "contact.png"),
+  width: parsed.deck.size.width * contactColumns + contactGap * (contactColumns - 1) + contactPad * 2,
+  height: parsed.deck.size.height * contactRows + contactGap * (contactRows - 1) + contactPad * 2
+});
 for (const [index, slide] of visibleSlides.entries()) {
   const slidePath = resolve(output, "slides", `slide-${String(index + 1).padStart(2, "0")}.png`);
   await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "frame", selectedSlideIds: [slide.id] }), {

@@ -51,31 +51,44 @@ export async function withTimeout<T>(promise: Promise<T>, ms = CAPTURE_TIMEOUT_M
 
 export async function inlineImages(root: HTMLElement): Promise<() => void> {
   const restores: Array<() => void> = [];
-  const images = [...root.querySelectorAll("img")];
-  for (const img of images) {
-    const original = img.getAttribute("src") ?? img.src;
-    if (!original || DATA_URL.test(original)) continue;
-    await waitForImage(img);
-    const dataUrl = await imageToDataUri(img);
-    img.setAttribute("src", dataUrl);
-    restores.push(() => img.setAttribute("src", original));
-  }
-  const styled = [root, ...root.querySelectorAll<HTMLElement>("*")];
-  for (const element of styled) {
-    const computed = getComputedStyle(element).backgroundImage;
-    const urls = cssUrls(computed).filter((url) => !DATA_URL.test(url));
-    if (urls.length === 0) continue;
-    const original = element.style.backgroundImage;
-    let next = computed;
-    for (const url of urls) {
-      next = next.split(url).join(await urlToDataUri(url));
-    }
-    element.style.backgroundImage = next;
-    restores.push(() => { element.style.backgroundImage = original; });
-  }
-  return () => {
+  const undo = () => {
     for (const restore of restores.reverse()) restore();
   };
+  try {
+    const images = [...root.querySelectorAll("img")];
+    for (const img of images) {
+      const original = img.getAttribute("src") ?? img.src;
+      if (!original || DATA_URL.test(original)) continue;
+      await waitForImage(img);
+      const dataUrl = await imageToDataUri(img);
+      img.setAttribute("src", dataUrl);
+      restores.push(() => img.setAttribute("src", original));
+    }
+    const styled = [root, ...root.querySelectorAll<HTMLElement>("*")];
+    for (const element of styled) {
+      const computed = getComputedStyle(element).backgroundImage;
+      const urls = cssUrls(computed).filter((url) => !DATA_URL.test(url));
+      if (urls.length === 0) continue;
+      const original = element.style.backgroundImage;
+      let next = computed;
+      for (const url of urls) {
+        next = next.split(url).join(await urlToDataUri(url));
+      }
+      element.style.backgroundImage = next;
+      restores.push(() => { element.style.backgroundImage = original; });
+    }
+    return undo;
+  } catch (error) {
+    undo();
+    throw error;
+  }
+}
+
+export function stillObjectFit(computed: string | undefined, inline: string | undefined): string {
+  const value = computed?.trim();
+  if (value && value !== "auto") return value;
+  const direct = inline?.trim();
+  return direct || "contain";
 }
 
 export type PlayHud = {
@@ -154,7 +167,7 @@ export async function inlineVideos(root: HTMLElement): Promise<() => void> {
     image.style.inset = "0";
     image.style.width = "100%";
     image.style.height = "100%";
-    image.style.objectFit = "cover";
+    image.style.objectFit = stillObjectFit(getComputedStyle(video).objectFit, video.style.objectFit);
     image.style.borderRadius = video.style.borderRadius;
     video.replaceWith(image);
     restores.push(() => image.replaceWith(video));

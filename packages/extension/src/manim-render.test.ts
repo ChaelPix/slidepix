@@ -110,6 +110,11 @@ class Outro(MovingCameraScene):
       command: "uv",
       args: ["run", "manim"]
     });
+    const programFiles = "C:\\Program Files\\Manim\\manim.exe";
+    expect(resolveManimLaunch("/repo/examples/demo.slidepix.json", programFiles, (target) => target === programFiles)).toEqual({
+      command: programFiles,
+      args: []
+    });
     const venvOnly = (target: string) => target === "/repo/.venv";
     expect(resolveManimLaunch("/repo/examples/demo.slidepix.json", "", venvOnly)).toEqual({ command: "manim", args: [] });
     const windows = (target: string) => target === path.join("/repo", ".venv", "Scripts", "manim.exe");

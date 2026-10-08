@@ -20,6 +20,8 @@ export function activate(context: vscode.ExtensionContext): void {
     live.register(),
     vscode.commands.registerCommand("slidepix.showLog", () => editor.showLog()),
     vscode.commands.registerCommand("slidepix.createDeck", (selected?: vscode.Uri) => createDeckCommand(selected, editor)),
+    vscode.commands.registerCommand("slidepix.exportPdf", () => { const document = editor.currentDocument(); return document && editor.requestCapture(document, "pdf"); }),
+    vscode.commands.registerCommand("slidepix.exportPng", () => { const document = editor.currentDocument(); return document && editor.requestCapture(document, "png"); }),
     vscode.commands.registerCommand("slidepix.exportPptx", () => { editor.log("command exportPptx"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportPptx(context, deck, editor.locationOf(document).deckPath); }); }),
     vscode.commands.registerCommand("slidepix.exportWeb", () => { editor.log("command exportWeb"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportWeb(deck, editor.locationOf(document).deckPath); }); }),
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),

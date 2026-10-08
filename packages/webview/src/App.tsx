@@ -48,6 +48,7 @@ const pendingManimRenders = new Map<string, (message: Extract<HostToWebviewMessa
 const pendingManimRenderAll = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderAllResult" }>) => void>();
 const manimHostAcked = new Set<string>();
 let manimUiBusy = false;
+let requestCapture: ((format: "pdf" | "png") => void) | undefined;
 let manimSetupTimer = 0;
 const manimRenderedFingerprints = new Map<string, string>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
@@ -739,6 +740,12 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
       notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}: ${detail.split("\n")[0]}` });
     }
   };
+  useEffect(() => {
+    requestCapture = (format) => {
+      void exportDeck(format === "pdf" ? "exportPdf" : "exportPng", format === "pdf" ? "PDF" : "PNG", format === "png" ? [slide.id] : undefined);
+    };
+    return () => { requestCapture = undefined; };
+  });
   return <header className="toolbar-shell">
     <div className="toolbar toolbar-primary">
       <div className="ribbon-group"><div className="ribbon-actions">
@@ -1638,6 +1645,7 @@ function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, 
   else if (message.type === "manimRenderAllResult") { pendingManimRenderAll.get(message.requestId)?.(message); pendingManimRenderAll.delete(message.requestId); }
   else if (message.type === "collaboration") setCollaboration({ status: message.status, role: message.role, canEdit: message.canEdit, hostName: message.hostName, self: message.self, peers: message.peers, temporaryMirror: message.temporaryMirror });
   else if (message.type === "assetsUpdated") noteAssets(message.references);
+  else if (message.type === "startCapture") requestCapture?.(message.format);
   else if (message.type === "notify") {
     manimHostAcked.add(message.notificationId);
     if (message.notificationId === "manim-setup") {

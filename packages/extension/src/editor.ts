@@ -58,6 +58,15 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
     for (const panel of this.panels.get(document.uri.toString()) ?? []) void panel.webview.postMessage(message);
   }
 
+  requestCapture(document: vscode.TextDocument, format: "pdf" | "png"): void {
+    const panels = this.panels.get(document.uri.toString());
+    if (!panels?.size) {
+      void vscode.window.showErrorMessage("Open the deck in the SlidePix editor to export PDF or PNG.");
+      return;
+    }
+    this.postTo(document, { version: 2, type: "startCapture", format });
+  }
+
   embedLinkedMedia(document: vscode.TextDocument, elementIds?: string[]): Promise<void> {
     return this.embedMedia(document, elementIds);
   }

@@ -168,7 +168,7 @@
         "slidepix.manim.executable": {
           "type": "string",
           "default": "",
-          "description": "Manim executable. Leave empty to use .venv/bin/manim or .venv/Scripts/manim.exe when that file exists. A removed virtualenv is not launched. Set up Manim can browse for manim or install uv and Manim."
+          "description": "Manim executable. Leave empty to use .venv/bin/manim or .venv/Scripts/manim.exe when that file exists. A removed virtualenv is not launched. Set up Manim can browse for manim, install uv and Manim, or create a Python 3.12 virtualenv beside the deck."
         },
         "slidepix.live.displayName": {
           "type": "string",

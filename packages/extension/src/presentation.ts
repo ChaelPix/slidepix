@@ -200,8 +200,7 @@ function send(response: import("node:http").ServerResponse, status: number, cont
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
-    "X-Content-Type-Options": "nosniff",
-    "Access-Control-Allow-Origin": "*"
+    "X-Content-Type-Options": "nosniff"
   });
   response.end(body);
 }
