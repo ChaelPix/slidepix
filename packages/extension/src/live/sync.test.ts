@@ -60,10 +60,10 @@ describe("live sync", () => {
     const guest = new GuestSync(text, revisionForText, () => "req");
     const local = structuredClone(base);
     local.slides[0]!.title = "Mine";
-    guest.localEdit(serializeDeck(local));
     const remote = structuredClone(base);
     remote.slides[0]!.notes = "Host";
-    const step = guest.onRebase(revisionForText(serializeDeck(remote)), serializeDeck(remote));
+    const sent = guest.localEdit(serializeDeck(local));
+    const step = guest.onRebase(revisionForText(serializeDeck(remote)), serializeDeck(remote), sent!.requestId);
     expect(step.documentText).toContain("Mine");
     expect(step.documentText).toContain("Host");
     expect(step.edit?.baseRevision).toBe(revisionForText(serializeDeck(remote)));
@@ -76,11 +76,11 @@ describe("live sync", () => {
     const guest = new GuestSync(text, revisionForText, () => `req-${count += 1}`);
     const sent = structuredClone(base);
     sent.slides[0]!.title = "Sent";
-    guest.localEdit(serializeDeck(sent));
+    const inflight = guest.localEdit(serializeDeck(sent));
     const newer = structuredClone(sent);
     newer.slides[0]!.notes = "Newer";
     expect(guest.localEdit(serializeDeck(newer))).toBeUndefined();
-    const step = guest.onRejected(revisionForText(text), text, "conflict");
+    const step = guest.onRejected(revisionForText(text), text, "conflict", inflight!.requestId);
     expect(step.error).toBe("conflict");
     expect(step.documentText).toContain("Newer");
     expect(step.documentText).not.toContain("Sent");
@@ -94,9 +94,28 @@ describe("live sync", () => {
     const guest = new GuestSync(text, revisionForText, () => "req");
     const sent = structuredClone(base);
     sent.slides[0]!.title = "Sent";
-    guest.localEdit(serializeDeck(sent));
-    const step = guest.onRejected(revisionForText(text), text, "conflict");
+    const inflight = guest.localEdit(serializeDeck(sent));
+    const step = guest.onRejected(revisionForText(text), text, "conflict", inflight!.requestId);
     expect(step.documentText).toBe(text);
     expect(step.edit).toBeUndefined();
+  });
+
+  it("ignores a rejection for an edit that is no longer in flight", () => {
+    const base = createDeck("Live");
+    const text = serializeDeck(base);
+    let count = 0;
+    const guest = new GuestSync(text, revisionForText, () => `req-${count += 1}`);
+    const sent = structuredClone(base);
+    sent.slides[0]!.title = "Sent";
+    const first = guest.localEdit(serializeDeck(sent));
+    const remote = structuredClone(base);
+    remote.slides[0]!.notes = "Host";
+    const state = guest.onState(revisionForText(serializeDeck(remote)), serializeDeck(remote));
+    const rejected = guest.onRejected(revisionForText(text), text, "conflict", first!.requestId);
+    expect(rejected.documentText).toBe(state.documentText);
+    expect(rejected.documentText).toContain("Sent");
+    expect(rejected.documentText).toContain("Host");
+    expect(rejected.error).toBeUndefined();
+    expect(guest.inflight?.requestId).toBe(state.edit?.requestId);
   });
 });

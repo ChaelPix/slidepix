@@ -127,8 +127,8 @@ export class GuestSession {
   private async onFrame(frame: ControlFrame): Promise<void> {
     if (frame.type === "welcome") return this.onWelcome(frame);
     if (frame.type === "state") return this.onStep(this.sync?.onState(frame.revision, frame.text));
-    if (frame.type === "rebase") return this.onStep(this.sync?.onRebase(frame.revision, frame.text));
-    if (frame.type === "rejected") return this.onStep(this.sync?.onRejected(frame.revision, frame.text, frame.message));
+    if (frame.type === "rebase") return this.onStep(this.sync?.onRebase(frame.revision, frame.text, frame.requestId));
+    if (frame.type === "rejected") return this.onStep(this.sync?.onRejected(frame.revision, frame.text, frame.message, frame.requestId));
     if (frame.type === "invalid") {
       this.hooks.onError(frame.message);
       return;

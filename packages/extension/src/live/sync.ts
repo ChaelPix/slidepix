@@ -85,11 +85,13 @@ export class GuestSync {
     return this.adopt(revision, text, true);
   }
 
-  onRebase(revision: string, text: string): GuestStep {
+  onRebase(revision: string, text: string, requestId: string): GuestStep {
+    if (this.inflight?.requestId !== requestId) return { documentText: this.localText };
     return this.adopt(revision, text, true);
   }
 
-  onRejected(revision: string, text: string, message: string): GuestStep {
+  onRejected(revision: string, text: string, message: string, requestId: string): GuestStep {
+    if (this.inflight?.requestId !== requestId) return { documentText: this.localText };
     const sent = this.inflight?.text;
     const pending = this.localText;
     this.inflight = undefined;
