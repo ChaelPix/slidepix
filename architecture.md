@@ -15,11 +15,12 @@ the task; this keeps context small while making ownership explicit.
 | Change save/undo/external-edit behavior | `packages/extension/src/editor.ts` | [Extension module](docs/modules/extension.md) |
 | Change commands or extension contributions | `packages/extension/src/extension.ts` and `packages/extension/package.json` | [Extension module](docs/modules/extension.md), `packages/extension/src/create-deck.ts` |
 | Change presentation or presenter mode | `packages/extension/src/presentation.ts` | [Extension module](docs/modules/extension.md) |
-| Change PDF/PNG export or browser installation | `packages/extension/src/renderer.ts` | [Extension module](docs/modules/extension.md) |
+| Change editor PDF/PNG capture | `packages/webview/src/export-capture.ts` | [Webview module](docs/modules/webview.md) |
 | Change PowerPoint export | `packages/extension/src/pptx-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change standalone web export | `packages/extension/src/web-export.ts` | [Extension module](docs/modules/extension.md) |
 | Change MCP tools or selection rules | `packages/mcp/src/server.ts` and `packages/mcp/src/tools.ts` | [MCP module](docs/modules/mcp.md) |
-| Set up a Linux/macOS toolchain, compile, and install a local VSIX | [Install guide](docs/install.md) | [Development guide](docs/development.md) |
+| Change Manim slide elements or rendering | `packages/core/src/schema.ts` and `packages/extension/src/manim-host.ts` | [Core module](docs/modules/core.md), [Extension module](docs/modules/extension.md), [Webview module](docs/modules/webview.md) |
+| Change live collaboration, invitations, or peer sync | `packages/extension/src/live/manager.ts` | [Live collaboration](docs/modules/live-collaboration.md), [Extension module](docs/modules/extension.md) |
 | Change build/package/release work | root and package `package.json` files | [Development guide](docs/development.md) |
 
 ## System map
@@ -39,10 +40,10 @@ base / ours / theirs ── @slidepix/core semantic merge ── validated canon
 @slidepix/core schema + renderer
        ├── editor canvas/thumbnails
        ├── audience and presenter server
-       ├── PDF/PNG through pinned Chromium
+       ├── PDF/PNG captured in the editor; a video is its first frame plus a play control
        ├── native editable PPTX through semantic OOXML conversion
        ├── standalone offline web folder
-       └── read-only MCP inspection/rendering
+       └── read-only MCP inspection
 ```
 
 The JSON document is the source of truth. The webview never writes files
@@ -56,8 +57,8 @@ external edits, and multi-editor synchronization.
 | --- | --- | --- |
 | `@slidepix/core` | Zod schema, types, parsing, stable serialization, safe asset paths, shared HTML renderer, message protocol | VS Code APIs, React state, MCP transport |
 | `@slidepix/webview` | React editor, selection, manipulation, inspector, notes, transient UI state | filesystem access, authoritative persistence, headless browser lifecycle |
-| `slidepix` extension | VS Code custom editor lifecycle, commands, assets, local presentation server, renderer download/export | deck-format forks or a second rendering implementation |
-| `@slidepix/mcp` | read-only stdio tools and deterministic slide selection/rendering | any create/update/delete operation |
+| `slidepix` extension | VS Code custom editor lifecycle, commands, assets, local presentation server, PDF/PNG/PowerPoint/web export | deck-format forks or a second rendering implementation |
+| `@slidepix/mcp` | read-only stdio tools and deterministic slide selection | any create/update/delete operation |
 
 Detailed ownership and method contracts:
 
@@ -85,12 +86,20 @@ Detailed ownership and method contracts:
 7. Rendering semantics belong in `@slidepix/core`. Editor, presentation, export,
    and MCP should not independently reinterpret deck fields.
 8. Presentation HTTP and WebSocket services bind only to `127.0.0.1` and require
-   an unguessable per-session token.
+   an unguessable per-session token. Live collaboration is the one non-loopback
+   service: it runs only during an explicit session, uses encrypted QUIC, and
+   admits a peer only after the invitation secret matches and, by default, the
+   host approves them.
 9. MCP v0.1 stays read-only. Its tools must not write a deck or its assets.
-10. Chromium is OS-specific, consented, pinned, and stored outside the VSIX.
+10. PDF and PNG exports are captured in the editor webview. A video is painted
+    as its first frame with a play control. The PDF does not contain a playable
+    media stream.
 11. Every document replacement names its exact base revision. Stale edits are
     semantically rebased or surfaced as conflicts; they are never applied
     blindly over newer source.
+12. Remote live peers are untrusted. Every frame is schema-checked, media reads
+    go through `resolveMediaPath`, and a peer can only fetch media referenced
+    by the current deck or a recent revision.
 
 ## Source, generated, and packaged files
 
@@ -102,22 +111,22 @@ Edit source files, then regenerate outputs with the documented commands.
 | `packages/extension/schema/slidepix.schema.json` | generated | Change `packages/core/src/schema.ts`, then run `pnpm build`. |
 | `packages/core/dist`, `packages/mcp/dist`, `packages/extension/dist` | generated | Never hand-edit. |
 | `packages/extension/media` | generated webview bundle | Change `packages/webview/src`, then run `pnpm build`. |
-| `packages/extension/vendor/playwright-core` | generated vendored runtime | Regenerated by the extension build; never patch in place. |
 | `packages/extension/slidepix-*.vsix` | packaged artifact | Produce with `pnpm package`; do not treat it as source. |
 
 ## Commands and scripts
 
 | Command or script | Responsibility |
 | --- | --- |
-| `pnpm build` | Builds core, webview, MCP, extension, and the standalone Git merge driver in dependency order; also generates schema and vendors Playwright Core. |
+| `pnpm build` | Builds core, webview, MCP, extension, and the standalone Git merge driver in dependency order; also generates schema. |
 | `pnpm dev` | Watches the webview and extension packages for local extension development. |
 | `pnpm test` | Runs core schema/rendering tests, extension presentation-state tests, and MCP selection tests. |
 | `pnpm typecheck` | Type-checks every workspace package without emitting files. |
 | `pnpm docs:check` | Verifies local Markdown links and required agent-native files. |
-| `pnpm package` | Performs a full workspace build and creates the VSIX. |
+| `pnpm package` | Performs a full workspace build and creates the VSIX for the current platform. The vsce target is computed in Node. Intel macOS skips the missing iroh binary and still packages. |
+| `pnpm test:live` | Connects two local iroh endpoints with relays disabled and exchanges a frame and a media file. It is not part of `pnpm test`. |
+| `pnpm package:all` | Builds, stages each platform's iroh binary, and packages a VSIX per target. |
 | `packages/extension/scripts/generate-schema.mjs` | Converts the Zod deck schema into the contributed draft-7 JSON Schema. |
-| `packages/extension/scripts/vendor-playwright.mjs` | Copies the installed `playwright-core` package into the extension bundle. |
-| `scripts/render-smoke.mjs [deck] [output]` | Uses installed Chromium to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
+| `scripts/render-smoke.mjs [deck] [output]` | Uses the installed Google Chrome or Microsoft Edge to create a smoke-test PDF, contact sheet, exact-size single-slide PNG, and one exact-size PNG per visible slide from a built deck. |
 | `scripts/build-demo.mjs <hero> [video poster]` | Rebuilds the canonical light-theme product demo through the core schema; the optional embedded reel is generated separately from exported PNGs with FFmpeg. |
 | `scripts/check-docs.mjs` | Implements `pnpm docs:check`; reports broken local links or missing native agent files. |
 
@@ -152,6 +161,19 @@ Do not assume every planned feature is complete. Current known gaps include:
 - the text source editor is a textarea; CodeMirror and syntax-highlighted code
   output are not integrated;
 - automated VS Code custom-editor integration and Cursor smoke tests are still
-  missing.
+  missing;
+- Manim is not bundled. An empty `slidepix.manim.executable` uses
+  `.venv/bin/manim` or `.venv/Scripts/manim.exe` only when that file exists.
+  A deleted virtualenv is not launched through `uv run`. **Set up Manim** can
+  browse for an executable, install uv and Manim Community, or create a Python
+  3.12 virtualenv beside the deck. SlidePix does
+  not install a system Python by itself.
+- The Manim **Render** button cannot cancel a render. Batch and per-scene
+  progress bars are in the editor. Notification progress can still cancel,
+  and the full Manim log is written to the SlidePix output channel.
+- Live collaboration does not merge characters inside one text property; the
+  later edit wins that whole property. Manim runs only on the host. Linked
+  media outside the deck's workspace folder is not copied to guests. A session
+  admits at most 8 guests. There is no view-only role.
 
 When implementing a gap, update this list in the same change.

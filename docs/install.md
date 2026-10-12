@@ -101,7 +101,7 @@ pnpm build
 
 `pnpm install` downloads workspace dependencies. `pnpm build` compiles `@slidepix/core`,
 the React webview, the MCP server, and the VS Code extension, and writes generated
-schema, `dist`, `media`, and vendored Playwright Core files. Do not hand-edit those
+schema, `dist`, `media`. Do not hand-edit those
 outputs.
 
 Optional checks after a first build:
@@ -150,8 +150,5 @@ After install, run **SlidePix: Create Deck** from the Command Palette
 For local extension development, `pnpm build` (or `pnpm dev`) plus **F5** in VS
 Code is enough; see [Debug the extension](development.md#debug-the-extension).
 Re-run `pnpm package` and the VSIX install only when you want the built
-extension in your normal Ubuntu/macOS editor.
-
-PDF, PNG, MCP rendering, and `scripts/render-smoke.mjs` still need a later
-**SlidePix: Install Export Renderer** consent download. That Chromium binary is
-not part of `pnpm install` or the VSIX.
+extension in your normal Ubuntu/macOS editor. PDF and PNG export run in the
+editor webview and do not need a separate renderer download.

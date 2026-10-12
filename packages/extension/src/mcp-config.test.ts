@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mcpTargets, mergeMcpTarget, slidepixMcpProcess } from "./mcp-config";
 
-const server = slidepixMcpProcess("/usr/bin/cursor", "/ext/dist/mcp.cjs", "/data/playwright");
+const server = slidepixMcpProcess("/usr/bin/cursor", "/ext/dist/mcp.cjs");
 
 describe("mcp targets", () => {
   it("registers Cursor, VS Code, Codex, Claude Code, and Claude Desktop", () => {
@@ -58,7 +58,7 @@ describe("mergeMcpTarget", () => {
     expect(merged).toContain("js_repl = false");
     expect(merged).not.toContain("command = \"old\"");
     expect(merged).toContain("command = \"/usr/bin/cursor\"");
-    expect(merged).toContain("PLAYWRIGHT_BROWSERS_PATH = \"/data/playwright\"");
+    expect(merged.split("[mcp_servers.slidepix.env]")[1]).toBe("\nELECTRON_RUN_AS_NODE = \"1\"\n");
   });
 
   it("refuses a malformed server map", () => {

@@ -5,65 +5,210 @@
   "version": "0.1.0",
   "publisher": "slidepix",
   "license": "MIT",
-  "engines": { "vscode": "^1.99.0" },
-  "categories": ["Visualization", "Education", "Other"],
-  "keywords": ["slides", "presentation", "markdown", "latex", "visual"],
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Visualization",
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "slides",
+    "presentation",
+    "markdown",
+    "latex",
+    "visual"
+  ],
   "main": "./dist/extension.cjs",
-  "extensionKind": ["ui"],
-  "activationEvents": ["onCustomEditor:slidepix.deckEditor"],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onCustomEditor:slidepix.deckEditor"
+  ],
   "contributes": {
-    "customEditors": [{
-      "viewType": "slidepix.deckEditor",
-      "displayName": "SlidePix Editor",
-      "selector": [{ "filenamePattern": "*.slidepix.json" }],
-      "priority": "default"
-    }],
-    "jsonValidation": [{
-      "fileMatch": "*.slidepix.json",
-      "url": "./schema/slidepix.schema.json"
-    }],
+    "customEditors": [
+      {
+        "viewType": "slidepix.deckEditor",
+        "displayName": "SlidePix Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.slidepix.json"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "*.slidepix.json",
+        "url": "./schema/slidepix.schema.json"
+      }
+    ],
     "commands": [
-      { "command": "slidepix.createDeck", "title": "SlidePix: Create Deck", "icon": "$(new-file)" },
-      { "command": "slidepix.exportPdf", "title": "SlidePix: Export PDF", "icon": "$(file-pdf)" },
-      { "command": "slidepix.exportPng", "title": "SlidePix: Export PNG", "icon": "$(file-media)" },
-      { "command": "slidepix.exportPptx", "title": "SlidePix: Export PowerPoint", "icon": "$(file)" },
-      { "command": "slidepix.exportWeb", "title": "SlidePix: Export Web", "icon": "$(globe)" },
-      { "command": "slidepix.present", "title": "SlidePix: Present", "icon": "$(play)" },
-      { "command": "slidepix.presenter", "title": "SlidePix: Presenter View", "icon": "$(multiple-windows)" },
-      { "command": "slidepix.installRenderer", "title": "SlidePix: Install Export Renderer" },
-      { "command": "slidepix.configureMcp", "title": "SlidePix: Configure MCP" },
-      { "command": "slidepix.configureGitCollaboration", "title": "SlidePix: Configure Git Collaboration" },
-      { "command": "slidepix.removeGitCollaboration", "title": "SlidePix: Remove Git Collaboration" },
-      { "command": "slidepix.resolveGitConflict", "title": "SlidePix: Resolve Git Conflict" }
+      {
+        "command": "slidepix.showLog",
+        "title": "SlidePix: Show Log"
+      },
+      {
+        "command": "slidepix.createDeck",
+        "title": "SlidePix: Create Deck",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "slidepix.exportPdf",
+        "title": "SlidePix: Export PDF",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "slidepix.exportPng",
+        "title": "SlidePix: Export PNG",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "slidepix.exportPptx",
+        "title": "SlidePix: Export PowerPoint",
+        "icon": "$(file)"
+      },
+      {
+        "command": "slidepix.exportWeb",
+        "title": "SlidePix: Export Web",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "slidepix.present",
+        "title": "SlidePix: Present",
+        "icon": "$(play)"
+      },
+      {
+        "command": "slidepix.presenter",
+        "title": "SlidePix: Presenter View",
+        "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "slidepix.configureMcp",
+        "title": "SlidePix: Configure MCP"
+      },
+      {
+        "command": "slidepix.configureGitCollaboration",
+        "title": "SlidePix: Configure Git Collaboration"
+      },
+      {
+        "command": "slidepix.removeGitCollaboration",
+        "title": "SlidePix: Remove Git Collaboration"
+      },
+      {
+        "command": "slidepix.resolveGitConflict",
+        "title": "SlidePix: Resolve Git Conflict"
+      },
+      {
+        "command": "slidepix.startLive",
+        "title": "SlidePix: Start Live Collaboration",
+        "icon": "$(broadcast)"
+      },
+      {
+        "command": "slidepix.joinLive",
+        "title": "SlidePix: Join Live Collaboration"
+      },
+      {
+        "command": "slidepix.copyLiveInvite",
+        "title": "SlidePix: Copy Live Invitation"
+      },
+      {
+        "command": "slidepix.stopLive",
+        "title": "SlidePix: Stop Live Collaboration"
+      },
+      {
+        "command": "slidepix.saveLiveCopy",
+        "title": "SlidePix: Save Live Copy"
+      }
     ],
     "menus": {
       "explorer/context": [
-        { "command": "slidepix.createDeck", "group": "navigation@50" }
+        {
+          "command": "slidepix.createDeck",
+          "group": "navigation@50"
+        }
       ],
       "editor/title": [
-        { "command": "slidepix.present", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@1" },
-        { "command": "slidepix.exportPdf", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@2" },
-        { "command": "slidepix.exportPptx", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@3" },
-        { "command": "slidepix.exportWeb", "when": "activeCustomEditorId == slidepix.deckEditor", "group": "navigation@4" }
+        {
+          "command": "slidepix.present",
+          "when": "activeCustomEditorId == slidepix.deckEditor",
+          "group": "navigation@1"
+        },
+        {
+          "command": "slidepix.exportPdf",
+          "when": "activeCustomEditorId == slidepix.deckEditor",
+          "group": "navigation@2"
+        },
+        {
+          "command": "slidepix.exportPptx",
+          "when": "activeCustomEditorId == slidepix.deckEditor",
+          "group": "navigation@3"
+        },
+        {
+          "command": "slidepix.exportWeb",
+          "when": "activeCustomEditorId == slidepix.deckEditor",
+          "group": "navigation@4"
+        }
       ]
     },
     "keybindings": [
-      { "command": "slidepix.present", "key": "ctrl+shift+f5", "mac": "cmd+shift+f5", "when": "activeCustomEditorId == slidepix.deckEditor" }
-    ]
+      {
+        "command": "slidepix.present",
+        "key": "ctrl+shift+f5",
+        "mac": "cmd+shift+f5",
+        "when": "activeCustomEditorId == slidepix.deckEditor"
+      }
+    ],
+    "configuration": {
+      "title": "SlidePix",
+      "properties": {
+        "slidepix.manim.executable": {
+          "type": "string",
+          "default": "",
+          "description": "Manim executable. Leave empty to use .venv/bin/manim or .venv/Scripts/manim.exe when that file exists. A removed virtualenv is not launched. Set up Manim can browse for manim, install uv and Manim, or create a Python 3.12 virtualenv beside the deck."
+        },
+        "slidepix.live.displayName": {
+          "type": "string",
+          "default": "",
+          "description": "Name shown to other people in a live session. Empty uses the operating-system user name."
+        },
+        "slidepix.live.relayMode": {
+          "type": "string",
+          "enum": ["default", "custom", "disabled"],
+          "default": "default",
+          "description": "How SlidePix reaches peers when a direct connection fails. default uses the public n0 relays. custom uses slidepix.live.relayUrls. disabled tries a direct connection only."
+        },
+        "slidepix.live.relayUrls": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Relay URLs used when slidepix.live.relayMode is custom."
+        },
+        "slidepix.live.requireApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask before admitting someone who presents a valid live invitation."
+        }
+      }
+    }
   },
   "scripts": {
     "generate-schema": "node ./scripts/generate-schema.mjs",
-    "build": "pnpm generate-schema && node ./scripts/vendor-playwright.mjs && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap && esbuild src/merge-driver.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/merge-driver.cjs && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\"",
+    "build": "pnpm generate-schema && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --external:@number0/iroh --outfile=dist/extension.cjs --sourcemap && esbuild src/merge-driver.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/merge-driver.cjs && esbuild ../mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp.cjs --banner:js=\"#!/usr/bin/env node\" && node ./scripts/stage-native.mjs",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "dev": "pnpm build --watch",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "package": "vsce package --no-dependencies"
+    "package": "node ./scripts/package.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
+    "@number0/iroh": "1.1.0",
     "@slidepix/core": "workspace:*",
     "jszip": "3.10.2",
-    "playwright-core": "1.62.1",
     "pptxgenjs": "4.0.1",
     "ws": "^8.18.3",
     "zod": "^4.1.5"
@@ -79,5 +224,13 @@
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
-  "files": ["dist", "media", "schema", "vendor", "README.md", "CHANGELOG.md", "LICENSE", "package.json"]
+  "files": [
+    "dist",
+    "media",
+    "schema",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ]
 }

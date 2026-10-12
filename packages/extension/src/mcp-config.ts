@@ -3,7 +3,7 @@ import * as path from "node:path";
 export type McpProcess = {
   command: string;
   args: string[];
-  env: { ELECTRON_RUN_AS_NODE: "1"; PLAYWRIGHT_BROWSERS_PATH: string };
+  env: { ELECTRON_RUN_AS_NODE: "1" };
 };
 
 export type McpTarget = {
@@ -12,11 +12,11 @@ export type McpTarget = {
   format: "mcpServers" | "vscode" | "codex";
 };
 
-export function slidepixMcpProcess(command: string, serverPath: string, browsersPath: string): McpProcess {
+export function slidepixMcpProcess(command: string, serverPath: string): McpProcess {
   return {
     command,
     args: [serverPath],
-    env: { ELECTRON_RUN_AS_NODE: "1", PLAYWRIGHT_BROWSERS_PATH: browsersPath }
+    env: { ELECTRON_RUN_AS_NODE: "1" }
   };
 }
 
@@ -66,8 +66,7 @@ function mergeCodexConfig(existing: string | undefined, server: McpProcess): str
     `args = [${args}]`,
     "",
     "[mcp_servers.slidepix.env]",
-    `ELECTRON_RUN_AS_NODE = ${tomlString(server.env.ELECTRON_RUN_AS_NODE)}`,
-    `PLAYWRIGHT_BROWSERS_PATH = ${tomlString(server.env.PLAYWRIGHT_BROWSERS_PATH)}`
+    `ELECTRON_RUN_AS_NODE = ${tomlString(server.env.ELECTRON_RUN_AS_NODE)}`
   ].join("\n");
   return `${kept}${kept ? "\n\n" : ""}${block}\n`;
 }

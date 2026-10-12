@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { renderDeckDocument, type Deck, type MediaStorage } from "@slidepix/core";
-import { resolveMediaPath } from "@slidepix/core/assets";
-
-type MediaReference = { reference: string; storage: MediaStorage };
+import { renderDeckDocument, type Deck } from "@slidepix/core";
+import { deckMediaReferences, mediaReferenceKey, resolveMediaPath } from "@slidepix/core/assets";
 
 export class WebExportDestinationExistsError extends Error {
   constructor(readonly destination: string) {
@@ -28,7 +26,7 @@ export async function buildWebExport(
     const assetDirectory = path.join(staging, "assets");
     await mkdir(assetDirectory);
 
-    const references = collectMediaReferences(deck);
+    const references = deckMediaReferences(deck);
     const resolvedAssets = new Map<string, string>();
     const filenameByHash = new Map<string, string>();
     for (const [key, item] of [...references].sort(([left], [right]) => left.localeCompare(right))) {
@@ -46,7 +44,7 @@ export async function buildWebExport(
 
     const html = addOfflineRuntime(renderDeckDocument(
       deck,
-      (reference, storage) => resolvedAssets.get(mediaKey(reference, storage)) ?? reference,
+      (reference, storage) => resolvedAssets.get(mediaReferenceKey(reference, storage)) ?? reference,
       { mode: "present" }
     ), deck.slides.filter((slide) => !slide.hidden).length);
     await writeFile(path.join(staging, "index.html"), html, "utf8");
@@ -68,26 +66,6 @@ export async function pathExists(target: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
-}
-
-function collectMediaReferences(deck: Deck): Map<string, MediaReference> {
-  const references = new Map<string, MediaReference>();
-  for (const slide of deck.slides) {
-    if (slide.hidden) continue;
-    if (slide.backgroundImage) references.set(mediaKey(slide.backgroundImage.src, slide.backgroundImage.storage), { reference: slide.backgroundImage.src, storage: slide.backgroundImage.storage });
-    for (const element of slide.elements) {
-      if (element.hidden || (element.type !== "image" && element.type !== "video")) continue;
-      references.set(mediaKey(element.src, element.storage), { reference: element.src, storage: element.storage });
-      if (element.type === "video" && element.poster) {
-        references.set(mediaKey(element.poster, "embedded"), { reference: element.poster, storage: "embedded" });
-      }
-    }
-  }
-  return references;
-}
-
-function mediaKey(reference: string, storage: MediaStorage): string {
-  return `${storage}\0${reference}`;
 }
 
 function safeExtension(filePath: string): string {

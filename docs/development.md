@@ -23,17 +23,26 @@ pnpm build
 pnpm test
 pnpm typecheck
 pnpm docs:check
+pnpm test:live
 ```
+
+`pnpm test:live` is separate from `pnpm test`. It binds two local iroh endpoints
+with relays disabled. `pnpm package` stages the current platform's iroh binary
+and passes `--target` to vsce from a Node script, so the same command works in
+`cmd.exe`. `pnpm package:all` repeats that for darwin-arm64, linux-x64,
+linux-arm64, win32-x64, and win32-arm64. Intel macOS has no published iroh
+binary; `pnpm build` and `pnpm package` still succeed there and the editor
+reports that live collaboration is unavailable. An explicit unsupported
+`--target` still fails.
 
 Extension and MCP Vitest configurations alias `@slidepix/core` directly to its
 source. Tests therefore work in a fresh checkout before `packages/core/dist`
 exists; do not remove those aliases or make `pnpm test` depend on stale build
 output.
 
-No browser is downloaded by `pnpm install` or embedded in the VSIX. PDF, PNG,
-MCP rendering, and the smoke script need a Chromium binary installed through
-**SlidePix: Install Export Renderer** or Playwright with
-`PLAYWRIGHT_BROWSERS_PATH` pointing to that installation.
+No browser is downloaded by `pnpm install` or embedded in the VSIX. PDF and PNG
+export run inside the editor webview. `scripts/render-smoke.mjs` needs Google
+Chrome or Microsoft Edge already installed on the machine.
 
 ## Debug the extension
 
@@ -43,9 +52,9 @@ MCP rendering, and the smoke script need a Chromium binary installed through
 4. In the new Extension Development Host, run **SlidePix: Create Deck**.
 5. After source changes, run `pnpm build` again and reload the development host.
 
-`pnpm dev` watches the webview and extension bundles, but the Extension
-Development Host may still require **Developer: Reload Window** to load a new
-extension bundle.
+`pnpm dev` watches the webview and the `slidepix` extension bundle. The
+Extension Development Host still needs **Developer: Reload Window** to load a
+new `dist/extension.cjs`.
 
 ## Verification by change type
 
@@ -74,6 +83,6 @@ Cursor before publishing it.
 
 ## Generated-output discipline
 
-Never patch `dist`, `media`, vendored Playwright, or the generated JSON Schema.
+Never patch `dist`, `media`, or the generated JSON Schema.
 Change their sources and rebuild. The complete generated-file table and all
 script responsibilities are in [architecture.md](../architecture.md).

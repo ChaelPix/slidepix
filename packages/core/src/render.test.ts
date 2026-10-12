@@ -3,6 +3,56 @@ import { parsePresentationMarkdown, renderDeckDocument, renderMarkdown, renderPr
 import { createDeck, duplicateSlide, elementSchema } from "./schema.js";
 
 describe("shared document rendering", () => {
+  it("renders manim placeholders and rendered output", () => {
+    const deck = createDeck("Manim");
+    const slide = deck.slides[0]!;
+    slide.elements.push(elementSchema.parse({
+      id: "manim-1",
+      morphKey: "manim-morph",
+      type: "manim",
+      x: 100,
+      y: 100,
+      width: 640,
+      height: 360,
+      rotation: 0,
+      opacity: 1,
+      z: 1,
+      locked: false,
+      hidden: false,
+      script: "scenes/intro.manim.py",
+      scene: "Intro",
+      output: "image"
+    }));
+    expect(renderDeckDocument(deck)).toContain("slidepix-manim-placeholder");
+    expect(renderDeckDocument(deck)).toContain("intro.manim.py");
+
+    slide.elements.push(elementSchema.parse({
+      id: "manim-2",
+      morphKey: "manim-morph-2",
+      type: "manim",
+      x: 100,
+      y: 500,
+      width: 640,
+      height: 360,
+      rotation: 0,
+      opacity: 1,
+      z: 2,
+      locked: false,
+      hidden: false,
+      script: "clip.manim.py",
+      scene: "MotionClip",
+      output: "video"
+    }));
+    expect(renderDeckDocument(deck)).toContain("clip.manim.py");
+
+    const rendered = slide.elements.find((item) => item.id === "manim-1");
+    if (rendered?.type === "manim") rendered.outputMedia = { src: "render.png", storage: "embedded" };
+    const html = renderDeckDocument(deck);
+    expect(html).toContain('src="render.png"');
+    expect(html).toContain("slidepix-manim-still");
+    expect(html).toContain("object-fit:contain");
+  });
+
   it("renders a selected presenter frame with a viewport fitting runtime", () => {
     const deck = createDeck("Frame test");
     const second = duplicateSlide(deck.slides[0]!);

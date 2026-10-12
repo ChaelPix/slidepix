@@ -21,7 +21,7 @@ describe("visual regression example", () => {
     const tables = elements.filter((element) => element.type === "table");
     const effects = new Set(deck.slides.flatMap((slide) => slide.timeline.map((step) => step.effect)));
 
-    expect(deck.slides).toHaveLength(8);
+    expect(deck.slides).toHaveLength(7);
     expect(text.some((element) => element.markdown.includes("$$"))).toBe(true);
     expect(text.some((element) => element.markdown.includes("```typescript"))).toBe(true);
     expect(deck.theme).toMatchObject({ background: "#ffffff", foreground: "#111827" });

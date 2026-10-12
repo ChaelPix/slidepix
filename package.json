@@ -5,10 +5,12 @@
   "packageManager": "pnpm@10.29.3",
   "scripts": {
     "build": "pnpm --filter @slidepix/core build && pnpm --filter @slidepix/webview build && pnpm --filter @slidepix/mcp build && pnpm --filter slidepix build",
-    "dev": "pnpm --parallel --filter @slidepix/webview --filter @slidepix/extension dev",
+    "dev": "pnpm --parallel --filter @slidepix/webview --filter slidepix dev",
     "test": "pnpm --filter @slidepix/core test && pnpm --filter @slidepix/webview test && pnpm --filter slidepix test && pnpm --filter @slidepix/mcp test",
     "typecheck": "pnpm -r typecheck",
     "docs:check": "node ./scripts/check-docs.mjs",
+    "test:live": "pnpm --filter slidepix test:live",
+    "package:all": "pnpm --filter slidepix build && node packages/extension/scripts/package-all.mjs",
     "package": "pnpm build && pnpm --filter slidepix package"
   }
 }

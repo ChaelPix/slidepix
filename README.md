@@ -25,9 +25,8 @@ Then:
 5. Select `slidepix-0.1.0.vsix` and approve the installation.
 6. Click **Reload Window** if the editor asks you to reload.
 
-The same VSIX works on Windows, macOS, and Linux. The extension itself is small;
-the optional PDF/PNG renderer is downloaded separately the first time you need
-it.
+The installation file is built for one operating system and CPU. Use the VSIX
+that matches the computer where you install it.
 
 ## Create your first presentation
 
@@ -75,6 +74,9 @@ The screen is organized like a simple slide application:
   new elements.
 - Pick a text font from the system-font selector in **Properties**; SlidePix
   defaults to the operating system's UI font instead of requiring a CSS name.
+- Choose **Share** to edit the open deck with other people. SlidePix copies an
+  invitation. The other person runs **SlidePix: Join Live Collaboration** and
+  pastes it. The host is asked to allow them. **Stop** ends the session.
 - Select an image to set border width/color, corner radius, and edge fade.
   Double-click it to enter crop mode, then drag to pan and use the visible
   zoom/reset/done controls.
@@ -158,10 +160,9 @@ independently; its name must match the deck.
   editor and resolve the markers manually.
 - If an image or video is missing, confirm the matching `.assets` folder was
   copied with the deck.
-- If PDF or PNG export fails before producing a file, run
-  **SlidePix: Install Export Renderer** from the Command Palette and retry.
 - Browser video support depends on the operating system codec. MP4/H.264 and
-  WebM are the safest choices.
+  WebM are the safest choices. A PDF shows the first video frame with a play
+  control; it does not contain a playable video.
 
 ## AI review with MCP
 
@@ -171,8 +172,8 @@ keeps its own config: `~/.cursor/mcp.json`, the VS Code profile `mcp.json`,
 `~/.codex/config.toml`, `~/.claude.json`, and the Claude Desktop config.
 Existing servers in those files stay. A file that is not valid is left unchanged.
 
-After adding it, start a new chat in the app you want to use. That chat can call `list_slides`,
-`inspect_slides`, and `render_slides` with an absolute deck path. Those tools
+After adding it, start a new chat in the app you want to use. That chat can call `list_slides`
+and `inspect_slides` with an absolute deck path. Those tools
 never modify the deck. Enable **slidepix** in MCP settings if the editor asks.
 The chat that was already open will not see a server added after it started.
 

@@ -1,5 +1,5 @@
 import Moveable from "react-moveable";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import {
   duplicateSlide,
@@ -15,7 +15,12 @@ import {
   type MediaStorage,
   type Slide,
   type SlideElement,
-  type Transition
+  type Transition,
+  manimElementAspectRatio,
+  manimRenderFingerprint,
+  manimSettingsFingerprint,
+  type ManimOrientation,
+  type ManimQuality
 } from "@slidepix/core";
 import { SlideView } from "./SlideView";
 import { clamp, cropBoxByEdges, localPointerDelta, panCrop, type CropBox } from "./geometry";
@@ -25,14 +30,27 @@ import { railDropIndex } from "./rail";
 import { syncNamedShapes } from "./shape-batch";
 import { useDeckStore } from "./store";
 import { insertTextTab, toggleInlineMarkdown, toggleMarkdownList, type TextSelection } from "./text-format";
-import { notifyToast, onToast, updateToasts, type ToastMessage } from "./toasts";
+import { clearManimProgress, notifyToast, onManimProgress, onManimProgressClear, onToast, publishManimProgress, updateToasts, type ToastMessage } from "./toasts";
 import { onHostMessage, postMessage } from "./vscode";
+import { assetCacheKey, collaborationView, ghostPoses, localPreview, noteAssets, peerMarks, setCollaboration, subscribeCollaboration, textLockHolder } from "./presence";
+import { jsPDF } from "jspdf";
+import { captureSlidePng, describeExportError, inlineImages, inlineVideos } from "./export-capture";
 
 type Tab = "properties" | "layers" | "animations";
 const transitionTypes: Transition["type"][] = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "morph"];
 type MediaResult = { reference: string; storage: MediaStorage };
 const pendingAssets = new Map<string, (result?: MediaResult, error?: string) => void>();
 const pendingFonts = new Map<string, (family?: string, error?: string) => void>();
+const pendingManimScripts = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScriptSelected" }>) => void>();
+const pendingManimCreates = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScriptCreated" }>) => void>();
+const pendingManimScenes = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimScenesListed" }>) => void>();
+const pendingManimRenders = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderResult" }>) => void>();
+const pendingManimRenderAll = new Map<string, (message: Extract<HostToWebviewMessage, { type: "manimRenderAllResult" }>) => void>();
+const manimHostAcked = new Set<string>();
+let manimUiBusy = false;
+let requestCapture: ((format: "pdf" | "png") => void) | undefined;
+let manimSetupTimer = 0;
+const manimRenderedFingerprints = new Map<string, string>();
 const SLIDEPIX_CLIPBOARD_TYPE = "application/x-slidepix-elements+json";
 type SlidePixClipboard = { version: 1; token: string; deckId: string; sourceSlideId: string; elements: SlideElement[] };
 type TextFormatCommand = "bold" | "italic" | "unordered-list" | "ordered-list";
@@ -57,6 +75,8 @@ export default function App() {
   const snapPeers = useRef<ReturnType<typeof peerBoxes>>([]);
   const snapHold = useRef<SnapGuide[]>([]);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const collaboration = useSyncExternalStore(subscribeCollaboration, collaborationView, collaborationView);
+  const presenceSentAt = useRef(0);
 
   useEffect(() => onHostMessage((message) => handleHostMessage(message, store.setFromHost, store.setInvalid, store.handleEditResult, store.handleHistoryResult)), []);
   useEffect(() => { postMessage({ type: "ready" }); }, []);
@@ -74,6 +94,22 @@ export default function App() {
   const dragTarget = selectedElements.find((item) => !item.locked) ?? selected;
   const target = dragTarget && !dragTarget.locked ? document.getElementById(`element-${dragTarget.id}`) : null;
   const cropping = selected?.type === "image" && croppingId === selected.id;
+  const guest = collaboration.role === "guest";
+  const liveOn = collaboration.status !== "off";
+
+  useEffect(() => {
+    if (!liveOn || collaboration.status === "ended") return;
+    const send = () => {
+      const now = Date.now();
+      if (now - presenceSentAt.current < 66) return;
+      presenceSentAt.current = now;
+      const preview = localPreview(store.deck, store.confirmedDeck, slide?.id, store.selectedElementIds);
+      postMessage({ type: "presence", slideId: slide?.id, elementIds: store.selectedElementIds, editingElementId: editingTextId, preview });
+    };
+    send();
+    const beat = window.setInterval(send, 2000);
+    return () => window.clearInterval(beat);
+  }, [liveOn, collaboration.status, slide?.id, editingTextId, store.selectedElementIds.join(","), store.deck, store.confirmedDeck]);
 
   useEffect(() => {
     if (!selected || selected.type !== "image" || selected.id !== croppingId) setCroppingId(undefined);
@@ -88,6 +124,21 @@ export default function App() {
     pendingTextFormat.current = undefined;
     requestAnimationFrame(() => inlineTextEditor.current?.format(command));
   }, [editingText?.id]);
+  useEffect(() => {
+    if (!slide || selected?.type !== "manim" || !selected.outputMedia || !selected.lockAspectRatio) return;
+    lockMediaAspect(
+      slide.id,
+      selected.id,
+      manimElementAspectRatio(selected.orientation),
+      store.mutate
+    );
+  }, [
+    slide?.id,
+    selected?.id,
+    selected?.type === "manim" ? selected.outputMedia?.src : undefined,
+    selected?.type === "manim" ? selected.orientation : undefined,
+    selected?.type === "manim" ? selected.lockAspectRatio : undefined
+  ]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -143,7 +194,12 @@ export default function App() {
   const assetUrl = (reference: string, storage: MediaStorage) => {
     const base = storage === "linked" ? store.linkedSourceUri : store.sourceUri;
     if (!base) return reference;
-    try { return new URL(reference.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`).toString(); } catch { return reference; }
+    try {
+      const url = new URL(reference.replaceAll("\\", "/"), `${base.replace(/\/$/, "")}/`);
+      const version = assetCacheKey(reference);
+      if (version) url.searchParams.set("v", version);
+      return url.toString();
+    } catch { return reference; }
   };
   const addMedia = (kind: "image" | "video", result: MediaResult, name?: string, elementId?: string) => {
     let fitId: string | undefined;
@@ -202,6 +258,8 @@ export default function App() {
     setEditingTextId(common.id);
   };
   const beginTextEditing = (id: string, selectAll = false) => {
+    const holder = textLockHolder(collaboration.peers, collaboration.self?.id, id);
+    if (holder) return void showError(`${holder.name} is editing this text`);
     setSelectAllOnEdit(selectAll);
     setEditingTextId(id);
   };
@@ -223,6 +281,66 @@ export default function App() {
     cells: [["Header 1", "Header 2", "Header 3"], ["", "", ""], ["", "", ""]],
     style: { fontFamily: deck.theme.fontFamily, fontSize: 30, fontWeight: 400, color: deck.theme.foreground, headerFill: "#e0e7ff", cellFill: "#ffffff", borderColor: "#94a3b8", borderWidth: 2, textAlign: "left", verticalAlign: "middle", padding: 10 }
   }));
+  const addManim = (output: "image" | "video") => {
+    const width = deck.size.width / 2;
+    const height = width * 9 / 16;
+    const common = baseElement(slide.elements.length, "manim");
+    store.mutate((draft) => {
+      draft.slides.find((item) => item.id === slide.id)!.elements.push({
+        ...common,
+        type: "manim",
+        x: (deck.size.width - width) / 2,
+        y: (deck.size.height - height) / 2,
+        width,
+        height,
+        output,
+        orientation: "horizontal",
+        quality: "medium",
+        transparent: false,
+        lockAspectRatio: true,
+        aspectRatio: 16 / 9,
+        playback: { mode: "manual", muted: false, loop: false, controls: true }
+      });
+    });
+    store.selectElement(common.id);
+    setInspectorCollapsed(false);
+    setTab("properties");
+  };
+  const setManimQuality = (quality: ManimQuality) => {
+    const hasManim = deck.slides.some((item) => item.elements.some((element) => element.type === "manim"));
+    if (!hasManim) return void showError("This deck has no Manim elements.");
+    store.mutate((draft) => {
+      for (const item of draft.slides) {
+        for (const element of item.elements) {
+          if (element.type === "manim") element.quality = quality;
+        }
+      }
+    });
+  };
+  const renderAllManim = () => {
+    if (manimUiBusy) return;
+    manimUiBusy = true;
+    const requestId = crypto.randomUUID();
+    notifyToast({ id: requestId, kind: "progress", message: "Rendering all Manim scenes…", progress: 0 });
+    const timer = window.setTimeout(() => {
+      if (manimHostAcked.has(requestId) || !pendingManimRenderAll.has(requestId)) return;
+      pendingManimRenderAll.delete(requestId);
+      manimUiBusy = false;
+      notifyToast({ id: requestId, kind: "error", message: "SlidePix did not start the render. Stop the debug session and launch SlidePix Extension again." });
+    }, 4000);
+    pendingManimRenderAll.set(requestId, (message) => {
+      window.clearTimeout(timer);
+      manimUiBusy = false;
+      for (const result of message.results ?? []) {
+        if (result.settingsFingerprint) manimRenderedFingerprints.set(result.elementId, result.settingsFingerprint);
+      }
+      clearManimProgress();
+      if (message.ok) notifyToast({ id: requestId, kind: "success", message: `Rendered ${message.rendered} Manim scene${message.rendered === 1 ? "" : "s"}.` });
+      else if (message.error && message.error !== "Manim render cancelled.") notifyToast({ id: requestId, kind: "error", message: message.error });
+      else notifyToast({ id: requestId, kind: "dismiss" });
+    });
+    postMessage({ type: "renderAllManim", requestId });
+  };
   const copyElement = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
     if (!selectedElements.length || isTextEntryTarget(event.target)) return;
     event.preventDefault();
@@ -258,7 +376,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app${railCollapsed ? " rail-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}`} onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+    <div className={`app${railCollapsed ? " rail-collapsed" : ""}${inspectorCollapsed ? " inspector-collapsed" : ""}${liveOn ? " live-on" : ""}`} onCopy={(event) => copyElement(event)} onCut={(event) => copyElement(event, true)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
       event.preventDefault();
       const uri = droppedFileUri(event.dataTransfer);
       if (uri) {
@@ -280,6 +398,22 @@ export default function App() {
         addTable={addTable}
         chooseImage={() => requestMedia("image")}
         chooseVideo={() => requestMedia("video")}
+        addManim={addManim}
+        setManimQuality={setManimQuality}
+        renderAllManim={renderAllManim}
+        setupManim={() => {
+          if (manimUiBusy) return;
+          manimUiBusy = true;
+          notifyToast({ id: "manim-setup", kind: "progress", message: "Opening Manim setup…" });
+          window.clearTimeout(manimSetupTimer);
+          manimHostAcked.delete("manim-setup");
+          manimSetupTimer = window.setTimeout(() => {
+            if (manimHostAcked.has("manim-setup")) return;
+            manimUiBusy = false;
+            notifyToast({ id: "manim-setup", kind: "error", message: "SlidePix did not open Manim setup. Stop the debug session and launch SlidePix Extension again." });
+          }, 4000);
+          postMessage({ type: "setupManim" });
+        }}
         hasLinkedMedia={deck.slides.some((item) => item.backgroundImage?.storage === "linked" || item.elements.some((element) => (element.type === "image" || element.type === "video") && element.storage === "linked"))}
         historyBusy={Boolean(store.historyPending)}
         canUndo={store.canUndo || store.dirty}
@@ -323,9 +457,18 @@ export default function App() {
           copies.slice(1).forEach((item) => store.selectElement(item.id, true));
         }}
         deleteSelected={() => deleteElements(slide.id, selectedElements.map((item) => item.id), store.mutate, store.selectElement)}
+        manimLocked={guest}
+        sharing={collaboration.status === "hosting"}
       />
-      <SlideRail collapsed={railCollapsed} onToggleCollapse={() => setRailCollapsed((value) => !value)} deck={deck} selectedId={slide.id} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
+      <SlideRail collapsed={railCollapsed} onToggleCollapse={() => setRailCollapsed((value) => !value)} deck={deck} selectedId={slide.id} peerColors={peerMarks(collaboration.peers)} select={(id) => { store.commit(); setEditingTextId(undefined); store.selectSlide(id); }} mutate={store.mutate} resolveAsset={assetUrl} />
       <main className={`workspace ${notesCollapsed ? "notes-collapsed" : ""}`}>
+        {liveOn && <div className="live-banner" role="status">
+          <span>{collaboration.status === "hosting" ? "Sharing this deck" : collaboration.status === "reconnecting" ? "Reconnecting…" : collaboration.status === "ended" ? `Session ended — ${collaboration.hostName ?? "the host"} closed it` : `Connected to ${collaboration.hostName ?? "the host"}`}</span>
+          <span className="live-avatars">{[collaboration.self, ...collaboration.peers].filter((peer): peer is NonNullable<typeof peer> => Boolean(peer)).map((peer) => <span key={peer.id} className="live-avatar" title={peer.name} style={{ background: peer.color }}>{peer.name.slice(0, 1).toUpperCase()}</span>)}</span>
+          {collaboration.temporaryMirror && <button type="button" onClick={() => postMessage({ type: "command", command: "saveLiveCopy" })}>Save locally</button>}
+          {collaboration.status === "ended" && !collaboration.temporaryMirror && <button type="button" onClick={() => postMessage({ type: "command", command: "saveLiveCopy" })}>Save a copy</button>}
+          {collaboration.status === "hosting" && <button type="button" onClick={() => postMessage({ type: "command", command: "stopLive" })}>Stop</button>}
+        </div>}
         <div className="canvas-scroll" onWheel={(event) => {
           if (!event.ctrlKey && !event.metaKey) return;
           event.preventDefault();
@@ -419,9 +562,9 @@ export default function App() {
                       )
                       : { x: drag.left, y: drag.top, width, height, guides: [] as SnapGuide[] };
                     snapHold.current = snapped.guides;
-                    const media = dragTarget.type === "image" || dragTarget.type === "video" ? dragTarget : undefined;
-                    const fitted = media?.lockAspectRatio && media.aspectRatio
-                      ? fitLockedAspectBox(snapped, media.aspectRatio, edges)
+                    const lockedRatio = lockedElementAspectRatio(dragTarget);
+                    const fitted = lockedRatio
+                      ? fitLockedAspectBox(snapped, lockedRatio, edges)
                       : snapped;
                     elementTarget.style.width = `${fitted.width}px`;
                     elementTarget.style.height = `${fitted.height}px`;
@@ -452,6 +595,13 @@ export default function App() {
               )}
               {selected && (selected.type === "image" || selected.type === "video") && <MediaControls element={selected} cropping={cropping} zoom={store.zoom} preview={(patch) => store.preview((draft) => Object.assign(findElement(draft, slide.id, selected.id)!, patch))} commit={store.commit} finishCrop={() => setCroppingId(undefined)} />}
               {editingText && <InlineTextEditor ref={inlineTextEditor} element={editingText} selectAll={selectAllOnEdit} preview={(markdown) => { store.preview((draft) => { const element = findElement(draft, slide.id, editingText.id); if (element?.type === "text") element.markdown = markdown; }); store.scheduleCommit(); }} finish={() => { store.commit(); setEditingTextId(undefined); }} />}
+              {collaboration.peers.filter((peer) => peer.slideId === slide.id).flatMap((peer) => peer.elementIds.flatMap((id) => {
+                const element = slide.elements.find((item) => item.id === id);
+                if (!element) return [];
+                return [<div key={`${peer.id}-${id}`} className="live-selection" style={{ left: element.x, top: element.y, width: element.width, height: element.height, transform: `rotate(${element.rotation}deg)`, outlineColor: peer.color }}><span style={{ background: peer.color }}>{peer.name}</span></div>];
+              }))}
+              {ghostPoses(collaboration.peers, slide.id).map(({ peer, pose }) => <div key={`${peer.id}-ghost-${pose.id}`} className="live-ghost" style={{ left: pose.x, top: pose.y, width: pose.width, height: pose.height, transform: `rotate(${pose.rotation}deg)`, outlineColor: peer.color }} />)}
+              {editingText && textLockHolder(collaboration.peers, collaboration.self?.id, editingText.id) && <div className="live-lock">{textLockHolder(collaboration.peers, collaboration.self?.id, editingText.id)?.name} is editing this text</div>}
             </div>
             {snapGuides.length > 0 && (
               <div className="snap-overlay" aria-hidden="true">
@@ -480,11 +630,18 @@ export default function App() {
       {advancedTextId && <TextEditor deck={deck} slideId={slide.id} elementId={advancedTextId} preview={store.preview} scheduleCommit={store.scheduleCommit} commit={store.commit} close={() => setAdvancedTextId(undefined)} />}
       {store.mergeState && <MergeConflictDialog conflict={store.mergeState.conflicts[0]} resolve={store.resolveMergeConflict} useLatest={store.useLatestDeck} />}
       <ToastStack />
+      <div id="hidden-export-container" aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0, zIndex: -1, pointerEvents: "none" }}>
+        {deck.slides.map((s) => (
+          <div key={s.id} id={`export-slide-${s.id}`} style={{ width: deck.size.width, height: deck.size.height, overflow: "hidden", position: "relative", flexShrink: 0 }}>
+            <SlideView deck={deck} slide={s} resolveAsset={assetUrl} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected }: {
+function Toolbar({ slide, element, selectedElements, addText, addShape, addTable, chooseImage, chooseVideo, addManim, setManimQuality, renderAllManim, setupManim, hasLinkedMedia, historyBusy, canUndo, canRedo, mutate, preview, scheduleCommit, commit, editAdvanced, formatText, align, distribute, duplicateElement, deleteSelected, manimLocked, sharing }: {
   slide: Slide;
   element?: SlideElement;
   selectedElements: SlideElement[];
@@ -493,6 +650,10 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   addTable(): void;
   chooseImage(): void;
   chooseVideo(): void;
+  addManim(output: "image" | "video"): void;
+  setManimQuality(quality: ManimQuality): void;
+  renderAllManim(): void;
+  setupManim(): void;
   hasLinkedMedia: boolean;
   historyBusy: boolean;
   canUndo: boolean;
@@ -507,6 +668,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   distribute(action: DistributeAction): void;
   duplicateElement(): void;
   deleteSelected(): void;
+  manimLocked: boolean;
+  sharing: boolean;
 }) {
   const runCommand = useDeckStore((state) => state.runCommand);
   const zoom = useDeckStore((state) => state.zoom);
@@ -522,11 +685,67 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   };
   const updateElement = (fn: (target: SlideElement) => void) => element && mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target) fn(target); });
   const textLike = element?.type === "text" || element?.type === "table" ? element : undefined;
-  const exportDeck = (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb", label: string, slideIds?: string[]) => {
+  const exportDeck = async (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb", label: string, slideIds?: string[]) => {
+    if (command === "exportPptx" || command === "exportWeb") {
+      const requestId = crypto.randomUUID();
+      notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
+      postMessage({ type: "command", command, requestId, slideIds });
+      return;
+    }
     const requestId = crypto.randomUUID();
     notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
-    postMessage({ type: "command", command, requestId, slideIds });
+    try {
+      if (command === "exportPng") {
+        const deck = useDeckStore.getState().deck;
+        if (!deck) throw new Error("No deck");
+        const node = document.getElementById(`export-slide-${slide.id}`);
+        if (!node) throw new Error("Slide not found in DOM. Try re-opening the editor.");
+        const restoreVideos = await inlineVideos(node);
+        const restoreImages = await inlineImages(node);
+        try {
+          const dataUrl = await captureSlidePng(node, deck.size.width, deck.size.height);
+          postMessage({ type: "saveExport", format: "png", data: dataUrl });
+        } finally { restoreImages(); restoreVideos(); }
+      } else if (command === "exportPdf") {
+        const deck = useDeckStore.getState().deck;
+        if (!deck) throw new Error("No deck");
+        const visibleSlides = deck.slides.filter(s => !s.hidden);
+        if (visibleSlides.length === 0) throw new Error("No visible slides to export");
+        const wPt = deck.size.width * 0.75;
+        const hPt = deck.size.height * 0.75;
+        const orientation = deck.size.width >= deck.size.height ? "landscape" : "portrait";
+        const pdf = new jsPDF({ orientation, unit: "pt", format: [wPt, hPt], compress: true });
+        for (const [i, s] of visibleSlides.entries()) {
+          const node = document.getElementById(`export-slide-${s.id}`);
+          if (!node) throw new Error(`DOM node not found for slide ${i + 1}. Try re-opening the editor.`);
+          const restoreVideos = await inlineVideos(node);
+          const restoreImages = await inlineImages(node);
+          try {
+            const dataUrl = await captureSlidePng(node, deck.size.width, deck.size.height);
+            if (i > 0) pdf.addPage([wPt, hPt], orientation);
+            pdf.addImage(dataUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
+          } finally { restoreImages(); restoreVideos(); }
+        }
+        const bytes = pdf.output("arraybuffer");
+        const u8 = new Uint8Array(bytes);
+        let b64 = "";
+        for (let i = 0; i < u8.length; i += 0x8000) b64 += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+        postMessage({ type: "saveExport", format: "pdf", data: `data:application/pdf;base64,${btoa(b64)}` });
+      }
+      notifyToast({ id: requestId, kind: "success", message: `Exported ${label}` });
+    } catch (error) {
+      let detail = "Unknown export error";
+      try { detail = describeExportError(error); } catch { detail = String(error); }
+      try { postMessage({ type: "log", level: "error", message: `Export ${label} failed:\n${detail}` }); } catch { /* Host logging is best-effort. */ }
+      notifyToast({ id: requestId, kind: "error", message: `Failed to export ${label}: ${detail.split("\n")[0]}` });
+    }
   };
+  useEffect(() => {
+    requestCapture = (format) => {
+      void exportDeck(format === "pdf" ? "exportPdf" : "exportPng", format === "pdf" ? "PDF" : "PNG", format === "png" ? [slide.id] : undefined);
+    };
+    return () => { requestCapture = undefined; };
+  });
   return <header className="toolbar-shell">
     <div className="toolbar toolbar-primary">
       <div className="ribbon-group"><div className="ribbon-actions">
@@ -556,10 +775,21 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
           { icon: "circle-large-outline", label: "Circle", onClick: () => addShape("ellipse") },
           { icon: "triangle-up", label: "Triangle", onClick: () => addShape("triangle") }
         ]} />
+        <RibbonMenu icon="run-all" label="Manim" items={[
+          { icon: "file-media", label: "Still image", onClick: () => addManim("image") },
+          { icon: "device-camera-video", label: "Video", onClick: () => addManim("video") },
+          { icon: "run-all", label: "Render all", onClick: renderAllManim },
+          { icon: "settings-gear", label: "Set up Manim…", onClick: setupManim },
+          { icon: "symbol-number", label: "Quality: Low", onClick: () => setManimQuality("low") },
+          { icon: "symbol-number", label: "Quality: Medium", onClick: () => setManimQuality("medium") },
+          { icon: "symbol-number", label: "Quality: High", onClick: () => setManimQuality("high") },
+          { icon: "symbol-number", label: "Quality: Production", onClick: () => setManimQuality("production") }
+        ].map((item) => manimLocked ? { ...item, onClick: () => showError("Manim runs on the host during live collaboration.") } : item)} />
       </div></div>
       <div className="ribbon-group"><span className="ribbon-label">Slide show</span><div className="ribbon-actions">
         <RibbonButton icon="play" label="Present" primary onClick={() => postMessage({ type: "command", command: "present" })} />
         <RibbonButton icon="multiple-windows" label="Presenter" onClick={() => postMessage({ type: "command", command: "presenter" })} />
+        <RibbonButton icon="broadcast" label={sharing ? "Copy invite" : "Share"} onClick={() => postMessage({ type: "command", command: sharing ? "copyLiveInvite" : "startLive" })} />
       </div></div>
     </div>
     <div className="context-toolbar" aria-label="Selection formatting">
@@ -663,7 +893,7 @@ function AlignControls({ count, unlocked, align, distribute }: { count: number; 
   </div>;
 }
 
-function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, mutate, resolveAsset }: { collapsed: boolean; onToggleCollapse(): void; deck: Deck; selectedId: string; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
+function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, peerColors, select, mutate, resolveAsset }: { collapsed: boolean; onToggleCollapse(): void; deck: Deck; selectedId: string; peerColors: Map<string, string[]>; select(id: string): void; mutate(fn: (deck: Deck) => void): void; resolveAsset(source: string, storage: MediaStorage): string }) {
   const [transitionSlideId, setTransitionSlideId] = useState<string>();
   const [drag, setDrag] = useState<{ id: string; from: number; dy: number; to: number }>();
   const listRef = useRef<HTMLDivElement>(null);
@@ -739,6 +969,7 @@ function SlideRail({ collapsed, onToggleCollapse, deck, selectedId, select, muta
           <span className="slide-index">{index + 1}</span>
           <div className="thumb-clip" style={{ width: 192, height: 108 }}><SlideView deck={deck} slide={slide} scale={0.1} resolveAsset={resolveAsset} /></div>
           <span className="slide-title">{slide.title}{slide.hidden ? " (hidden)" : ""}</span>
+          {(peerColors.get(slide.id) ?? []).length > 0 && <span className="live-dots">{(peerColors.get(slide.id) ?? []).map((color, dot) => <i key={`${color}-${dot}`} style={{ background: color }} />)}</span>}
         </button>
         <div className="rail-actions">
           <IconButton icon="copy" label="Duplicate" onClick={() => mutate((draft) => draft.slides.splice(index + 1, 0, duplicateSlide(draft.slides[index]!)))} />
@@ -829,6 +1060,180 @@ function MediaControls({ element, cropping, zoom, preview, commit, finishCrop }:
   </div>;
 }
 
+function ManimInspector({ slideId, slideSize, element, mutate, preview, scheduleCommit, commit }: {
+  slideId: string;
+  slideSize: Deck["size"];
+  element: Extract<SlideElement, { type: "manim" }>;
+  mutate(fn: (deck: Deck) => void): void;
+  preview(fn: (deck: Deck) => void): void;
+  scheduleCommit(): void;
+  commit(): void;
+}) {
+  const [scenes, setScenes] = useState<string[]>([]);
+  const [contentFingerprint, setContentFingerprint] = useState<string>();
+  const [rendering, setRendering] = useState(false);
+  const [renderPercent, setRenderPercent] = useState<number | null>(null);
+  useEffect(() => {
+    const stopProgress = onManimProgress((detail) => {
+      if (detail.elementId !== element.id) return;
+      if (detail.status !== "progress") {
+        setRendering(false);
+        setRenderPercent(null);
+        return;
+      }
+      setRendering(true);
+      setRenderPercent(detail.percent);
+    });
+    const stopClear = onManimProgressClear(() => {
+      setRendering(false);
+      setRenderPercent(null);
+    });
+    return () => { stopProgress(); stopClear(); };
+  }, [element.id]);
+  const renderedFingerprint = manimRenderedFingerprints.get(element.id);
+  const stale = Boolean(
+    element.outputMedia
+    && renderedFingerprint
+    && contentFingerprint
+    && renderedFingerprint !== manimRenderFingerprint(manimSettingsFingerprint(element), contentFingerprint)
+  );
+  const status = rendering
+    ? "Rendering…"
+    : !element.outputMedia
+      ? "Not rendered yet"
+      : stale
+        ? "Render is out of date"
+        : "Rendered";
+
+  useEffect(() => {
+    if (!element.script) {
+      setScenes([]);
+      setContentFingerprint(undefined);
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    pendingManimScenes.set(requestId, (message) => {
+      if (message.error) return void showError(message.error);
+      setScenes(message.scenes ?? []);
+      if (message.contentFingerprint) setContentFingerprint(message.contentFingerprint);
+    });
+    postMessage({ type: "listManimScenes", requestId, script: element.script });
+    return () => { pendingManimScenes.delete(requestId); };
+  }, [element.id, element.script]);
+
+  const chooseScript = () => {
+    const requestId = crypto.randomUUID();
+    pendingManimScripts.set(requestId, (message) => {
+      if (message.error) return void showError(message.error);
+      if (!message.script) return;
+      mutate((draft) => {
+        const target = findElement(draft, slideId, element.id);
+        if (target?.type !== "manim") return;
+        target.script = message.script;
+        if (!target.scene && message.scenes?.length === 1) target.scene = message.scenes[0];
+      });
+    });
+    postMessage({ type: "selectManimScript", requestId, elementId: element.id });
+  };
+
+  const createScript = () => {
+    const requestId = crypto.randomUUID();
+    pendingManimCreates.set(requestId, (message) => {
+      if (message.error) showError(message.error);
+    });
+    postMessage({ type: "createManimScript", requestId, elementId: element.id });
+  };
+
+  const renderScene = () => {
+    const requestId = crypto.randomUUID();
+    setRendering(true);
+    pendingManimRenders.set(requestId, (message) => {
+      setRendering(false);
+      setRenderPercent(null);
+      if (message.error && message.error !== "Manim render cancelled.") return void showError(message.error);
+      if (message.ok && message.settingsFingerprint) manimRenderedFingerprints.set(element.id, message.settingsFingerprint);
+    });
+    postMessage({ type: "renderManim", requestId, elementId: element.id });
+  };
+
+  const updateManim = (fn: (target: Extract<SlideElement, { type: "manim" }>) => void, live = true) => {
+    const apply = (draft: Deck) => {
+      const target = findElement(draft, slideId, element.id);
+      if (target?.type !== "manim") return;
+      fn(target);
+    };
+    if (live) { preview(apply); scheduleCommit(); }
+    else mutate(apply);
+  };
+
+  const canRender = Boolean(element.script?.trim() && element.scene?.trim());
+
+  return <>
+    <h4 className="property-heading">Manim</h4>
+    <div className="media-source-card">
+      <code title={element.script ?? ""}>{element.script ?? "No script selected"}</code>
+      <div>
+        <button type="button" onClick={chooseScript}>Choose…</button>
+        <button type="button" onClick={createScript}>Create script…</button>
+        {element.script && <button type="button" onClick={() => postMessage({ type: "openManimScript", script: element.script! })}>Open</button>}
+      </div>
+    </div>
+    <label>Scene
+      {scenes.length > 1
+        ? <select value={element.scene ?? ""} onChange={(event) => updateManim((target) => { target.scene = event.target.value; }, false)}>
+          <option value="">Select a scene…</option>
+          {scenes.map((scene) => <option key={scene} value={scene}>{scene}</option>)}
+        </select>
+        : <input autoComplete="off" value={element.scene ?? ""} placeholder="SceneClass" onChange={(event) => updateManim((target) => { target.scene = event.target.value; })} onBlur={commit} />}
+    </label>
+    <label>Output<select value={element.output} onChange={(event) => updateManim((target) => { target.output = event.target.value as "image" | "video"; }, false)}>
+      <option value="image">Still image</option>
+      <option value="video">Video</option>
+    </select></label>
+    <label>Orientation<select value={element.orientation} onChange={(event) => {
+      const orientation = event.target.value as ManimOrientation;
+      updateManim((target) => {
+        target.orientation = orientation;
+        if (!target.lockAspectRatio) return;
+        const aspectRatio = manimElementAspectRatio(orientation);
+        target.aspectRatio = aspectRatio;
+        const fitted = fitAspectBoxInSlide(target, aspectRatio, slideSize);
+        target.x = fitted.x;
+        target.y = fitted.y;
+        target.width = fitted.width;
+        target.height = fitted.height;
+      }, false);
+    }}>
+      <option value="horizontal">Horizontal (16:9)</option>
+      <option value="vertical">Vertical (9:16)</option>
+    </select></label>
+    <label>Quality<select value={element.quality} onChange={(event) => updateManim((target) => { target.quality = event.target.value as typeof element.quality; }, false)}>
+      <option value="low">Low</option>
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="production">Production</option>
+    </select></label>
+    <CheckboxField label="Transparent background" checked={element.transparent} onChange={(transparent) => updateManim((target) => { target.transparent = transparent; }, false)} />
+    {element.output === "video" && <>
+      <label>Playback<select value={element.playback.mode} onChange={(event) => updateManim((target) => { target.playback.mode = event.target.value as "manual" | "autoplay"; }, false)}><option value="manual">Manual</option><option value="autoplay">Autoplay</option></select></label>
+      <CheckboxField label="Muted" checked={element.playback.muted} onChange={(muted) => updateManim((target) => { target.playback.muted = muted; }, false)} />
+      <CheckboxField label="Loop" checked={element.playback.loop} onChange={(loop) => updateManim((target) => { target.playback.loop = loop; }, false)} />
+      <CheckboxField label="Controls" checked={element.playback.controls} onChange={(controls) => updateManim((target) => { target.playback.controls = controls; }, false)} />
+    </>}
+    {element.outputMedia && <div className="media-source-card"><span className="storage-badge embedded">embedded</span><code title={element.outputMedia.src}>{element.outputMedia.src}</code></div>}
+    <p className="panel-help manim-status">{status}</p>
+    <button className="edit-text-button" type="button" disabled={!canRender || rendering} onClick={renderScene}>{rendering ? "Rendering…" : "Render"}</button>
+    {renderPercent !== null && <progress className="manim-progress" max={100} value={renderPercent} aria-label={`Manim render ${renderPercent}%`} />}
+    <CheckboxField label="Keep original aspect ratio" checked={element.lockAspectRatio} onChange={(locked) => {
+      if (!locked) return updateManim((target) => { target.lockAspectRatio = false; }, false);
+      updateManim((target) => {
+        target.lockAspectRatio = true;
+        target.aspectRatio = manimElementAspectRatio(target.orientation);
+      }, false);
+    }} />
+  </>;
+}
+
 function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, element, cropping, batchShapeEdit, setBatchShapeEdit, assetUrl, mutate, preview, scheduleCommit, commit, selectElement, editText, editImage, relinkMedia, chooseBackgroundImage }: {
   collapsed: boolean; onToggleCollapse(): void; tab: Tab; setTab(tab: Tab): void; deck: Deck; slide: Slide; element?: SlideElement; cropping: boolean; batchShapeEdit: boolean; setBatchShapeEdit(enabled: boolean): void; assetUrl(reference: string, storage: MediaStorage): string; mutate(fn: (deck: Deck) => void): void; preview(fn: (deck: Deck) => void): void; scheduleCommit(): void; commit(): void; selectElement(id?: string, additive?: boolean): void; editText(id: string): void; editImage(id: string): void; relinkMedia(kind: "image" | "video", id: string): void; chooseBackgroundImage(): void;
 }) {
@@ -900,6 +1305,7 @@ function Inspector({ collapsed, onToggleCollapse, tab, setTab, deck, slide, elem
               <RangeField label="Shadow blur" value={element.shadow.blur} min={0} max={160} onChange={(blur) => editShape((target) => { target.shadow.blur = blur; })} onCommit={commit} />
             </>}
           </>}
+          {element.type === "manim" && <ManimInspector slideId={slide.id} slideSize={deck.size} element={element} mutate={mutate} preview={preview} scheduleCommit={scheduleCommit} commit={commit} />}
           {element.type === "table" && <>
             <div className="table-size-actions">
               <button onClick={() => mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target?.type === "table") resizeTable(target, target.rows + 1, target.columns); })}><span className="codicon codicon-add" /> Row</button>
@@ -1136,7 +1542,7 @@ function ToastStack() {
   if (!toasts.length) return null;
   return <div className="toast-stack" role="region" aria-label="Notifications">{toasts.map((toast) => <div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"} key={toast.id}>
     <span className={`codicon codicon-${toast.kind === "progress" ? "loading codicon-modifier-spin" : toast.kind === "success" ? "check" : "error"}`} />
-    <span>{toast.message}</span>
+    <span className="toast-body">{toast.message}{typeof toast.progress === "number" && <progress className="toast-progress" max={100} value={toast.progress} aria-label={`${toast.progress}%`} />}</span>
     {toast.kind === "error" && <button title="Dismiss" aria-label="Dismiss notification" onClick={() => notifyToast({ id: toast.id, kind: "dismiss" })}><span className="codicon codicon-close" /></button>}
   </div>)}</div>;
 }
@@ -1159,19 +1565,27 @@ function animationFlowLabel(timeline: AnimationStep[], index: number): string { 
 function transitionLabel(type: Transition["type"]): string { return ({ none: "None", fade: "Fade", "slide-left": "From left", "slide-right": "From right", "slide-up": "From top", "slide-down": "From bottom", morph: "Morph" } as Record<Transition["type"], string>)[type]; }
 function transitionIcon(type: Transition["type"]): string { return ({ none: "circle-slash", fade: "eye", "slide-left": "arrow-right", "slide-right": "arrow-left", "slide-up": "arrow-down", "slide-down": "arrow-up", morph: "wand" } as Record<Transition["type"], string>)[type]; }
 function findElement(deck: Deck, slideId: string, elementId: string) { return deck.slides.find((item) => item.id === slideId)?.elements.find((item) => item.id === elementId); }
+function lockedElementAspectRatio(element: SlideElement): number | undefined {
+  if (element.type !== "image" && element.type !== "video" && element.type !== "manim") return undefined;
+  if (!element.lockAspectRatio) return undefined;
+  if (element.aspectRatio && element.aspectRatio > 0) return element.aspectRatio;
+  if (element.type === "manim") return manimElementAspectRatio(element.orientation);
+  return element.width / Math.max(1, element.height);
+}
 function elementSizePatch(element: SlideElement, driver: "width" | "height", value: number): Partial<SlideElement> {
-  if ((element.type !== "image" && element.type !== "video") || !element.lockAspectRatio || !element.aspectRatio) {
+  const aspectRatio = lockedElementAspectRatio(element);
+  if (!aspectRatio) {
     return driver === "width" ? { width: value } : { height: value };
   }
   return driver === "width"
-    ? { width: value, height: heightForLockedAspect(value, element.aspectRatio) }
-    : { height: value, width: widthForLockedAspect(value, element.aspectRatio) };
+    ? { width: value, height: heightForLockedAspect(value, aspectRatio) }
+    : { height: value, width: widthForLockedAspect(value, aspectRatio) };
 }
 function lockMediaAspect(slideId: string, elementId: string, aspectRatio: number, mutate: (fn: (deck: Deck) => void) => void) {
   if (!(aspectRatio > 0)) return;
   mutate((draft) => {
     const target = findElement(draft, slideId, elementId);
-    if (target?.type !== "image" && target?.type !== "video") return;
+    if (target?.type !== "image" && target?.type !== "video" && target?.type !== "manim") return;
     const fitted = fitAspectBoxInSlide(target, aspectRatio, draft.size);
     target.x = fitted.x;
     target.y = fitted.y;
@@ -1215,7 +1629,33 @@ function deleteElements(slideId: string, elementIds: string[], mutate: (fn: (dec
   });
   select();
 }
-function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string, history?: { canUndo?: boolean; canRedo?: boolean }) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) { if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri, { canUndo: message.canUndo, canRedo: message.canRedo }); else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri); else if (message.type === "documentEditResult") handleEditResult(message); else if (message.type === "historyResult") handleHistoryResult(message); else if (message.type === "assetImported") { pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error); pendingAssets.delete(message.requestId); } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error); else if (message.type === "notify") notifyToast({ id: message.notificationId, kind: message.status, message: message.message }); }
+function handleHostMessage(message: HostToWebviewMessage, setDeck: (deck: Deck, revision: string, uri: string, linkedUri: string, history?: { canUndo?: boolean; canRedo?: boolean }) => void, setInvalid: (message: string, gitConflict: boolean, uri: string, linkedUri: string) => void, handleEditResult: (message: Extract<HostToWebviewMessage, { type: "documentEditResult" }>) => void, handleHistoryResult: (message: Extract<HostToWebviewMessage, { type: "historyResult" }>) => void) {
+  if (message.type === "deck") setDeck(message.deck, message.revision, message.uri, message.linkedUri, { canUndo: message.canUndo, canRedo: message.canRedo });
+  else if (message.type === "invalidDeck") setInvalid(message.message, message.gitConflict, message.uri, message.linkedUri);
+  else if (message.type === "documentEditResult") handleEditResult(message);
+  else if (message.type === "historyResult") handleHistoryResult(message);
+  else if (message.type === "assetImported") {
+    pendingAssets.get(message.requestId)?.(message.reference && message.storage ? { reference: message.reference, storage: message.storage } : undefined, message.error);
+    pendingAssets.delete(message.requestId);
+  } else if (message.type === "fontSelected") pendingFonts.get(message.requestId)?.(message.family, message.error);
+  else if (message.type === "manimScriptSelected") { pendingManimScripts.get(message.requestId)?.(message); pendingManimScripts.delete(message.requestId); }
+  else if (message.type === "manimScriptCreated") { pendingManimCreates.get(message.requestId)?.(message); pendingManimCreates.delete(message.requestId); }
+  else if (message.type === "manimScenesListed") { pendingManimScenes.get(message.requestId)?.(message); pendingManimScenes.delete(message.requestId); }
+  else if (message.type === "manimRenderResult") { pendingManimRenders.get(message.requestId)?.(message); pendingManimRenders.delete(message.requestId); }
+  else if (message.type === "manimRenderAllResult") { pendingManimRenderAll.get(message.requestId)?.(message); pendingManimRenderAll.delete(message.requestId); }
+  else if (message.type === "collaboration") setCollaboration({ status: message.status, role: message.role, canEdit: message.canEdit, hostName: message.hostName, self: message.self, peers: message.peers, temporaryMirror: message.temporaryMirror });
+  else if (message.type === "assetsUpdated") noteAssets(message.references);
+  else if (message.type === "startCapture") requestCapture?.(message.format);
+  else if (message.type === "notify") {
+    manimHostAcked.add(message.notificationId);
+    if (message.notificationId === "manim-setup") {
+      window.clearTimeout(manimSetupTimer);
+      if (message.status !== "progress") manimUiBusy = false;
+    }
+    notifyToast({ id: message.notificationId, kind: message.status, message: message.message, progress: message.progress });
+    if (message.elementId) publishManimProgress({ elementId: message.elementId, status: message.status, percent: message.elementProgress ?? message.progress ?? 0 });
+  }
+}
 async function sendAsset(file: File): Promise<MediaResult | undefined> { const requestId = crypto.randomUUID(); const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return new Promise((resolve) => { pendingAssets.set(requestId, (result, error) => { if (error) showError(error); resolve(result); }); postMessage({ type: "importAsset", requestId, name: file.name, mime: file.type, base64: btoa(binary) }); }); }
 function droppedFileUri(data: DataTransfer): string | undefined {
   const uriList = data.getData("text/uri-list") || data.getData("application/vnd.code.uri-list") || data.getData("ResourceURLs");

@@ -10,7 +10,8 @@ export type PptxExportWarningCode =
   | "table-rotation-omitted"
   | "video-playback-approximated"
   | "easing-approximated"
-  | "morph-match-ambiguous";
+  | "morph-match-ambiguous"
+  | "manim-not-rendered";
 
 export interface PptxExportWarning {
   code: PptxExportWarningCode;

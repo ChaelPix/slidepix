@@ -10,8 +10,9 @@ webview. The webview has no direct filesystem or Node access.
 | File | Responsibility |
 | --- | --- |
 | `src/main.tsx` | React entry point and stylesheet loading. |
-| `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, and command dispatch. |
+| `src/App.tsx` | Editor shell, toolbar, slide rail, transition gaps, selection/manipulation, inspector, notes, clipboard/drop imports, command dispatch, and toolbar PDF/PNG capture. |
 | `src/SlideView.tsx` | Interactive React rendering for slides/elements and thumbnails. Must visually agree with core's headless renderer. |
+| `src/export-capture.ts` | Pre-inlines images and CSS backgrounds, replaces each video with its first frame plus a play control, then rasterizes the slide with `html-to-image`. |
 | `src/align.ts` | Page/selection alignment and equal-gap distribution of element boxes. |
 | `src/snap.ts` | Logical-space edge/center snapping against the page and peer boxes. |
 | `src/shape-batch.ts` | Copies a shape's pose and paint onto same-named shapes on other slides. |
@@ -111,6 +112,18 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
   CSS family through a typed request/response message, avoiding the unreliable
   Local Font Access API inside VS Code/Cursor webviews.
 - The Insert ribbon's Shape control uses the same themed dropdown as Export.
+  Manim uses the same pattern: **Still image** or **Video** inserts a centered
+  box and opens Manim properties for script, scene, quality, and **Render**.
+  **Render all** renders every ready Manim scene at the same time and
+  shows a progress toast with a bar for the whole batch. The Manim properties
+  panel of the scene currently rendering shows that scene's bar under
+  **Render**. **Quality** entries set that quality on
+  every Manim image and video. **Set up Manim…** opens a quick pick to locate
+  Manim, install it with `uv tool install manim`, or create a `.venv` beside
+  the deck with `uv venv -p 3.12` and `uv pip install manim`. Cancelling from
+  the element **Render** button is not implemented yet.
+  Until a render exists, image and video Manim elements both show the same
+  bordered placeholder with the linked `.py` filename centered in the box.
   The Insert ribbon adds a 3×3 table. Properties provides direct cell editing,
   add/remove row and column actions, a header toggle, typography, and
   transparent header/cell/border colors. Limits match the core schema.
@@ -173,6 +186,11 @@ always calls its resolver with both `src` and `storage`, including thumbnails.
 - App-wide canvas paste handling ignores inputs, textareas, selects, and
   content-editable targets, so pasting inside the Markdown editor or inspector
   edits that field instead of creating a new slide element.
+- Live collaboration shows a status banner, peer initials, colored slide dots,
+  remote selections, and a dashed ghost while another peer drags. Presence is
+  throttled to 15 Hz and is not saved. A soft lock stops a second person from
+  opening the same text. Guests cannot run Manim. When the session has ended,
+  document edits stop until the guest saves a copy.
 
 ## Verification
 
@@ -183,6 +201,6 @@ Run `pnpm --filter @slidepix/webview typecheck` and `pnpm build`, then test the
 changed flow in an Extension Development Host. Visual changes also require a
 render/export comparison because the core renderer is a second consumer.
 `src/store.test.ts` covers write serialization, debounce, rebasing, conflicts,
-failed edits, deferred document commands, and host undo availability. `src/align.test.ts` covers page
+failed edits, deferred document commands, and host undo availability. `src/presence.test.ts` covers the 15 Hz limit, the text lock, slide marks, and ghost poses. `src/export-capture.test.ts` covers image error-event formatting, CSS `url()` extraction, capture timeouts, data-URI inlining, and the video play control. `src/align.test.ts` covers page
 and selection alignment plus distribution. `src/snap.test.ts` covers edge
 snapping and the zoom-aware catch radius.

@@ -139,6 +139,27 @@ async function addNativeElement(
     context.nativeObjectCount += 1;
     return [name];
   }
+  if (element.type === "manim") {
+    const media = element.outputMedia;
+    if (!media) {
+      addPptxWarning(context.warnings, "manim-not-rendered", "Manim element has no rendered output yet.", sourceSlide.id, element.id);
+      return [];
+    }
+    const source = resolveMediaPath(context.deckPath, media.src, media.storage, context.allowedLinkedRoots);
+    if (element.output === "image") {
+      slide.addImage({ ...position(element, name), path: source, rotate: element.rotation, transparency: Math.round((1 - element.opacity) * 100), altText: element.alt });
+      patch.pictures.push({ objectName: name, crop: { x: 0, y: 0, width: 1, height: 1 }, borderRadius: 0, edgeFade: 0, border: { width: 0, color: "transparent" } });
+      context.nativeObjectCount += 1;
+      return [name];
+    }
+    slide.addMedia({ ...position(element, name), type: "video", path: source });
+    patch.pictures.push({ objectName: name, borderRadius: 0, opacity: element.opacity, rotation: element.rotation });
+    if (element.playback.muted || element.playback.loop || !element.playback.controls || element.playback.mode === "autoplay") {
+      addPptxWarning(context.warnings, "video-playback-approximated", "The video remains embedded and editable, but PowerPoint may not preserve every SlidePix mute, loop, controls, or autoplay preference.", sourceSlide.id, element.id);
+    }
+    context.nativeObjectCount += 1;
+    return [name];
+  }
   await addVideo(slide, element, name, patch, sourceSlide, context);
   context.nativeObjectCount += 1;
   return [name];
@@ -344,7 +365,12 @@ async function validateMedia(deck: Deck, deckPath: string, allowedLinkedRoots: s
     if (slide.hidden) continue;
     if (slide.backgroundImage) await access(resolveMediaPath(deckPath, slide.backgroundImage.src, slide.backgroundImage.storage, allowedLinkedRoots));
     for (const element of slide.elements) {
-      if (element.hidden || (element.type !== "image" && element.type !== "video")) continue;
+      if (element.hidden) continue;
+      if (element.type === "manim") {
+        if (element.outputMedia) await access(resolveMediaPath(deckPath, element.outputMedia.src, element.outputMedia.storage, allowedLinkedRoots));
+        continue;
+      }
+      if (element.type !== "image" && element.type !== "video") continue;
       await access(resolveMediaPath(deckPath, element.src, element.storage, allowedLinkedRoots));
       if (element.type === "video" && element.poster) await access(resolveMediaPath(deckPath, element.poster, "embedded", allowedLinkedRoots));
     }

@@ -89,7 +89,7 @@ hidden state, incoming transition, animation timeline,
 and ordered elements. Background images stretch to the exact logical slide
 rectangle in every renderer and export.
 
-Element types are `text`, `image`, `video`, `shape`, and `table`. Shared geometry fields
+Element types are `text`, `image`, `video`, `manim`, `shape`, and `table`. Shared geometry fields
 are `x`, `y`, `width`, `height`, `rotation`, `opacity`, and `z`; shared behavior
 includes locking, hiding, optional name, and optional accessibility text.
 Image and video elements also carry `storage: "linked" | "embedded"`; the
@@ -98,6 +98,18 @@ Image and video elements also carry `storage: "linked" | "embedded"`; the
 media frame (width divided by height): new media starts at its source ratio,
 while cropping updates it to the cropped frame ratio. The flag constrains
 interactive resizing; parsing and saving never rewrite stored geometry.
+
+A `manim` element stores a workspace-linked `script` path (POSIX relative to
+the deck), optional `scene` class name, `output` (`image` or `video`),
+`orientation` (`horizontal` for 16:9 or `vertical` for 9:16; the host passes
+matching `--resolution` and `--transparent` to Manim on render), `quality`
+(`low`, `medium`, `high`, or `production`), optional `transparent` background,
+optional embedded `outputMedia` produced by the extension host, and video
+`playback` settings when `output` is `video`. The `.py` source stays linked in
+the workspace. Rendered PNG/MP4/WebM bytes are embedded in `talk.assets/`
+under a persistent name `deck-slide-scene` (the deck file stem, the slide
+title, and the scene class). A name already used by another element gets a
+numeric suffix. Re-rendering overwrites that file.
 
 Text paints past its box. The slide still clips at its own edges. Tab characters
 in Markdown stay as tab stops. `style.lineHeight` is the spacing within a

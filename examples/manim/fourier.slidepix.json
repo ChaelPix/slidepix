@@ -1,0 +1,872 @@
+{
+  "schemaVersion": 1,
+  "id": "fourier",
+  "metadata": {
+    "title": "La transformation de Fourier",
+    "author": "SlidePix",
+    "description": "Court exposé Manim : série de Fourier, phénomène de Gibbs, créneau continu, épicycles et FFT."
+  },
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "theme": {
+    "background": "#ffffff",
+    "foreground": "#111827",
+    "accent": "#2563eb",
+    "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+  },
+  "pageNumbers": {
+    "enabled": true,
+    "color": "#64748b",
+    "fontSize": 24
+  },
+  "layouts": {},
+  "slides": [
+    {
+      "id": "ft-01",
+      "title": "Titre",
+      "background": "#ffffff",
+      "notes": "Annoncer le fil : un signal compliqué est une somme de sinusoïdes. On va le voir se construire, puis passer du temps aux fréquences.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "fade",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft01-kicker",
+          "morphKey": "ft01-kicker",
+          "x": 120,
+          "y": 250,
+          "width": 1500,
+          "height": 70,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "kicker",
+          "type": "text",
+          "markdown": "**MATHÉMATIQUES**",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 28,
+            "fontWeight": 800,
+            "color": "#2563eb",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft01-title",
+          "morphKey": "ft01-title",
+          "x": 114,
+          "y": 330,
+          "width": 1680,
+          "height": 220,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "# La transformation\nde Fourier",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 84,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.02,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft01-sub",
+          "morphKey": "ft01-sub",
+          "x": 120,
+          "y": 680,
+          "width": 1400,
+          "height": 140,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "subtitle",
+          "type": "text",
+          "markdown": "Lire un signal non plus dans le temps, mais comme un spectre de fréquences.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 36,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.3,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-02",
+      "title": "L'idée",
+      "background": "#ffffff",
+      "notes": "La série concerne les signaux périodiques. an et bn sont les coordonnées de f dans la base des sinus et cosinus. Deux signaux de même spectre ont la même énergie, au sens de Parseval.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft02-title",
+          "morphKey": "ft02-title",
+          "x": 110,
+          "y": 70,
+          "width": 1600,
+          "height": 90,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Une courbe, écrite comme des notes",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 48,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft02-body",
+          "morphKey": "ft02-body",
+          "x": 110,
+          "y": 190,
+          "width": 1680,
+          "height": 760,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "body",
+          "type": "text",
+          "markdown": "En 1807, Fourier affirme qu'une fonction périodique se décompose en sinus et cosinus dont les fréquences sont des multiples entiers de la fondamentale.\n\n$$\nf(t)=\\frac{a_0}{2}+\\sum_{n=1}^{\\infty}\\left(a_n\\cos(nt)+b_n\\sin(nt)\\right)\n$$\n\n$a_n$ et $b_n$ mesurent **combien** de la fréquence $n$ est présente, et avec quelle phase. Le terme constant $a_0/2$ est la valeur moyenne.\n\nLa suite montre le cas le plus parlant : un signal carré, impair, reconstruit avec les seuls sinus impairs.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 32,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.28,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-03",
+      "title": "Harmoniques",
+      "background": "#f8fafc",
+      "notes": "À gauche, chaque ligne est une fréquence pure, avec une amplitude qui décroît. À droite, leur somme commence déjà à dessiner le carré. Faire remarquer que les coins manquent encore.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft03-title",
+          "morphKey": "ft03-title",
+          "x": 80,
+          "y": 36,
+          "width": 1400,
+          "height": 72,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Trois fréquences suffisent à esquisser",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 40,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft03-still",
+          "morphKey": "ft03-still",
+          "x": 170,
+          "y": 124,
+          "width": 1580,
+          "height": 888.75,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "harmonics",
+          "type": "manim",
+          "script": "fourier.manim.py",
+          "scene": "HarmonicsStill",
+          "output": "image",
+          "orientation": "horizontal",
+          "quality": "medium",
+          "transparent": false,
+          "outputMedia": {
+            "src": "HarmonicsStill.png",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777,
+          "playback": {
+            "mode": "autoplay",
+            "muted": true,
+            "loop": true,
+            "controls": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-04",
+      "title": "Signal carré",
+      "background": "#f8fafc",
+      "notes": "Lancer la lecture si elle n'a pas démarré. N est le nombre d'harmoniques impaires. Vers N = 8, le plateau est presque plat mais les coins dépassent encore : c'est Gibbs, environ 9 % du saut, et l'excès ne s'éteint pas, il se resserre.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft04-title",
+          "morphKey": "ft04-title",
+          "x": 72,
+          "y": 36,
+          "width": 1700,
+          "height": 72,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Le carré apparaît harmonique après harmonique",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 40,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft04-video",
+          "morphKey": "ft04-video",
+          "x": 48,
+          "y": 140,
+          "width": 1280,
+          "height": 720,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "build-square",
+          "type": "manim",
+          "script": "fourier.manim.py",
+          "scene": "BuildSquare",
+          "output": "video",
+          "orientation": "horizontal",
+          "quality": "medium",
+          "transparent": false,
+          "outputMedia": {
+            "src": "BuildSquare.mp4",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777,
+          "playback": {
+            "mode": "autoplay",
+            "muted": true,
+            "loop": true,
+            "controls": false
+          }
+        },
+        {
+          "id": "ft04-note",
+          "morphKey": "ft04-note",
+          "x": 1360,
+          "y": 200,
+          "width": 500,
+          "height": 640,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "gibbs",
+          "type": "text",
+          "markdown": "Le trait ambre est le carré visé.\n\n$$\n\\frac{4}{\\pi}\\sum_{k=0}^{N-1}\\frac{\\sin((2k+1)t)}{2k+1}\n$$\n\nPrès du saut, la somme dépasse d'environ **9 %** et ne s'aligne jamais tout à fait. C'est le phénomène de Gibbs : l'erreur change de place, pas de taille.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 28,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.3,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-05",
+      "title": "Temps et fréquence",
+      "background": "#ffffff",
+      "notes": "Une sinusoïde pure n'a qu'une fréquence. Quand la courbe oscille plus vite à gauche, le pic glisse vers la droite. C'est toute l'idée de la transformée : localiser l'énergie sur l'axe des fréquences.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft05-title",
+          "morphKey": "ft05-title",
+          "x": 72,
+          "y": 36,
+          "width": 1760,
+          "height": 72,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Accélérer la sinusoïde déplace le pic",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 40,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft05-video",
+          "morphKey": "ft05-video",
+          "x": 48,
+          "y": 150,
+          "width": 1180,
+          "height": 663.75,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "time-frequency",
+          "type": "manim",
+          "script": "fourier.manim.py",
+          "scene": "TimeToFrequency",
+          "output": "video",
+          "orientation": "horizontal",
+          "quality": "medium",
+          "transparent": false,
+          "outputMedia": {
+            "src": "TimeToFrequency.mp4",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777,
+          "playback": {
+            "mode": "autoplay",
+            "muted": true,
+            "loop": true,
+            "controls": false
+          }
+        },
+        {
+          "id": "ft05-note",
+          "morphKey": "ft05-note",
+          "x": 1280,
+          "y": 210,
+          "width": 580,
+          "height": 620,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "note",
+          "type": "text",
+          "markdown": "À gauche, le signal dans le temps.\n\nÀ droite, son spectre : une seule raie, parce que la courbe est une fréquence pure.\n\n$$\n\\sin(2\\pi\\,\\xi\\, t)\n$$\n\nMonter $\\xi$ ajoute des oscillations sur la même durée, et la raie part vers les hautes fréquences.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 30,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.3,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-06",
+      "title": "Transformée",
+      "background": "#ffffff",
+      "notes": "La série ne voit que des harmoniques entières, donc des signaux périodiques. L'intégrale autorise toutes les fréquences réelles. Le coefficient est complexe : son module est l'amplitude, son argument le décalage de phase. L'inversion rejoue chaque onde avec ce poids.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft06-title",
+          "morphKey": "ft06-title",
+          "x": 110,
+          "y": 64,
+          "width": 1680,
+          "height": 90,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Toutes les fréquences, plus seulement les entières",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 44,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft06-body",
+          "morphKey": "ft06-body",
+          "x": 110,
+          "y": 180,
+          "width": 1680,
+          "height": 800,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "body",
+          "type": "text",
+          "markdown": "La **transformée de Fourier** associe à $f$ un spectre continu. Le noyau $e^{-2\\pi i \\xi t}=\\cos(2\\pi\\xi t)-i\\sin(2\\pi\\xi t)$ est une onde de fréquence $\\xi$. L'intégrale mesure à quel point $f$ lui ressemble.\n\n$$\n\\hat{f}(\\xi)=\\int_{-\\infty}^{+\\infty} f(t)\\,e^{-2\\pi i \\xi t}\\,dt\n$$\n\nOn retrouve le signal en superposant ces ondes :\n\n$$\nf(t)=\\int_{-\\infty}^{+\\infty} \\hat{f}(\\xi)\\,e^{2\\pi i \\xi t}\\,d\\xi\n$$",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 32,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.28,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-09",
+      "title": "Créneau",
+      "background": "#f8fafc",
+      "notes": "f vaut A entre 0 et X, et 0 ailleurs. Le spectre est un sinc de hauteur A·X et de largeur 1/X. Faire voir que rétrécir le créneau étale le sinc : un signal court n'est pas une fréquence pure.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft09-title",
+          "morphKey": "ft09-title",
+          "x": 72,
+          "y": 36,
+          "width": 1760,
+          "height": 72,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Un créneau : constant, puis nul",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 40,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft09-video",
+          "morphKey": "ft09-video",
+          "x": 36,
+          "y": 140,
+          "width": 1140,
+          "height": 641.25,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "rect-pulse",
+          "type": "manim",
+          "script": "fourier.manim.py",
+          "scene": "RectPulse",
+          "output": "video",
+          "orientation": "horizontal",
+          "quality": "low",
+          "transparent": false,
+          "outputMedia": {
+            "src": "RectPulse.mp4",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777,
+          "playback": {
+            "mode": "autoplay",
+            "muted": true,
+            "loop": true,
+            "controls": false
+          }
+        },
+        {
+          "id": "ft09-note",
+          "morphKey": "ft09-note",
+          "x": 1210,
+          "y": 170,
+          "width": 650,
+          "height": 720,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "formula",
+          "type": "text",
+          "markdown": "De $0$ à $X$, $f$ vaut $A$. Ailleurs, elle est nulle.\n\n$$\n\\hat f(\\xi)=A X\\, e^{-\\pi i \\xi X}\\operatorname{sinc}(\\xi X)\n$$\n\n$$\n\\operatorname{sinc}(u)=\\dfrac{\\sin(\\pi u)}{\\pi u}\n$$\n\nQuand $X$ diminue, le pic s'abaisse et s'étale. Un créneau court contient beaucoup de fréquences.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 28,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.28,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-10",
+      "title": "Contour",
+      "background": "#ffffff",
+      "notes": "D'abord un seul cercle : l'abscisse du rayon est un cosinus, l'ordonnée un sinus. Puis chaque extrémité devient le centre du cercle suivant. Enfin le dernier point trace le contour. Un SVG fermé se traite pareil : on échantillonne z(t), la FFT donne les rayons.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft10-title",
+          "morphKey": "ft10-title",
+          "x": 72,
+          "y": 36,
+          "width": 1760,
+          "height": 72,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Des cercles emboîtés dessinent le contour",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 40,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft10-video",
+          "morphKey": "ft10-video",
+          "x": 36,
+          "y": 128.4737625,
+          "width": 1180,
+          "height": 663.75,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "epicycles",
+          "type": "manim",
+          "script": "fourier.manim.py",
+          "scene": "EpicycleDraw",
+          "output": "video",
+          "orientation": "horizontal",
+          "quality": "medium",
+          "transparent": false,
+          "outputMedia": {
+            "src": "EpicycleDraw.mp4",
+            "storage": "embedded"
+          },
+          "lockAspectRatio": true,
+          "aspectRatio": 1.7777777777777777,
+          "playback": {
+            "mode": "autoplay",
+            "muted": true,
+            "loop": true,
+            "controls": false
+          }
+        },
+        {
+          "id": "ft10-note",
+          "morphKey": "ft10-note",
+          "x": 1250,
+          "y": 160,
+          "width": 610,
+          "height": 760,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "note",
+          "type": "text",
+          "markdown": "Un coefficient $c_n$ est un rayon et un angle. Il tourne à la fréquence $n$ :\n\n$$\nc_n e^{2\\pi i n t}\n$$\n\nL'abscisse est un cosinus, l'ordonnée un sinus. Le bout du rayon est le **centre** du cercle suivant.\n\nUn SVG fermé est une courbe $z(t)$. Sa FFT fournit ces rayons, et le dernier point redessine le contour.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 28,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.28,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-07",
+      "title": "FFT",
+      "background": "#f8fafc",
+      "notes": "En pratique on n'a que N échantillons. La DFT est la version discrète, exacte pour les fréquences k/N. La FFT n'est pas une autre transformée : c'est le même calcul, rangé pour passer de N² à N log N. C'est pour ça qu'un spectrogramme tient dans un lecteur audio.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft07-title",
+          "morphKey": "ft07-title",
+          "x": 110,
+          "y": 70,
+          "width": 1680,
+          "height": 90,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Sur un ordinateur : N échantillons",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 48,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft07-body",
+          "morphKey": "ft07-body",
+          "x": 110,
+          "y": 190,
+          "width": 1680,
+          "height": 760,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "body",
+          "type": "text",
+          "markdown": "La transformée de Fourier discrète pose les mêmes questions sur un tableau $x_0,\\ldots,x_{N-1}$ :\n\n$$\nX_k=\\sum_{n=0}^{N-1} x_n\\, e^{-2\\pi i kn/N}\n$$\n\nCalculée de front, cette somme coûte $N^2$ produits. La **FFT** (Cooley–Tukey, 1965) la réorganise en $O(N\\log N)$ en coupant le tableau en pairs et impairs.\n\nMême information, autre ordre de grandeur : c'est ce qui rend le spectre utilisable sur du son, de l'image et du radar.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 32,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.3,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ft-08",
+      "title": "Partout",
+      "background": "#ffffff",
+      "notes": "Fermer sur l'idée opérationnelle : multiplier un spectre, c'est filtrer. JPEG et le MP3 utilisent des cousines (DCT, MDCT), pas la transformée complexe brute. L'IRM est le cas le plus littéral : l'antenne mesure le spectre spatial.",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "slide-left",
+        "durationMs": 550,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "ft08-title",
+          "morphKey": "ft08-title",
+          "x": 110,
+          "y": 70,
+          "width": 1600,
+          "height": 90,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 2,
+          "locked": false,
+          "hidden": false,
+          "name": "title",
+          "type": "text",
+          "markdown": "## Ce que le spectre permet de faire",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 48,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        },
+        {
+          "id": "ft08-body",
+          "morphKey": "ft08-body",
+          "x": 110,
+          "y": 200,
+          "width": 1680,
+          "height": 720,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "body",
+          "type": "text",
+          "markdown": "- **Filtrer.** Couper des fréquences dans le spectre, puis inverser, enlève un bruit ou isole une bande. Un égaliseur est ce geste-là.\n- **Compresser.** JPEG (DCT) et le MP3 (MDCT) gardent les coefficients qui portent l'énergie et quantifient le reste.\n- **Voir.** En IRM, les mesures sont déjà un spectre spatial : l'image est une transformée inverse.\n- **Calculer.** Une convolution devient un produit de spectres, et les équations de la chaleur ou des ondes se découplent fréquence par fréquence.",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 34,
+            "fontWeight": 400,
+            "color": "#475569",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.35,
+            "padding": 8
+          }
+        }
+      ]
+    }
+  ]
+}

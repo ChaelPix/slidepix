@@ -1,5 +1,7 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDeckText, renderDeckDocument } from "../packages/core/dist/index.js";
@@ -14,48 +16,92 @@ await mkdir(output, { recursive: true });
 await mkdir(resolve(output, "slides"), { recursive: true });
 const assets = new Map();
 for (const slide of parsed.deck.slides) for (const element of slide.elements) {
-  if (element.type !== "image" && element.type !== "video") continue;
-  await loadAsset(element.src, element.storage);
-  if (element.type === "video" && element.poster) await loadAsset(element.poster, "embedded");
+  if (element.type === "image" || element.type === "video") {
+    await loadAsset(element.src, element.storage);
+    if (element.type === "video" && element.poster) await loadAsset(element.poster, "embedded");
+  } else if (element.type === "manim" && element.outputMedia) {
+    await loadAsset(element.outputMedia.src, element.outputMedia.storage);
+  }
 }
 const asset = (reference, storage) => assets.get(`${storage}:${reference}`) ?? reference;
+const browser = browserExecutable();
+const profile = resolve(tmpdir(), `slidepix-smoke-${process.pid}`);
 
-const require = createRequire(import.meta.url);
-const { chromium } = require(resolve(root, "packages/extension/vendor/playwright-core"));
-const browser = await chromium.launch({ headless: true });
-try {
-  const print = await browser.newPage();
-  await print.setContent(renderDeckDocument(parsed.deck, asset, { mode: "print" }), { waitUntil: "networkidle" });
-  await print.pdf({
-    path: resolve(output, "deck.pdf"),
-    width: `${parsed.deck.size.width}px`,
-    height: `${parsed.deck.size.height}px`,
-    pageRanges: `1-${Math.max(1, parsed.deck.slides.filter((slide) => !slide.hidden).length)}`,
-    printBackground: true,
-    preferCSSPageSize: true,
-    margin: { top: 0, right: 0, bottom: 0, left: 0 }
+await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "print" }), {
+  pdf: resolve(output, "deck.pdf")
+});
+const visibleSlides = parsed.deck.slides.filter((slide) => !slide.hidden);
+const contactColumns = 2;
+const contactRows = Math.max(1, Math.ceil(visibleSlides.length / contactColumns));
+const contactGap = 32;
+const contactPad = 32;
+await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "contact", columns: contactColumns }), {
+  screenshot: resolve(output, "contact.png"),
+  width: parsed.deck.size.width * contactColumns + contactGap * (contactColumns - 1) + contactPad * 2,
+  height: parsed.deck.size.height * contactRows + contactGap * (contactRows - 1) + contactPad * 2
+});
+for (const [index, slide] of visibleSlides.entries()) {
+  const slidePath = resolve(output, "slides", `slide-${String(index + 1).padStart(2, "0")}.png`);
+  await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "frame", selectedSlideIds: [slide.id] }), {
+    screenshot: slidePath,
+    width: parsed.deck.size.width,
+    height: parsed.deck.size.height
   });
-
-  const contact = await browser.newPage({ viewport: { width: parsed.deck.size.width, height: parsed.deck.size.height } });
-  await contact.setContent(renderDeckDocument(parsed.deck, asset, { mode: "contact", columns: 2 }), { waitUntil: "networkidle" });
-  await contact.screenshot({ path: resolve(output, "contact.png"), fullPage: true });
-
-  const visibleSlides = parsed.deck.slides.filter((slide) => !slide.hidden);
-  const frame = await browser.newPage({ viewport: { width: parsed.deck.size.width, height: parsed.deck.size.height } });
-  for (const [index, slide] of visibleSlides.entries()) {
-    await frame.setContent(renderDeckDocument(parsed.deck, asset, { mode: "frame", selectedSlideIds: [slide.id] }), { waitUntil: "networkidle" });
-    const target = frame.locator(".slidepix-slide");
-    await target.screenshot({ path: resolve(output, "slides", `slide-${String(index + 1).padStart(2, "0")}.png`) });
-    if (index === Math.min(1, visibleSlides.length - 1)) await target.screenshot({ path: resolve(output, "single-slide.png") });
+  if (index === Math.min(1, visibleSlides.length - 1)) {
+    await renderHtml(browser, renderDeckDocument(parsed.deck, asset, { mode: "frame", selectedSlideIds: [slide.id] }), {
+      screenshot: resolve(output, "single-slide.png"),
+      width: parsed.deck.size.width,
+      height: parsed.deck.size.height
+    });
   }
-} finally {
-  await browser.close();
 }
 
 const pdf = await stat(resolve(output, "deck.pdf"));
 const png = await stat(resolve(output, "contact.png"));
 const singlePng = await stat(resolve(output, "single-slide.png"));
-console.log(JSON.stringify({ pdfBytes: pdf.size, pngBytes: png.size, singlePngBytes: singlePng.size, slidePngs: parsed.deck.slides.filter((slide) => !slide.hidden).length, output }));
+console.log(JSON.stringify({ pdfBytes: pdf.size, pngBytes: png.size, singlePngBytes: singlePng.size, slidePngs: visibleSlides.length, output }));
+
+async function renderHtml(executable, html, target) {
+  const htmlPath = resolve(profile, `${Math.random().toString(16).slice(2)}.html`);
+  await mkdir(profile, { recursive: true });
+  await writeFile(htmlPath, html);
+  const args = [
+    "--headless=new",
+    "--disable-gpu",
+    "--no-first-run",
+    "--hide-scrollbars",
+    "--allow-file-access-from-files",
+    `--user-data-dir=${profile}`,
+    "--virtual-time-budget=10000"
+  ];
+  if (target.pdf) args.push("--no-pdf-header-footer", `--print-to-pdf=${target.pdf}`);
+  if (target.screenshot) args.push(`--window-size=${target.width},${target.height}`, `--screenshot=${target.screenshot}`);
+  args.push(htmlPath);
+  await run(executable, args);
+  const produced = target.pdf ?? target.screenshot;
+  if (!existsSync(produced)) throw new Error(`Browser did not write ${produced}`);
+}
+
+function run(executable, args) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(executable, args, { stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code) => code === 0 ? resolvePromise() : reject(new Error(`${executable} exited ${code}`)));
+  });
+}
+
+function browserExecutable() {
+  const candidates = process.platform === "darwin"
+    ? [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium"
+      ]
+    : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge"];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) throw new Error("Google Chrome or Microsoft Edge must be installed to render the smoke PDF.");
+  return found;
+}
 
 async function loadAsset(reference, storage) {
   const key = `${storage}:${reference}`;

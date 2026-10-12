@@ -1,4 +1,22 @@
-# SlidePix product demo
+# SlidePix examples
+
+## Manim demo
+
+`manim/fourier.slidepix.json` is the Manim demo: a short French talk on the
+Fourier transform. Scenes live in `manim/fourier.manim.py`:
+
+- `HarmonicsStill` — three odd harmonics and their sum (PNG)
+- `BuildSquare` — partial sums toward a square wave (MP4)
+- `TimeToFrequency` — a pure sine and the peak that tracks its frequency (MP4)
+- `RectPulse` — a pulse of height A on `[0, X]`, and the sinc that widens as X shrinks (MP4)
+- `EpicycleDraw` — rotating radii whose last point traces a closed outline (MP4)
+
+Rendered media is referenced from `manim/fourier.assets/`. That directory is
+gitignored, so a fresh clone shows the script name until you click **Render**.
+**Render all** in the Manim menu refreshes every scene. After editing a scene,
+select its Manim element and click **Render**.
+
+## Product demo
 
 `slidepix-demo.slidepix.json` is the canonical light-theme product demo and
 visual-regression deck. It intentionally covers Markdown, LaTeX, highlighted

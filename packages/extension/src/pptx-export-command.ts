@@ -2,8 +2,12 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Deck } from "@slidepix/core";
 import { buildPptxExport } from "./pptx-export";
-import { workspaceRoots } from "./renderer";
 import type { ExportResult } from "./export-result";
+
+export function workspaceRoots(deckPath: string): string[] {
+  const roots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri).filter((uri) => uri.scheme === "file").map((uri) => uri.fsPath) ?? [];
+  return roots.length ? roots : [path.dirname(deckPath)];
+}
 
 let reportChannel: vscode.OutputChannel | undefined;
 

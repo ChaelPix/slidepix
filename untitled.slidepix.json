@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "id": "687fd2bf-edfa-40c5-a4c7-bb60db40047d",
+  "metadata": {
+    "title": "Untitled deck",
+    "author": "",
+    "description": ""
+  },
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "theme": {
+    "background": "#ffffff",
+    "foreground": "#111827",
+    "accent": "#2563eb",
+    "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif"
+  },
+  "pageNumbers": {
+    "enabled": true,
+    "color": "#64748b",
+    "fontSize": 24
+  },
+  "layouts": {},
+  "slides": [
+    {
+      "id": "b413e29e-2f95-4091-aae3-9d0e547447ed",
+      "title": "Title slide",
+      "notes": "",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "none",
+        "durationMs": 500,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "07c2df18-9060-4197-a96e-2ed477f38680",
+          "morphKey": "121bf1a2-daa7-49aa-b2b3-b24e7171c9bf",
+          "x": 180,
+          "y": 360,
+          "width": 1560,
+          "height": 300,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 0,
+          "locked": false,
+          "hidden": false,
+          "type": "text",
+          "markdown": "# Untitled deck",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 72,
+            "fontWeight": 700,
+            "color": "#111827",
+            "textAlign": "center",
+            "verticalAlign": "middle",
+            "lineHeight": 1.1,
+            "padding": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "07a5dace-82ee-43d6-9d48-4fcd88e9e16d",
+      "title": "Slide 2",
+      "notes": "",
+      "hidden": false,
+      "hidePageNumber": false,
+      "transition": {
+        "type": "none",
+        "durationMs": 500,
+        "easing": "ease-in-out"
+      },
+      "timeline": [],
+      "elements": [
+        {
+          "id": "6f035608-7cdf-4bc0-a345-88e1c65fc013",
+          "morphKey": "a8d612b6-6f75-49c9-91ef-c5f9af75b5a6",
+          "x": 240,
+          "y": 240,
+          "width": 640,
+          "height": 360,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 0,
+          "locked": false,
+          "hidden": false,
+          "name": "text-6f03",
+          "type": "text",
+          "markdown": "KJABZUIGBAIG",
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 48,
+            "fontWeight": 400,
+            "color": "#111827",
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "lineHeight": 1.2,
+            "padding": 8
+          }
+        },
+        {
+          "id": "3113103c-bcb5-43c9-a240-e540cb8f22a8",
+          "morphKey": "0708af3f-aa00-4863-9fce-93572c7baa0f",
+          "x": 674,
+          "y": 202,
+          "width": 960,
+          "height": 420,
+          "rotation": 0,
+          "opacity": 1,
+          "z": 1,
+          "locked": false,
+          "hidden": false,
+          "name": "table-3113",
+          "type": "table",
+          "rows": 3,
+          "columns": 3,
+          "cells": [
+            [
+              "Header 1",
+              "Header 2",
+              "Header 3"
+            ],
+            [
+              "",
+              "",
+              ""
+            ],
+            [
+              "",
+              "",
+              ""
+            ]
+          ],
+          "headerRow": true,
+          "style": {
+            "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+            "fontSize": 30,
+            "fontWeight": 400,
+            "color": "#111827",
+            "headerFill": "#e0e7ff",
+            "cellFill": "#ffffff",
+            "borderColor": "#94a3b8",
+            "borderWidth": 2,
+            "textAlign": "left",
+            "verticalAlign": "middle",
+            "padding": 10
+          }
+        }
+      ]
+    }
+  ]
+}

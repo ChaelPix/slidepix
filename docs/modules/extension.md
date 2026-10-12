@@ -8,9 +8,12 @@ PDF, PNG, PowerPoint, and standalone web exports.
 
 ## `src/extension.ts`
 
-`activate(context)` constructs one `SlidePixEditorProvider` and registers every
-public command. Command IDs must stay aligned with `package.json` contributions
-and webview command union members.
+`activate(context)` constructs one `SlidePixEditorProvider`, creates the
+SlidePix log output channel, reveals it, and registers every public command.
+**SlidePix: Show Log** opens that channel again. Command IDs must stay
+aligned with `package.json` contributions and webview command union members.
+Deck open/close, commands, Manim setup, and failed edits are written to that
+channel. Successful document replacements are not logged on every keystroke.
 
 Private command helpers:
 
@@ -22,9 +25,9 @@ Private command helpers:
   Explorer both skip the save dialog and filename prompt.
 - `withDeck(editor, action)` requires an active deck, validates current text,
   and only invokes the action for a valid document.
-- `configureMcp(context)` installs the renderer, then adds a `slidepix` stdio
-  server for Cursor (`~/.cursor/mcp.json`), VS Code (profile `mcp.json`),
-  Codex (`~/.codex/config.toml`), Claude Code (`~/.claude.json`), and Claude
+- `configureMcp(context)` adds a `slidepix` stdio server for Cursor
+  (`~/.cursor/mcp.json`), VS Code (profile `mcp.json`), Codex
+  (`~/.codex/config.toml`), Claude Code (`~/.claude.json`), and Claude
   Desktop. Other servers and unrelated settings in those files are kept. A
   malformed file is skipped and reported.
 - Git collaboration commands configure/remove only repository-local settings
@@ -47,7 +50,8 @@ Private command helpers:
 | `selectMedia` / `resolveMedia` | Chooses or accepts an Explorer-dropped local file, validates kind/size, links it relative to the deck when it is inside an open workspace, and embeds otherwise. |
 | `embedMedia` | Converts selected or all linked media to content-addressed copies and applies the changed deck through `WorkspaceEdit`. |
 | `selectFont` | Scans platform font directories, opens a native searchable quick picker, and returns the selected CSS family through the versioned protocol. |
-| `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP. |
+| Manim host messages | `selectManimScript`, `createManimScript`, `openManimScript`, `listManimScenes`, `renderManim`, `renderAllManim`, and `setupManim` keep `.py` sources workspace-linked, run Manim Community through `manim-host.ts` / `manim-render.ts` / `manim-setup.ts`, embed rendered media with `WorkspaceEdit`, and report progress through a cancellable notification. Full Manim stdout and stderr go to the SlidePix output channel. |
+| `webviewHtml` | Builds nonce-protected HTML with restricted resource roots and CSP, including `connect-src` limited to `webview.cspSource`, `data:`, and `blob:` so export inlining can fetch already-allowed local assets. |
 
 `src/document-history.ts` owns the capped snapshot stack used by undo/redo.
 
@@ -60,10 +64,14 @@ with an explicit encoding, which forces workbench synchronization, then closes
 and reopens the tab once per 10 s cooldown. Failures are reported, not
 swallowed. `src/editor-recovery.test.ts` covers the decision rules.
 
-Webview-triggered exports carry an optional request ID. The provider reports
-completion or failure through a typed `notify` message so the editor can replace
-its non-blocking progress toast; command-palette exports keep their native VS
-Code notifications.
+Webview-triggered PowerPoint and web exports carry an optional request ID. The
+provider reports completion or failure through a typed `notify` message so the
+editor can replace its non-blocking progress toast; command-palette PowerPoint
+and web exports keep their native VS Code notifications. **Export PDF** and
+**Export PNG** from the palette send `startCapture` to the open SlidePix editor,
+which captures in the webview and returns `saveExport`. The provider writes
+the chosen file through `workspace.fs`. `log` messages append to the SlidePix
+output channel and show it on errors.
 
 Normal visual edits must remain `WorkspaceEdit`s in `receive`; direct file writes
 would break the editor's autosave/external-change lifecycle.
@@ -92,7 +100,21 @@ spaces and marker fallback. `src/document-history.test.ts` covers snapshot
 undo/redo, redo invalidation, and the history cap. `src/mcp-config.test.ts`
 covers the Codex table replacement and JSON merges that keep other servers.
 
-## `src/fonts.ts`
+## `src/manim-host.ts`, `src/manim-render.ts`, and `src/manim-setup.ts`
+
+These own Manim argv construction (including `--transparent` and
+`--progress_bar`), scene discovery, subprocess rendering, persistent
+`deck-slide-scene` output names, and deck updates. **Render all** runs one
+Manim process per scene, up to one process per CPU core, each limited to one
+math thread. Progress ticks update the bars and are not copied into the log,
+so a full pipe cannot leave the other processes idle. Successful embeds are
+applied with one `WorkspaceEdit`. Starter scripts are written with `workspace.fs` and removed if
+the deck edit does not apply. `manim-setup.ts` locates `.venv/bin/manim` or
+`.venv/Scripts/manim.exe`, or installs uv and Manim Community after
+confirmation. `src/manim-render.test.ts` covers argv, names, and scene parsing
+without invoking a real `manim` binary.
+
+`src/fonts.ts`
 
 `discoverSystemFontFamilies()` scans bounded platform font directories without
 loading font binaries. `fontFamilyFromFilename()` derives searchable family
@@ -107,6 +129,15 @@ Keep these pure helpers independently testable; the VS Code picker stays in
 - `start()` binds an ephemeral port on `127.0.0.1`, requires the session token
   for HTTP and WebSocket access, and sends initial state.
 - `url(pathname)` returns a tokenized loopback URL.
+- `replaceDeck()` keeps that port and token, then tells connected audience
+  pages to reload. **Present** reuses a running session so a browser refresh
+  of the open URL stays authorized.
+- Each audience, print, contact, and frame request calls `adoptLatestDeck()`.
+  A dirty editor buffer wins; otherwise the saved deck file is read, so a
+  refresh is not stuck on the snapshot from when Present started. Saving or
+  editing the deck reloads connected audience pages onto a new `rev` query
+  while keeping the same token. Asset URLs include the file modification time.
+  Closing the presenter does not stop the audience server.
 - `command(next|previous|first|last)` clamps visible-slide state and broadcasts
   only when the index changes. Forward navigation initializes entrance state;
   backward navigation completes the destination's timeline so a previously
@@ -141,20 +172,6 @@ depending on the VS Code runtime, so its current/next double-buffer behavior is
 unit-testable in `src/presenter.test.ts`. Keep speaker notes in this private
 panel and out of audience HTML.
 
-## `src/renderer.ts`
-
-- `installRenderer(context, forcePrompt?)` stores a pinned Chromium build under
-  extension global storage and asks for consent before downloading.
-- `exportPdf(context, deck, deckPath)` prints `/print` at exact logical page
-  size with backgrounds and caps the PDF page range to the visible-slide count,
-  preventing Chromium from retaining a trailing blank pagination page.
-- `exportPng(context, deck, deckPath, slideIds?)` screenshots the single slide
-  element at exact logical dimensions, or the full `/contact` page for a
-  multi-slide contact sheet.
-
-Both exporters must close the browser and server in `finally`. Playwright Core
-is vendored into the VSIX; OS-specific Chromium is not.
-
 ## `src/pptx-export.ts` and `src/pptx-export-command.ts`
 
 - `exportPptx(context, deck, deckPath)` owns the save dialog, progress, and the
@@ -182,10 +199,6 @@ is vendored into the VSIX; OS-specific Chromium is not.
   than embedded; unsupported CSS easing and browser-only details use the closest
   native PowerPoint equivalent and produce structured warnings.
 
-`src/playwright.ts` is the VS Code-independent loader for the vendored
-Playwright Core package, allowing renderer-backed exporters to remain directly
-unit-testable.
-
 ## `src/web-export.ts` and `src/web-export-command.ts`
 
 - `buildWebExport(deck, deckPath, destination, allowedLinkedRoots)` stages a
@@ -212,3 +225,11 @@ altering build outputs.
 The Explorer context menu contributes **SlidePix: Create Deck** so the selected
 file or folder URI can be used as the creation location without opening a
 filesystem-wide save dialog or filename prompt.
+
+## Live collaboration
+
+`src/live/` owns invitations, the iroh transport, host sequencing, the guest
+client, the `slidepix-live:` file system, and the guest media mirror. The host
+document stays the only saved deck. Remote edits become `WorkspaceEdit`s.
+Undo restores only the local step when another person has edited a different
+property. See [Live collaboration](live-collaboration.md).

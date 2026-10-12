@@ -17,6 +17,7 @@ cross-process message types, and shared DOM/HTML rendering semantics.
 | `createDeck(title?)` | Creates one valid 1920×1080 light-theme deck with a centered dark title using a portable system-font stack. |
 | `duplicateSlide(slide)` | Deep-copies the slide, creates new slide/element IDs, preserves element names and morph keys, and clears the timeline. |
 | `Deck`, `Slide`, element and motion types | Types inferred from their schemas; do not maintain parallel handwritten interfaces. |
+| `manimElementSchema`, `manimSettingsFingerprint`, `manimRenderResolution`, `manimElementAspectRatio`, `MANIM_STARTER_SCRIPT` | Manim slide element validation, locked 16:9 / 9:16 aspect helpers, render resolution table, and settings fingerprint in `src/manim.ts`. |
 
 When adding a persisted field, define validation/defaults here, add parser and
 serialization tests, rebuild the contributed JSON Schema, and update
@@ -39,8 +40,14 @@ Git-merged documents as well as normal editor writes.
 | `DeckMergeConflict` | Stable conflict ID, kind, property path, entity IDs, values, and user-facing message. |
 | `DeckMergeResolution` | Explicit `base`, `ours`, or `theirs` choice used to rerun the deterministic merge. |
 
-The editor rebase path and bundled Git driver must both use this function. Do
-not create a second merge interpretation in the extension or webview.
+The editor rebase path, bundled Git driver, and live session must all use this
+function or `mergeDecksLive`. Do not create a second merge interpretation in
+the extension or webview.
+
+`mergeDecksLive(base, ours, theirs, prefer)` reruns `mergeDecks` and resolves
+value, delete-edit, and order conflicts toward `prefer` (`"ours"` or
+`"theirs"`). A result that fails deck integrity stays a conflict and is not
+applied.
 
 ### `src/assets.ts`
 
@@ -50,6 +57,7 @@ not create a second merge interpretation in the extension or webview.
 | `normalizeAssetReference(reference)` | Converts backslashes to POSIX separators and removes one leading `./`. |
 | `resolveAssetPath(deckPath, reference)` | Resolves inside the asset root and rejects absolute, empty, NUL, or escaping paths. |
 | `resolveMediaPath(deckPath, reference, storage, allowedLinkedRoots?)` | Resolves embedded media through the asset root or linked media through an allowlist of workspace roots. |
+| `deckMediaReferences(deck, options?)` | Lists image, video, poster, Manim output, and background references. Hidden slides and elements are skipped unless `includeHidden` is set. |
 
 All extension, presentation, export, and MCP asset reads must use these helpers.
 Add security tests for path-handling changes.
@@ -124,11 +132,17 @@ exhaustively on both sides. Bump the protocol only for an incompatible wire
 change, not for every new compatible message.
 
 Export commands include the compatible `exportPptx` member; adding it did not
-change protocol version 2.
+change protocol version 2. Toolbar PDF/PNG capture sends a compatible
+`saveExport` payload (data URI plus format) so the host can show a save dialog
+without changing protocol version 2. The command palette asks the open editor
+to capture through the compatible `startCapture` message.
 
-Host `notify` messages update a webview toast by stable notification ID. Export
-commands may include a request ID so host completion or failure replaces the
-progress toast without changing protocol version 2.
+Host `notify` messages update a webview toast by stable notification ID.
+`renderAllManim` and `setupManim` are compatible Manim messages and did not
+change protocol version 2. Export commands may include a request ID so host
+completion or failure replaces the progress toast without changing protocol
+version 2. `presence`, `collaboration`, and `assetsUpdated` are compatible
+live-collaboration messages and did not change protocol version 2.
 
 Deck messages carry an opaque exact-text revision. Replacement requests echo
 their base revision and receive an explicit accepted, stale, invalid, or failed
