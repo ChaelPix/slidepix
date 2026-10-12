@@ -199,6 +199,20 @@ panel and out of audience HTML.
   than embedded; unsupported CSS easing and browser-only details use the closest
   native PowerPoint equivalent and produce structured warnings.
 
+## `src/project-export.ts` and `src/project-export-command.ts`
+
+- `buildProjectArchive(deck, deckPath, allowedLinkedRoots)` writes a stored zip
+  containing the serialized deck, every file already in the sibling `.assets`
+  directory, and linked media or Manim scripts that sit beside the deck.
+- Linked files outside the deck directory are copied into `.assets/linked/`
+  and the exported deck points at those copies. Media becomes `embedded`.
+  A Manim script keeps a linked path inside that asset folder. The open deck
+  is not modified.
+- Asset reads go through `resolveMediaPath`. Symlinks in the asset directory
+  are rejected. Archive paths cannot escape the zip root.
+- `exportProject(deck, deckPath)` owns the save dialog and progress. The user
+  chooses the `.zip` location.
+
 ## `src/web-export.ts` and `src/web-export-command.ts`
 
 - `buildWebExport(deck, deckPath, destination, allowedLinkedRoots)` stages a

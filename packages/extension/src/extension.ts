@@ -5,6 +5,7 @@ import { createDeck, parseDeckText, serializeDeck } from "@slidepix/core";
 import { uniqueDeckFilename } from "./create-deck";
 import { SlidePixEditorProvider, VIEW_TYPE } from "./editor";
 import { exportPptx } from "./pptx-export-command";
+import { exportProject } from "./project-export-command";
 import { exportWeb } from "./web-export-command";
 import { configureGitCollaboration, removeGitCollaboration, resolveGitConflict } from "./git-collaboration";
 import { mcpTargets, mergeMcpTarget, slidepixMcpProcess, type McpTarget } from "./mcp-config";
@@ -24,6 +25,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("slidepix.exportPng", () => { const document = editor.currentDocument(); return document && editor.requestCapture(document, "png"); }),
     vscode.commands.registerCommand("slidepix.exportPptx", () => { editor.log("command exportPptx"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportPptx(context, deck, editor.locationOf(document).deckPath); }); }),
     vscode.commands.registerCommand("slidepix.exportWeb", () => { editor.log("command exportWeb"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportWeb(deck, editor.locationOf(document).deckPath); }); }),
+    vscode.commands.registerCommand("slidepix.exportProject", () => { editor.log("command exportProject"); return withDeck(editor, async (deck, document) => { await live.ensureAssets(document); return exportProject(deck, editor.locationOf(document).deckPath); }); }),
     vscode.commands.registerCommand("slidepix.present", () => editor.currentDocument() && editor.present(editor.currentDocument()!, false)),
     vscode.commands.registerCommand("slidepix.presenter", () => editor.currentDocument() && editor.present(editor.currentDocument()!, true)),
     vscode.commands.registerCommand("slidepix.configureMcp", () => configureMcp(context, editor)),

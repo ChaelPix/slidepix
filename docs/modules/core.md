@@ -131,8 +131,8 @@ messages reflect the host snapshot stack. Add a new union member for a new opera
 exhaustively on both sides. Bump the protocol only for an incompatible wire
 change, not for every new compatible message.
 
-Export commands include the compatible `exportPptx` member; adding it did not
-change protocol version 2. Toolbar PDF/PNG capture sends a compatible
+Export commands include the compatible `exportPptx` and `exportProject`
+members; adding them did not change protocol version 2. Toolbar PDF/PNG capture sends a compatible
 `saveExport` payload (data URI plus format) so the host can show a save dialog
 without changing protocol version 2. The command palette asks the open editor
 to capture through the compatible `startCapture` message.
