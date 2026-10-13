@@ -74,6 +74,33 @@ describe("project export", () => {
     expect(exported.deck.slides[0]!.elements.find((element) => element.id === "scene")).toMatchObject({ script: "talk.assets/linked/scene.py" });
   });
 
+  it("can omit rendered Manim media, including a render file that was deleted", async () => {
+    const root = await temporaryRoot();
+    const deckPath = path.join(root, "talk.slidepix.json");
+    const assets = deckAssetDirectory(deckPath);
+    await mkdir(assets);
+    await writeFile(path.join(assets, "kept.png"), "kept");
+    await writeFile(path.join(assets, "Still.png"), "rendered");
+    const deck = createDeck("Manim");
+    deck.slides[0]!.elements.push(
+      elementSchema.parse({ id: "kept", morphKey: "kept", type: "image", src: "kept.png", storage: "embedded", x: 0, y: 0, width: 10, height: 10, z: 1 }),
+      elementSchema.parse({ id: "still", morphKey: "still", type: "manim", outputMedia: { src: "Still.png", storage: "embedded" }, x: 0, y: 20, width: 10, height: 10, z: 2 }),
+      elementSchema.parse({ id: "deleted", morphKey: "deleted", type: "manim", outputMedia: { src: "HarmonicsStill.png", storage: "embedded" }, x: 0, y: 40, width: 10, height: 10, z: 3 })
+    );
+
+    const files = readStoredZip((await buildProjectArchive(deck, deckPath, [root], { includeManimMedia: false })).bytes);
+    expect(text(files, "talk.assets/kept.png")).toBe("kept");
+    expect(files.has("talk.assets/Still.png")).toBe(false);
+    expect(files.has("talk.assets/HarmonicsStill.png")).toBe(false);
+    const exported = parseDeckText(text(files, "talk.slidepix.json"));
+    if (!exported.ok) throw new Error(exported.message);
+    expect(exported.deck.slides[0]!.elements.find((element) => element.id === "still")).not.toHaveProperty("outputMedia");
+    expect(exported.deck.slides[0]!.elements.find((element) => element.id === "deleted")).not.toHaveProperty("outputMedia");
+    expect(deck.slides[0]!.elements.find((element) => element.id === "deleted")).toMatchObject({ outputMedia: { src: "HarmonicsStill.png" } });
+
+    await expect(buildProjectArchive(deck, deckPath, [root], { includeManimMedia: true })).rejects.toThrow(/Missing media file: HarmonicsStill.png/);
+  });
+
   it("rejects a symlink in the asset directory", async () => {
     const root = await temporaryRoot();
     const deckPath = path.join(root, "talk.slidepix.json");

@@ -5,10 +5,15 @@ import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
 
 type StoredFile = { src: string; storage: MediaStorage };
 
+export function deckHasManimMedia(deck: Deck): boolean {
+  return manimOutputReferences(deck).size > 0;
+}
+
 export async function buildProjectArchive(
   deck: Deck,
   deckPath: string,
-  allowedLinkedRoots: string[]
+  allowedLinkedRoots: string[],
+  options?: { includeManimMedia?: boolean }
 ): Promise<{ bytes: Uint8Array; fileCount: number }> {
   const deckName = path.basename(deckPath);
   const assetDirectory = deckAssetDirectory(deckPath);
@@ -20,6 +25,7 @@ export async function buildProjectArchive(
   const copiedOutside = new Map<string, string>();
 
   await copyAssetDirectory(assetDirectory, assetFolder, files);
+  if (options?.includeManimMedia === false) omitManimMedia(exported, assetFolder, files);
   const assetRoots = await canonicalRoots([assetDirectory]);
 
   for (const slide of exported.slides) {
@@ -106,6 +112,29 @@ export function readStoredZip(bytes: Uint8Array): Map<string, Uint8Array> {
   return files;
 }
 
+function manimOutputReferences(deck: Deck): Set<string> {
+  const references = new Set<string>();
+  for (const slide of deck.slides) {
+    for (const element of slide.elements) {
+      if (element.type === "manim" && element.outputMedia) references.add(normalizeReference(element.outputMedia.src));
+    }
+  }
+  return references;
+}
+
+function omitManimMedia(deck: Deck, assetFolder: string, files: Map<string, Uint8Array>): void {
+  for (const reference of manimOutputReferences(deck)) files.delete(`${assetFolder}/${reference}`);
+  for (const slide of deck.slides) {
+    for (const element of slide.elements) {
+      if (element.type === "manim") element.outputMedia = undefined;
+    }
+  }
+}
+
+function normalizeReference(reference: string): string {
+  return reference.replaceAll("\\", "/").replace(/^\.\//, "");
+}
+
 async function copyAssetDirectory(assetDirectory: string, assetFolder: string, files: Map<string, Uint8Array>): Promise<void> {
   let entries;
   try {
@@ -171,7 +200,7 @@ async function placeMedia(
   if (media.storage === "embedded") {
     const absolute = resolveMediaPath(deckPath, media.src, "embedded", allowedLinkedRoots);
     const bytes = await readContained(absolute, assetRoots);
-    const archivePath = `${assetFolder}/${media.src.replaceAll("\\", "/").replace(/^\.\//, "")}`;
+    const archivePath = `${assetFolder}/${normalizeReference(media.src)}`;
     assertArchivePath(archivePath);
     files.set(archivePath, bytes);
     return media;
@@ -206,7 +235,7 @@ async function linkedArchivePath(
   files: Map<string, Uint8Array>
 ): Promise<string | undefined> {
   const absolute = resolveMediaPath(deckPath, reference, "linked", allowedLinkedRoots);
-  const real = await realpath(absolute);
+  const real = await existingFile(absolute);
   assertInside(real, canonicalLinkedRoots);
   const relative = path.relative(deckDirectory, real).split(path.sep).join("/");
   if (!relative || relative.startsWith("../") || relative.split("/").includes("..")) return undefined;
@@ -225,7 +254,7 @@ async function copyOutside(
   copiedOutside: Map<string, string>
 ): Promise<string> {
   const absolute = resolveMediaPath(deckPath, reference, "linked", allowedLinkedRoots);
-  const real = await realpath(absolute);
+  const real = await existingFile(absolute);
   assertInside(real, canonicalLinkedRoots);
   const existing = copiedOutside.get(real);
   if (existing) return existing;
@@ -242,9 +271,18 @@ async function copyOutside(
 }
 
 async function readContained(absolute: string, roots: string[]): Promise<Uint8Array> {
-  const real = await realpath(absolute);
+  const real = await existingFile(absolute);
   assertInside(real, roots);
   return readFile(real);
+}
+
+async function existingFile(absolute: string): Promise<string> {
+  try {
+    return await realpath(absolute);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error(`Missing media file: ${path.basename(absolute)}`);
+    throw error;
+  }
 }
 
 async function canonicalRoots(roots: string[]): Promise<string[]> {
