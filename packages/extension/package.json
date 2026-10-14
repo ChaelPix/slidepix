@@ -77,6 +77,11 @@
         "icon": "$(globe)"
       },
       {
+        "command": "slidepix.exportProject",
+        "title": "SlidePix: Export Project",
+        "icon": "$(folder)"
+      },
+      {
         "command": "slidepix.present",
         "title": "SlidePix: Present",
         "icon": "$(play)"
@@ -151,6 +156,11 @@
           "command": "slidepix.exportWeb",
           "when": "activeCustomEditorId == slidepix.deckEditor",
           "group": "navigation@4"
+        },
+        {
+          "command": "slidepix.exportProject",
+          "when": "activeCustomEditorId == slidepix.deckEditor",
+          "group": "navigation@5"
         }
       ]
     },

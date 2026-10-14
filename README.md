@@ -85,7 +85,9 @@ The screen is organized like a simple slide application:
 - Add entrance animations from the **animations** tab after selecting an item.
 - Use **Present** for one audience screen. Use **Presenter** for the audience
   window plus current/next slides, notes, and a timer in the editor.
-- Use **Export PDF**, **Export PNG**, **Export PPTX**, or **Export Web**.
+- Use **Export PDF**, **Export PNG**, **Export PPTX**, **Export Web**, or
+  **Export Project**. **Project** saves a zip with the `.slidepix.json` file,
+  its `.assets` folder, and linked media needed to open the deck elsewhere.
   PDF/PNG asks you to approve a one-time Chromium renderer download; PPTX and
   Web need no download. PPTX creates native editable text, code, equations,
   shapes, tables, pictures, and video, plus PowerPoint transitions and common

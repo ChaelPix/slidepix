@@ -50,6 +50,6 @@ export type WebviewToHostMessage =
   | { version: 2; type: "renderAllManim"; requestId: string }
   | { version: 2; type: "setupManim" }
   | { version: 2; type: "presence"; slideId?: string; elementIds: string[]; editingElementId?: string; preview?: { slideId: string; poses: LivePose[] } }
-  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor" | "startLive" | "copyLiveInvite" | "stopLive" | "saveLiveCopy"; slideIds?: string[]; requestId?: string }
+  | { version: 2; type: "command"; command: "undo" | "redo" | "save" | "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "exportProject" | "present" | "presenter" | "configureMcp" | "resolveGitConflict" | "openTextEditor" | "startLive" | "copyLiveInvite" | "stopLive" | "saveLiveCopy"; slideIds?: string[]; requestId?: string }
   | { version: 2; type: "saveExport"; format: "pdf" | "png"; data: string }
   | { version: 2; type: "log"; level: "info" | "warn" | "error"; message: string };

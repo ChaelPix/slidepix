@@ -5,6 +5,7 @@ import { parseDeckText, serializeDeck, type Deck, type HostToWebviewMessage, typ
 import { deckAssetDirectory, resolveMediaPath } from "@slidepix/core/assets";
 
 import { exportPptx } from "./pptx-export-command";
+import { exportProject } from "./project-export-command";
 import { exportWeb } from "./web-export-command";
 import { PresentationServer } from "./presentation";
 import { presenterHtml } from "./presenter";
@@ -309,10 +310,11 @@ export class SlidePixEditorProvider implements vscode.CustomTextEditorProvider {
       if (message.command === "openTextEditor") return void vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
       const parsed = parseDeckText(document.getText());
       if (!parsed.ok) return void vscode.window.showErrorMessage(parsed.message);
-      if (message.command === "exportPptx" || message.command === "exportWeb") await this.live?.ensureAssets(document);
+      if (message.command === "exportPptx" || message.command === "exportWeb" || message.command === "exportProject") await this.live?.ensureAssets(document);
       const located = this.paths(document);
       if (message.command === "exportPptx") return this.runExport(panel, message.requestId, "PowerPoint export", () => exportPptx(this.context, parsed.deck, located.deckPath));
       if (message.command === "exportWeb") return this.runExport(panel, message.requestId, "Web export", () => exportWeb(parsed.deck, located.deckPath));
+      if (message.command === "exportProject") return this.runExport(panel, message.requestId, "Project export", () => exportProject(parsed.deck, located.deckPath));
       if (message.command === "present") return this.present(document, false);
       if (message.command === "presenter") return this.present(document, true);
     }

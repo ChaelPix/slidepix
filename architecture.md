@@ -156,8 +156,9 @@ Do not assume every planned feature is complete. Current known gaps include:
 
 - grouping is not implemented;
 - layouts exist in the schema but have no layout designer;
-- portable `.slidepix` archives, font importing, and embedded fonts are not
-  implemented;
+- **Export Project** writes a zip of the deck JSON, its `.assets` folder, and
+  the linked media needed to reopen that project. A single-file `.slidepix`
+  container, font importing, and embedded fonts are not implemented;
 - the text source editor is a textarea; CodeMirror and syntax-highlighted code
   output are not integrated;
 - automated VS Code custom-editor integration and Cursor smoke tests are still

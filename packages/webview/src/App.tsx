@@ -685,8 +685,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
   };
   const updateElement = (fn: (target: SlideElement) => void) => element && mutate((draft) => { const target = findElement(draft, slide.id, element.id); if (target) fn(target); });
   const textLike = element?.type === "text" || element?.type === "table" ? element : undefined;
-  const exportDeck = async (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb", label: string, slideIds?: string[]) => {
-    if (command === "exportPptx" || command === "exportWeb") {
+  const exportDeck = async (command: "exportPdf" | "exportPng" | "exportPptx" | "exportWeb" | "exportProject", label: string, slideIds?: string[]) => {
+    if (command === "exportPptx" || command === "exportWeb" || command === "exportProject") {
       const requestId = crypto.randomUUID();
       notifyToast({ id: requestId, kind: "progress", message: `Exporting ${label}…` });
       postMessage({ type: "command", command, requestId, slideIds });
@@ -755,7 +755,8 @@ function Toolbar({ slide, element, selectedElements, addText, addShape, addTable
           { icon: "file-media", label: "PNG", onClick: () => exportDeck("exportPng", "PNG", [slide.id]) },
           { icon: "file-pdf", label: "PDF", onClick: () => exportDeck("exportPdf", "PDF") },
           { icon: "file", label: "PowerPoint", onClick: () => exportDeck("exportPptx", "PowerPoint") },
-          { icon: "globe", label: "Web", onClick: () => exportDeck("exportWeb", "web presentation") }
+          { icon: "globe", label: "Web", onClick: () => exportDeck("exportWeb", "web presentation") },
+          { icon: "folder", label: "Project", onClick: () => exportDeck("exportProject", "project") }
         ]} />
       </div></div>
       <div className="ribbon-group history-actions"><div className="ribbon-actions">
