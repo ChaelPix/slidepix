@@ -88,6 +88,8 @@ The screen is organized like a simple slide application:
 - Use **Export PDF**, **Export PNG**, **Export PPTX**, **Export Web**, or
   **Export Project**. **Project** saves a zip with the `.slidepix.json` file,
   its `.assets` folder, and linked media needed to open the deck elsewhere.
+  If the deck has rendered Manim media, the export asks whether to include
+  those files. Skip them when a render was deleted.
   PDF/PNG asks you to approve a one-time Chromium renderer download; PPTX and
   Web need no download. PPTX creates native editable text, code, equations,
   shapes, tables, pictures, and video, plus PowerPoint transitions and common

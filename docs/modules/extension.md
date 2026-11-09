@@ -201,9 +201,13 @@ panel and out of audience HTML.
 
 ## `src/project-export.ts` and `src/project-export-command.ts`
 
-- `buildProjectArchive(deck, deckPath, allowedLinkedRoots)` writes a stored zip
-  containing the serialized deck, every file already in the sibling `.assets`
-  directory, and linked media or Manim scripts that sit beside the deck.
+- `buildProjectArchive(deck, deckPath, allowedLinkedRoots, options?)` writes a
+  stored zip containing the serialized deck, every file already in the sibling
+  `.assets` directory, and linked media or Manim scripts that sit beside the deck.
+- When the deck has rendered Manim media, `exportProject` asks whether to
+  include it. Skipping removes those `outputMedia` references from the exported
+  deck and does not read the render files, so a deleted render does not fail
+  the export. Including a missing render reports `Missing media file`.
 - Linked files outside the deck directory are copied into `.assets/linked/`
   and the exported deck points at those copies. Media becomes `embedded`.
   A Manim script keeps a linked path inside that asset folder. The open deck

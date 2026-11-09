@@ -157,7 +157,8 @@ Do not assume every planned feature is complete. Current known gaps include:
 - grouping is not implemented;
 - layouts exist in the schema but have no layout designer;
 - **Export Project** writes a zip of the deck JSON, its `.assets` folder, and
-  the linked media needed to reopen that project. A single-file `.slidepix`
+  the linked media needed to reopen that project. Rendered Manim media is
+  included only when the export prompt says so. A single-file `.slidepix`
   container, font importing, and embedded fonts are not implemented;
 - the text source editor is a textarea; CodeMirror and syntax-highlighted code
   output are not integrated;
